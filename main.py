@@ -1,5 +1,5 @@
 """
-CV Builder AI — FastAPI Backend v9
+CV Builder AI - FastAPI Backend v9
 Port: 8001  |  Start: uvicorn main:app --host 0.0.0.0 --port 8001
 
 Providers: Groq, Cerebras (cloud.cerebras.ai), Ollama
@@ -14,7 +14,7 @@ from typing import Optional, List
 import httpx, json, re, math, io, asyncio, secrets, string
 from datetime import date, datetime, timedelta
 
-# reportlab — PDF generation
+# reportlab - PDF generation
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.platypus import (
@@ -34,7 +34,7 @@ OPENAI_URL   = "https://api.openai.com/v1/chat/completions"
 GEMINI_URL   = "https://generativelanguage.googleapis.com/v1beta/models"
 OLLAMA_URL   = "http://localhost:11434"
 
-# ── Real candidate constants ──────────────────────────────────────────────────
+# -- Real candidate constants --------------------------------------------------
 CANDIDATE_COMPANIES = [
     {"name": "MULTYLOGICS SOLUTIONS",        "start": "May 2024",  "end": "Present"},
     {"name": "ENCS NETWORKS",                "start": "May 2022",  "end": "May 2024"},
@@ -42,7 +42,7 @@ CANDIDATE_COMPANIES = [
 ]
 
 
-# ── Month name map & date helpers ────────────────────────────────────────────
+# -- Month name map & date helpers --------------------------------------------
 _MONTH_NAMES = [
     "January","February","March","April","May","June",
     "July","August","September","October","November","December"
@@ -54,7 +54,7 @@ def _month_name(n: int) -> str:
     return _MONTH_NAMES[(n - 1) % 12]
 
 def _parse_month_year(s: str) -> date:
-    """Parse 'Month YYYY' or 'Present' → date."""
+    """Parse 'Month YYYY' or 'Present' -> date."""
     s = s.strip()
     if s.lower() == "present":
         return date.today()
@@ -114,9 +114,9 @@ def _calc_total_years(years_exp: str = "") -> str:
 def _build_dynamic_companies(years_exp: str) -> list:
     """
     Return 1, 2, or 3 company date ranges based on years_exp:
-      1 year  → 1 company  (all experience at one place)
-      2 years → 2 companies (split equally, ~12 months each)
-      3+ years → 3 companies (split into equal thirds)
+      1 year  -> 1 company  (all experience at one place)
+      2 years -> 2 companies (split equally, ~12 months each)
+      3+ years -> 3 companies (split into equal thirds)
     Works backwards from today. Remainder months go to the most recent company.
     """
     if not years_exp:
@@ -133,14 +133,14 @@ def _build_dynamic_companies(years_exp: str) -> list:
     def fmt(d: date) -> str:
         return f"{_month_name(d.month)} {d.year}"
 
-    # ── 1 year → 1 company ────────────────────────────────────────────────
+    # -- 1 year -> 1 company ------------------------------------------------
     if n <= 1.4:
         co1_start = _subtract_months(today, total_months)
         return [
             {"name": CANDIDATE_COMPANIES[0]["name"], "start": fmt(co1_start), "end": "Present"},
         ]
 
-    # ── 2 years → 2 companies ─────────────────────────────────────────────
+    # -- 2 years -> 2 companies ---------------------------------------------
     if n <= 2.4:
         each     = total_months // 2
         remainder = total_months - each * 2
@@ -152,7 +152,7 @@ def _build_dynamic_companies(years_exp: str) -> list:
             {"name": CANDIDATE_COMPANIES[1]["name"], "start": fmt(co2_start), "end": fmt(co2_end)},
         ]
 
-    # ── 3+ years → 3 companies ────────────────────────────────────────────
+    # -- 3+ years -> 3 companies --------------------------------------------
     each      = total_months // 3
     remainder = total_months - each * 3
     co1_start = _subtract_months(today, each + remainder)
@@ -184,7 +184,7 @@ def _build_education_year(years_exp: str) -> dict:
     return {"start": "2017", "end": "2021"}
 
 
-# ── Token budgets ─────────────────────────────────────────────────────────────
+# -- Token budgets -------------------------------------------------------------
 MODEL_PROMPT_BUDGET = {
     "llama-3.1-8b-instant":          2400,
     "llama3-8b-8192":                2400,
@@ -202,7 +202,7 @@ MODEL_PROMPT_BUDGET = {
 }
 DEFAULT_PROMPT_BUDGET = 2400
 
-# ── Model name mapping — converts shorthand to full provider-specific names ───
+# -- Model name mapping - converts shorthand to full provider-specific names ---
 MODEL_ALIASES = {
     # Groq model aliases
     "deepseek-r1":            "deepseek-r1-distill-llama-70b",
@@ -237,7 +237,7 @@ def _normalize_model_name(model: str, provider: str = "groq") -> str:
     # Return original if no mapping found
     return model
 
-# ── In-memory key usage counter ───────────────────────────────────────────────
+# -- In-memory key usage counter -----------------------------------------------
 _key_usage: dict = {}
 _key_rate_limited_until: dict = {}   # mask(key) -> timestamp when safe to retry
 _debug_log: list = []
@@ -261,10 +261,10 @@ class CVRequest(BaseModel):
     company_context:  Optional[str]       = ""
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# AUTH SYSTEM — live key management
+# ==============================================================================
+# AUTH SYSTEM - live key management
 # Keys are stored in auth_keys.json next to main.py
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 import os
 
 AUTH_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "auth_keys.json")
@@ -287,7 +287,7 @@ def _load_auth_keys() -> dict:
         }
         _save_auth_keys(keys)
         print(f"\n{'='*60}")
-        print(f"  CV Builder AI — First Run Setup")
+        print(f"  CV Builder AI - First Run Setup")
         print(f"  Auto-generated access key: {default_token}")
         print(f"  Paste this key in the extension login screen.")
         print(f"  Generate more keys via the Admin panel in login.html")
@@ -333,7 +333,7 @@ class RevokeRequest(BaseModel):
     token:      str
     admin_pass: str = ""
 
-# Simple admin password — change this or move to env var
+# Simple admin password - change this or move to env var
 ADMIN_PASSWORD = os.environ.get("CV_ADMIN_PASS", "admin1234")
 
 @app.post("/auth/generate-key")
@@ -375,7 +375,7 @@ async def login(req: LoginRequest):
     entry = keys.get(token)
 
     if not entry:
-        raise HTTPException(401, "Invalid key — not found")
+        raise HTTPException(401, "Invalid key - not found")
     if not _is_token_valid(entry):
         raise HTTPException(401, "Key is expired or revoked")
 
@@ -622,7 +622,7 @@ async def debug_log():
 @app.get("/test-cerebras")
 async def test_cerebras(key: str = "", model: str = "llama3.1-8b"):
     """
-    Quick diagnostic endpoint — visit in browser:
+    Quick diagnostic endpoint - visit in browser:
       http://localhost:8001/test-cerebras?key=csk-YOUR_KEY&model=llama3.1-8b
     Returns exactly what Cerebras returns so you can see the real error.
     """
@@ -657,14 +657,14 @@ async def test_cerebras(key: str = "", model: str = "llama3.1-8b"):
                         "429 = rate limited (add more keys)" if r.status_code == 429 else
                         "401/403 = invalid key (get a new one at cloud.cerebras.ai)" if r.status_code in (401, 403) else
                         f"404 = model '{model}' not on your plan (try llama3.1-8b)" if r.status_code == 404 else
-                        f"Unexpected {r.status_code} — see body above"
+                        f"Unexpected {r.status_code} - see body above"
                     ),
                 }
     except httpx.ConnectError as e:
         return {
             "status": "connection_error",
             "error": str(e),
-            "fix": "Cannot reach api.cerebras.ai — check internet connection / VPN / firewall",
+            "fix": "Cannot reach api.cerebras.ai - check internet connection / VPN / firewall",
         }
     except Exception as e:
         return {"status": "error", "error": f"{type(e).__name__}: {e}"}
@@ -700,8 +700,8 @@ def est_tokens(text: str) -> int:
 def _normalize_job_title(title: str) -> str:
     """
     Remove duplicated words/tokens in a job title.
-    e.g. "Senior Senior Angular Developer" → "Senior Angular Developer"
-    e.g. "Developer Developer" → "Developer"
+    e.g. "Senior Senior Angular Developer" -> "Senior Angular Developer"
+    e.g. "Developer Developer" -> "Developer"
     Preserves original casing of first occurrence.
     """
     if not title:
@@ -716,7 +716,7 @@ def _normalize_job_title(title: str) -> str:
     return " ".join(seen)
 
 
-# ── Thin-JD detection & enrichment ────────────────────────────────────────────
+# -- Thin-JD detection & enrichment --------------------------------------------
 _REAL_TECH_WORDS = {
     "net", "asp", "angular", "react", "vue", "node", "python", "java", "php",
     "ruby", "swift", "kotlin", "go", "rust", "typescript", "javascript",
@@ -740,7 +740,7 @@ def _jd_is_thin(jd: str, min_tech_words: int = 3) -> bool:
     return found < min_tech_words
 
 
-# Domain-based technology expansion: maps role keywords → concrete tech stacks
+# Domain-based technology expansion: maps role keywords -> concrete tech stacks
 _DOMAIN_TECH_STACKS: dict = {
     "dotnet": (
         "ASP.NET Core, C#, .NET 8, Entity Framework Core, LINQ, Dapper, "
@@ -855,33 +855,33 @@ def _enrich_thin_jd(job_title: str, jd: str) -> str:
 
     enriched = (
         jd.strip() +
-        "\n\n[TECHNOLOGY CONTEXT — derived from role domain. "
+        "\n\n[TECHNOLOGY CONTEXT - derived from role domain. "
         "Use ONLY these as skill/tech items; ignore plain English adjectives from above]\n" +
         tech_block
     )
     return enriched
 
 
-# ── Prompt builder ─────────────────────────────────────────────────────────────
+# -- Prompt builder -------------------------------------------------------------
 def _co_line(companies: list) -> str:
     return " | ".join(
-        f'"{c["name"]}" {c["start"]} – {c["end"]}' for c in companies
+        f'"{c["name"]}" {c["start"]} - {c["end"]}' for c in companies
     )
 
 
 def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
     """Returns (system_prompt, user_prompt) tuple."""
-    # ── CRITICAL: Normalize job title — remove duplicate words ──────────────
+    # -- CRITICAL: Normalize job title - remove duplicate words --------------
     req = req.copy(update={"job_title": _normalize_job_title(req.job_title.strip())})
 
     _raw_jd = req.job_description.strip()
-    # ── Thin-JD enrichment: if JD has <3 real tech words, expand from domain ──
+    # -- Thin-JD enrichment: if JD has <3 real tech words, expand from domain --
     if _jd_is_thin(_raw_jd):
         _raw_jd = _enrich_thin_jd(req.job_title, _raw_jd)
     jd          = _raw_jd[:jd_chars]
     #profile     = (req.profile.strip()[:150] if req.profile else "Full-stack developer, 3+ years")
     years_exp   = (req.years_exp or "").strip()
-    total_years = _calc_total_years(years_exp)   # dynamic — uses frontend input if given
+    total_years = _calc_total_years(years_exp)   # dynamic - uses frontend input if given
     companies   = _build_dynamic_companies(years_exp)
     edu         = _build_education_year(years_exp)
     company_name    = (req.company_name    or "").strip()
@@ -894,54 +894,54 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
 
     if _yrs_float <= 1.4:
         _seniority_rule = (
-            f"SENIORITY RULE — {total_years} year experience: "
+            f"SENIORITY RULE - {total_years} year experience: "
             "Co1 (only company) MUST use 'Junior' as the seniority prefix. "
-            "The function word MUST match the JD domain (e.g. if JD is about backend → 'Junior Backend Developer', "
-            "if JD is about data → 'Junior Data Engineer', if JD is about security → 'Junior Security Analyst'). "
-            "Derive the domain word and function word from the actual JD — do not hardcode. "
+            "The function word MUST match the JD domain (e.g. if JD is about backend -> 'Junior Backend Developer', "
+            "if JD is about data -> 'Junior Data Engineer', if JD is about security -> 'Junior Security Analyst'). "
+            "Derive the domain word and function word from the actual JD - do not hardcode. "
             "Omitting 'Junior' is a HARD FAILURE.\n\n"
         )
         _seniority_ban = (
-            "- Missing 'Junior' prefix on Co1 role title — with 1 year experience, the only company MUST be Junior\n"
+            "- Missing 'Junior' prefix on Co1 role title - with 1 year experience, the only company MUST be Junior\n"
         )
     elif _yrs_float <= 2.4:
         _seniority_rule = (
-            f"SENIORITY RULE — {total_years} years experience: "
+            f"SENIORITY RULE - {total_years} years experience: "
             "Co1 (current) must have a plain domain title with NO seniority prefix. "
             "Co2 (previous) MUST use 'Junior' as the seniority prefix. "
-            "Both titles MUST be derived from the JD domain — use the JD's tech stack and role type to pick the domain word. "
+            "Both titles MUST be derived from the JD domain - use the JD's tech stack and role type to pick the domain word. "
             "Each company MUST use a DIFFERENT function word from the pool. "
             "Getting this wrong is a HARD FAILURE.\n\n"
         )
         _seniority_ban = (
-            "- Missing 'Junior' prefix on Co2 role title — the oldest company MUST be Junior\n"
-            "- Adding ANY seniority prefix to Co1 role title — the current company must be plain\n"
+            "- Missing 'Junior' prefix on Co2 role title - the oldest company MUST be Junior\n"
+            "- Adding ANY seniority prefix to Co1 role title - the current company must be plain\n"
         )
     else:
         _seniority_rule = (
-            f"SENIORITY RULE — {total_years} years experience: "
+            f"SENIORITY RULE - {total_years} years experience: "
             "Co1 (current) MUST use 'Senior' as the seniority prefix. "
             "Co2 (mid) must have a plain domain title with NO seniority prefix. "
             "Co3 (oldest) MUST use 'Junior' as the seniority prefix. "
-            "ALL titles MUST be derived from the JD domain — pick the domain word and function word from the JD's tech stack and role focus. "
+            "ALL titles MUST be derived from the JD domain - pick the domain word and function word from the JD's tech stack and role focus. "
             "Each company MUST use a DIFFERENT function word from the pool. "
             "Getting this wrong is a HARD FAILURE.\n\n"
         )
         _seniority_ban = (
-            "- Missing 'Senior' prefix on Co1 role title — current company MUST be Senior\n"
-            "- Adding ANY seniority prefix to Co2 role title — mid company must be plain\n"
-            "- Missing 'Junior' prefix on Co3 role title — oldest company MUST be Junior\n"
+            "- Missing 'Senior' prefix on Co1 role title - current company MUST be Senior\n"
+            "- Adding ANY seniority prefix to Co2 role title - mid company must be plain\n"
+            "- Missing 'Junior' prefix on Co3 role title - oldest company MUST be Junior\n"
         )
 
     system = (
         "You are an expert ATS-focused CV writer. Output ONLY valid JSON. "
         "No text before/after, no markdown, no backticks. Start { end }.\n\n"
 
-        "=== STEP 0: JOB TITLE NORMALIZATION (CRITICAL — do this BEFORE anything else) ===\n"
+        "=== STEP 0: JOB TITLE NORMALIZATION (CRITICAL - do this BEFORE anything else) ===\n"
         "Inspect the raw job title. Clean it:\n"
-        "  1. Remove any duplicated words (e.g. 'Senior Senior Angular Developer' → 'Senior Angular Developer').\n"
+        "  1. Remove any duplicated words (e.g. 'Senior Senior Angular Developer' -> 'Senior Angular Developer').\n"
         "  2. Remove unnecessary filler prefixes/suffixes not in the JD (e.g. 'Required:' or '(Urgent)').\n"
-        "  3. Never inflate — do NOT add seniority words not implied by the JD.\n"
+        "  3. Never inflate - do NOT add seniority words not implied by the JD.\n"
         "  4. Keep it concise, accurate, and strictly aligned with the Job Description.\n"
         "Store this cleaned title internally. Use it as the baseline for all role title and 'title' field derivations.\n\n"
 
@@ -950,13 +950,13 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "  CORE: tools/languages/frameworks in Requirements, Responsibilities, Must Have\n"
         "  PREFERRED: tools in Nice-to-Have, Preferred, Bonus sections\n"
         "  ECOSYSTEM: for each CORE and PREFERRED tool, add its standard companion tools\n"
-        "    (e.g. if JD names a backend framework → add its ORM, auth library, test framework, logging library)\n"
-        "    (e.g. if JD names a cloud platform → add the specific services mentioned + closely related managed services)\n"
-        "    (e.g. if JD names a frontend framework → add its state manager, router, UI lib, build tool, test util)\n"
-        "    (e.g. if JD names a database → add its migration tool, admin tool, ORM, query optimiser, connection pooler)\n"
-        "    (e.g. if JD names a DevOps tool → add its CI/CD companion, registry, orchestration or IaC tool)\n"
-        "    (e.g. if JD names an SEO tool → add its companion analytics, crawling, rank tracking, and reporting tools)\n"
-        "CRITICAL — THIN JD WARNING:\n"
+        "    (e.g. if JD names a backend framework -> add its ORM, auth library, test framework, logging library)\n"
+        "    (e.g. if JD names a cloud platform -> add the specific services mentioned + closely related managed services)\n"
+        "    (e.g. if JD names a frontend framework -> add its state manager, router, UI lib, build tool, test util)\n"
+        "    (e.g. if JD names a database -> add its migration tool, admin tool, ORM, query optimiser, connection pooler)\n"
+        "    (e.g. if JD names a DevOps tool -> add its CI/CD companion, registry, orchestration or IaC tool)\n"
+        "    (e.g. if JD names an SEO tool -> add its companion analytics, crawling, rank tracking, and reporting tools)\n"
+        "CRITICAL - THIN JD WARNING:\n"
         "  Some JDs are written as plain English bullets (e.g. '- Good understanding of REST APIs').\n"
         "  In these cases, the words 'Good', 'Understanding', 'Hands', 'Ability', 'Strong', 'Web', 'Dev',\n"
         "  'Setup', 'Mindset', 'Remote', 'Problem-solving' are DESCRIPTION WORDS, NOT technologies.\n"
@@ -964,14 +964,14 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "  ONLY extract real named software tools, frameworks, languages, libraries, platforms, or services.\n"
         "  If a TECHNOLOGY CONTEXT block is appended below the JD, use THOSE named tools for skill extraction.\n"
         "ABSOLUTE RULE: Every technology written ANYWHERE in the output MUST come from CORE, PREFERRED, or ECOSYSTEM.\n"
-        "ABSOLUTE RULE: Technologies NOT extracted from the JD are BANNED — do not add technologies from your training data.\n"
-        "ABSOLUTE RULE: The output changes completely for every different JD — nothing is hardcoded.\n"
+        "ABSOLUTE RULE: Technologies NOT extracted from the JD are BANNED - do not add technologies from your training data.\n"
+        "ABSOLUTE RULE: The output changes completely for every different JD - nothing is hardcoded.\n"
         "\n"
         "=== ANTI-FAKE-TECH ENFORCEMENT (CRITICAL) ===\n"
         "BANNED from appearing ANYWHERE in the tech, skills, or technologies fields:\n"
         "  - Common English words (e.g. 'English', 'Resumes', 'Manager', 'Director', 'Applicants', 'Position', 'Overview', 'Key', 'Responsibilities')\n"
         "  - Job title words (e.g. 'Senior', 'Junior', 'Lead', 'Role', 'Specialist')\n"
-        "  - Action verbs used as tools — this is the #1 failure mode. NEVER use any of these as skill items:\n"
+        "  - Action verbs used as tools - this is the #1 failure mode. NEVER use any of these as skill items:\n"
         "    Write, Read, Test, Debug, Troubleshoot, Configure, Deploy, Design, Implement, Develop, Build,\n"
         "    Create, Maintain, Monitor, Scale, Optimize, Architect, Operate, Manage, Execute, Conduct,\n"
         "    Determine, Provide, Support, Ensure, Deliver, Run, Use, Apply, Review, Audit, Document,\n"
@@ -979,57 +979,57 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "  - Generic infrastructure nouns that are NOT product names:\n"
         "    Requirements, Architecture, Infrastructure, Environment, System, Server, Network, Platform,\n"
         "    Application, Solution, Service, Module, Component, Interface, Integration\n"
-        "  - Partial product names: 'NET' alone is BANNED — always write the full name: 'ASP.NET Core'\n"
+        "  - Partial product names: 'NET' alone is BANNED - always write the full name: 'ASP.NET Core'\n"
         "  - Any word that is NOT the name of a real software tool, platform, API, framework, language, or service\n"
         "RULE: If a word could appear in a sentence as a common English verb or noun, it is NOT a technology. Reject it.\n"
         "RULE: Technologies MUST be real named products: e.g. 'SQL Server', 'ASP.NET Core', 'Entity Framework', 'React', 'PostgreSQL'\n"
         "RULE: Every tech tag for every company MUST be a real named tool from the JD domain only.\n\n"
 
-        "=== STEP 1.5: CLOUD & HOSTING INFERENCE (mandatory — execute right after STEP 1) ===\n"
+        "=== STEP 1.5: CLOUD & HOSTING INFERENCE (mandatory - execute right after STEP 1) ===\n"
         "After extracting JD technologies, determine the most relevant cloud/hosting platform for this specific role.\n"
-        "INFERENCE RULES — derive entirely from the JD and job title, nothing hardcoded:\n"
+        "INFERENCE RULES - derive entirely from the JD and job title, nothing hardcoded:\n"
         "  - JD mentions .NET, C#, Azure DevOps, Active Directory, or any Microsoft stack\n"
-        "    → infer Azure: Azure App Service, Azure Functions, Azure SQL Database, Azure Blob Storage,\n"
+        "    -> infer Azure: Azure App Service, Azure Functions, Azure SQL Database, Azure Blob Storage,\n"
         "      Azure DevOps, Azure AD, Azure Key Vault, Azure Monitor, Azure Container Registry\n"
         "  - JD mentions Python, TensorFlow, PyTorch, BigQuery, Dataflow, or data engineering\n"
-        "    → infer GCP: Cloud Run, GKE, Cloud Storage, BigQuery, Pub/Sub, Cloud Build, Vertex AI,\n"
+        "    -> infer GCP: Cloud Run, GKE, Cloud Storage, BigQuery, Pub/Sub, Cloud Build, Vertex AI,\n"
         "      Cloud Composer, Artifact Registry, Cloud IAM\n"
         "  - JD mentions Node.js, Java, Go, Terraform, or generic backend/DevOps with no specific cloud\n"
-        "    → infer AWS: EC2, S3, Lambda, RDS, ECS/EKS, CloudFront, IAM, CloudWatch, CodePipeline, ECR\n"
+        "    -> infer AWS: EC2, S3, Lambda, RDS, ECS/EKS, CloudFront, IAM, CloudWatch, CodePipeline, ECR\n"
         "  - JD mentions PHP, Laravel, WordPress, or shared-hosting stack\n"
-        "    → infer: DigitalOcean Droplets, AWS Lightsail, cPanel, Nginx, Apache, Forge, Envoyer\n"
+        "    -> infer: DigitalOcean Droplets, AWS Lightsail, cPanel, Nginx, Apache, Forge, Envoyer\n"
         "  - JD mentions React Native, Flutter, Ionic, or mobile/cross-platform\n"
-        "    → infer: Firebase Hosting, Firebase Cloud Messaging, App Engine, Fastlane, TestFlight, Play Console\n"
-        "  - JD explicitly names one or more cloud providers → those providers are CORE; include their key services\n"
-        "  - JD names multiple providers → include ALL of them; merge into one 'Cloud & Hosting' category\n"
-        "  - NEVER default to a fixed provider — always derive from the actual JD content\n"
-        "  - NEVER omit cloud/hosting — every modern software role has a deployment environment\n"
+        "    -> infer: Firebase Hosting, Firebase Cloud Messaging, App Engine, Fastlane, TestFlight, Play Console\n"
+        "  - JD explicitly names one or more cloud providers -> those providers are CORE; include their key services\n"
+        "  - JD names multiple providers -> include ALL of them; merge into one 'Cloud & Hosting' category\n"
+        "  - NEVER default to a fixed provider - always derive from the actual JD content\n"
+        "  - NEVER omit cloud/hosting - every modern software role has a deployment environment\n"
         "MANDATORY PLACEMENT of inferred cloud services:\n"
         "  1. One dedicated skill category named after the platform (e.g. 'Azure Cloud Services',\n"
-        "     'AWS Infrastructure', 'GCP & Cloud DevOps') — never use a generic label like 'Cloud Tools'\n"
+        "     'AWS Infrastructure', 'GCP & Cloud DevOps') - never use a generic label like 'Cloud Tools'\n"
         "  2. At least 2 work-experience bullets referencing deployment, hosting, scaling, or cloud-native ops\n"
         "  3. Tech tags for at least one company MUST include 1-2 cloud platform services\n"
         "  4. At least one project's techTags/stack MUST reference the inferred cloud platform\n"
-        "HARD RULE: The cloud category MUST contain exactly 11-13 items — expand with the platform's\n"
+        "HARD RULE: The cloud category MUST contain exactly 11-13 items - expand with the platform's\n"
         "  CI/CD pipelines, IaC tools, monitoring/alerting, secrets management, and serverless services.\n\n"
 
-        "=== STEP 2: SKILLS PLANNING (MANDATORY — execute before writing any skill) ===\n"
+        "=== STEP 2: SKILLS PLANNING (MANDATORY - execute before writing any skill) ===\n"
         "Before writing the 'skills' array, build an internal allocation table:\n"
         "  1. List every technology extracted in STEP 1 (CORE + PREFERRED + ECOSYSTEM).\n"
         "  2. Assign EACH technology to EXACTLY ONE of the 5 buckets below based on its primary purpose:\n"
-        "       BUCKET A — Frontend/UI: frameworks, component libs, CSS, state managers, build tools, browser APIs\n"
-        "       BUCKET B — Backend/Server-Side: server languages, backend frameworks, APIs, auth, message brokers\n"
-        "       BUCKET C — Databases & Storage: RDBMS, NoSQL, caches, ORMs, migration tools, search engines\n"
-        "       BUCKET D — Cloud & DevOps: cloud services, containers, IaC, CI/CD, monitoring, registries\n"
-        "       BUCKET E — Testing, Security & Tooling: test frameworks, scanners, linters, version control, package managers\n"
-        "  3. CHECK: Does any technology appear in more than one bucket? → MOVE IT to only the most appropriate bucket.\n"
-        "  4. CHECK: Does any bucket have fewer than 10 technologies? → Expand with ecosystem tools from that same domain.\n"
+        "       BUCKET A - Frontend/UI: frameworks, component libs, CSS, state managers, build tools, browser APIs\n"
+        "       BUCKET B - Backend/Server-Side: server languages, backend frameworks, APIs, auth, message brokers\n"
+        "       BUCKET C - Databases & Storage: RDBMS, NoSQL, caches, ORMs, migration tools, search engines\n"
+        "       BUCKET D - Cloud & DevOps: cloud services, containers, IaC, CI/CD, monitoring, registries\n"
+        "       BUCKET E - Testing, Security & Tooling: test frameworks, scanners, linters, version control, package managers\n"
+        "  3. CHECK: Does any technology appear in more than one bucket? -> MOVE IT to only the most appropriate bucket.\n"
+        "  4. CHECK: Does any bucket have fewer than 10 technologies? -> Expand with ecosystem tools from that same domain.\n"
         "  5. ONLY AFTER completing this allocation table, write the 'skills' JSON array.\n"
-        "  HARD RULE: Docker and Kubernetes ONLY go in BUCKET D (Cloud & DevOps) — NEVER in Backend or Frontend.\n"
-        "  HARD RULE: Git, GitHub, npm, pip ONLY go in BUCKET E (Tooling) — NEVER in Backend or Frontend.\n"
-        "  HARD RULE: C#, .NET, ASP.NET Core, Node.js, Python ONLY go in BUCKET B (Backend) — NEVER in Database or Cloud.\n"
-        "  HARD RULE: SQL Server, PostgreSQL, MySQL, MongoDB, Redis ONLY go in BUCKET C (Database) — NEVER in Backend or Cloud.\n"
-        "  HARD RULE: React, Angular, Vue, TypeScript (when frontend), Tailwind ONLY go in BUCKET A (Frontend) — NEVER in Backend or DB.\n"
+        "  HARD RULE: Docker and Kubernetes ONLY go in BUCKET D (Cloud & DevOps) - NEVER in Backend or Frontend.\n"
+        "  HARD RULE: Git, GitHub, npm, pip ONLY go in BUCKET E (Tooling) - NEVER in Backend or Frontend.\n"
+        "  HARD RULE: C#, .NET, ASP.NET Core, Node.js, Python ONLY go in BUCKET B (Backend) - NEVER in Database or Cloud.\n"
+        "  HARD RULE: SQL Server, PostgreSQL, MySQL, MongoDB, Redis ONLY go in BUCKET C (Database) - NEVER in Backend or Cloud.\n"
+        "  HARD RULE: React, Angular, Vue, TypeScript (when frontend), Tailwind ONLY go in BUCKET A (Frontend) - NEVER in Backend or DB.\n"
         "  STACK CONSISTENCY RULE (CRITICAL): Every item in every bucket MUST belong to the SAME technology stack as the JD. "
         "If the JD is a .NET/C# role, do NOT add Node.js, Django, FastAPI, Spring Boot, or any non-.NET backend tool anywhere. "
         "If the JD is a Node.js role, do NOT add ASP.NET Core, Django, Spring Boot, or Laravel. "
@@ -1043,7 +1043,7 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
 
         f"=== ROLE TITLES ===\n"
         f"Exactly {len(companies)} companies, each with a COMPLETELY DIFFERENT role title.\n"
-        f"Each title: '[Seniority] [Domain from JD] [UniqueFunction]' — derive domain from the actual JD tech stack.\n"
+        f"Each title: '[Seniority] [Domain from JD] [UniqueFunction]' - derive domain from the actual JD tech stack.\n"
         "Function word pool (no repeats across companies): Engineer, Developer, Specialist, Analyst, Programmer. "
         "NEVER use Architect, Consultant, or Designer unless explicitly present in the JD.\n"
         f"NEVER use a generic title without the JD's specific tech domain appended.\n"
@@ -1055,65 +1055,65 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "S2: Name 4-5 technologies FROM THE JD + the specific system types built.\n"
         "S3: Scale and complexity metrics derived from the JD context.\n"
         "S4: Methodology/business outcome relevant to the target company's industry.\n"
-        "Use ONLY technologies found in the JD — never add technologies from outside the JD.\n\n"
+        "Use ONLY technologies found in the JD - never add technologies from outside the JD.\n\n"
 
         "=== SKILLS ===\n"
         "Exactly 5 categories. Each category: at least 10 items (aim for 10-12). ZERO items repeated across ANY category.\n"
-        "Every technology across ALL 5 categories MUST be completely unique — no item may appear in more than one category.\n"
-        "Derive category names from the JD's actual technical domains — not generic labels.\n"
+        "Every technology across ALL 5 categories MUST be completely unique - no item may appear in more than one category.\n"
+        "Derive category names from the JD's actual technical domains - not generic labels.\n"
         "All items from JD CORE + PREFERRED + ECOSYSTEM only.\n\n"
 
         "=== MANDATORY 5 CATEGORY STRUCTURE (STRICT DOMAIN SEPARATION) ===\n"
         "ALWAYS produce EXACTLY these 5 category types, named specifically to the JD's tech domain:\n\n"
 
-        "CATEGORY 1 — FRONTEND / UI (name it based on JD, e.g. 'Frontend Development', 'React & UI Engineering', 'Angular & Web UI'):\n"
+        "CATEGORY 1 - FRONTEND / UI (name it based on JD, e.g. 'Frontend Development', 'React & UI Engineering', 'Angular & Web UI'):\n"
         "  ONLY: UI frameworks, component libraries, state managers, CSS tools, build tools, browser APIs, frontend testing utilities.\n"
         "  Examples: React, Angular, Vue.js, Next.js, TypeScript, Tailwind CSS, SCSS, Webpack, Vite, Redux, RxJS, Jest, Cypress, Storybook.\n"
         "  BANNED from this category: ANY backend framework, database, server, cloud service, DevOps tool, or language used server-side.\n\n"
 
-        "CATEGORY 2 — BACKEND / SERVER-SIDE (name it based on JD, e.g. 'Backend Development', 'Node.js & API Engineering', 'ASP.NET Core & C#'):\n"
+        "CATEGORY 2 - BACKEND / SERVER-SIDE (name it based on JD, e.g. 'Backend Development', 'Node.js & API Engineering', 'ASP.NET Core & C#'):\n"
         "  ONLY: Server-side languages, backend frameworks, API tools, authentication libraries, message brokers, background job runners.\n"
         "  Examples: Node.js, Express.js, ASP.NET Core, Django, FastAPI, Laravel, Spring Boot, GraphQL, REST APIs, JWT, RabbitMQ, Celery.\n"
         "  BANNED from this category: ANY database engine, cloud service, frontend library, or DevOps/CI tool.\n\n"
 
-        "CATEGORY 3 — DATABASES & DATA STORAGE (name it based on JD, e.g. 'Databases & Data Layer', 'SQL & NoSQL Storage', 'Data Engineering Tools'):\n"
+        "CATEGORY 3 - DATABASES & DATA STORAGE (name it based on JD, e.g. 'Databases & Data Layer', 'SQL & NoSQL Storage', 'Data Engineering Tools'):\n"
         "  ONLY: Relational databases, NoSQL stores, caches, ORMs, migration tools, query builders, search engines, data warehouses.\n"
         "  Examples: PostgreSQL, MySQL, SQL Server, MongoDB, Redis, Elasticsearch, Entity Framework, Prisma, Flyway, Liquibase, ClickHouse, BigQuery.\n"
         "  BANNED from this category: ANY backend framework, frontend library, cloud service, CI/CD tool, or language runtime.\n\n"
 
-        "CATEGORY 4 — CLOUD & DEVOPS / INFRASTRUCTURE (name it based on JD, e.g. 'AWS Infrastructure', 'Azure Cloud Services', 'GCP & DevOps'):\n"
+        "CATEGORY 4 - CLOUD & DEVOPS / INFRASTRUCTURE (name it based on JD, e.g. 'AWS Infrastructure', 'Azure Cloud Services', 'GCP & DevOps'):\n"
         "  ONLY: Cloud platform services, CI/CD pipelines, container tools, IaC tools, monitoring/logging, secrets management, registries.\n"
         "  Examples: AWS EC2, S3, Lambda, Docker, Kubernetes, Terraform, GitHub Actions, Jenkins, Prometheus, Grafana, Azure DevOps, GCP Cloud Run.\n"
         "  BANNED from this category: ANY database engine, backend framework, frontend library, or language-level tool.\n"
-        "  Derive the cloud platform from the JD — NEVER hardcode AWS/Azure/GCP unless the JD implies it via STEP 1.5.\n\n"
+        "  Derive the cloud platform from the JD - NEVER hardcode AWS/Azure/GCP unless the JD implies it via STEP 1.5.\n\n"
 
-        "CATEGORY 5 — TESTING, SECURITY & TOOLING (name it based on JD, e.g. 'Testing & QA Tools', 'Security & Developer Tooling', 'Dev Tools & Quality Assurance'):\n"
+        "CATEGORY 5 - TESTING, SECURITY & TOOLING (name it based on JD, e.g. 'Testing & QA Tools', 'Security & Developer Tooling', 'Dev Tools & Quality Assurance'):\n"
         "  ONLY: Testing frameworks, security scanners, code quality tools, version control, package managers, linters, performance profilers.\n"
         "  Examples: Jest, Mocha, Pytest, xUnit, Selenium, OWASP ZAP, SonarQube, Git, GitHub, npm, pip, ESLint, Prettier, Postman, Swagger.\n"
         "  BANNED from this category: Cloud services, databases, backend frameworks, or frontend UI libraries.\n\n"
 
-        "DOMAIN SEPARATION ENFORCEMENT (CRITICAL — HARD RULES):\n"
-        "  ✗ No database engine (PostgreSQL, MySQL, Redis, MongoDB, etc.) in Frontend, Backend, Cloud, or Testing categories.\n"
-        "  ✗ No backend framework (Express, Django, Laravel, Spring, etc.) in Frontend, Database, Cloud, or Testing categories.\n"
-        "  ✗ No frontend library (React, Angular, Vue, Tailwind, etc.) in Backend, Database, Cloud, or Testing categories.\n"
-        "  ✗ No cloud service (EC2, S3, Lambda, Azure Blob, GKE, etc.) in Frontend, Backend, Database, or Testing categories.\n"
-        "  ✗ No CI/CD or DevOps tool (Docker, Kubernetes, GitHub Actions, etc.) in Frontend, Backend, Database, or Testing categories.\n"
-        "  RULE: Each technology belongs in exactly ONE category — the one that matches its primary purpose.\n"
+        "DOMAIN SEPARATION ENFORCEMENT (CRITICAL - HARD RULES):\n"
+        "  X No database engine (PostgreSQL, MySQL, Redis, MongoDB, etc.) in Frontend, Backend, Cloud, or Testing categories.\n"
+        "  X No backend framework (Express, Django, Laravel, Spring, etc.) in Frontend, Database, Cloud, or Testing categories.\n"
+        "  X No frontend library (React, Angular, Vue, Tailwind, etc.) in Backend, Database, Cloud, or Testing categories.\n"
+        "  X No cloud service (EC2, S3, Lambda, Azure Blob, GKE, etc.) in Frontend, Backend, Database, or Testing categories.\n"
+        "  X No CI/CD or DevOps tool (Docker, Kubernetes, GitHub Actions, etc.) in Frontend, Backend, Database, or Testing categories.\n"
+        "  RULE: Each technology belongs in exactly ONE category - the one that matches its primary purpose.\n"
         "  RULE: If a tool is used in multiple layers (e.g. TypeScript used in both frontend and backend), assign it ONCE to the layer the JD emphasises.\n\n"
 
-        "CRITICAL — WHAT COUNTS AS A VALID SKILL ITEM:\n"
+        "CRITICAL - WHAT COUNTS AS A VALID SKILL ITEM:\n"
         "  VALID: Real named software tools, frameworks, languages, libraries, platforms, services, APIs.\n"
         "    Examples: SQL Server, PostgreSQL, Redis, Entity Framework, ASP.NET Core, React, Docker, Git\n"
-        "  BANNED — INSTANT FAILURE if any of these appear as a skill item:\n"
-        "    ✗ Action verbs or gerunds: Write, Troubleshoot, Implement, Configure, Deploy, Test, Debug,\n"
+        "  BANNED - INSTANT FAILURE if any of these appear as a skill item:\n"
+        "    X Action verbs or gerunds: Write, Troubleshoot, Implement, Configure, Deploy, Test, Debug,\n"
         "      Design, Architect, Operate, Monitor, Manage, Develop, Build, Create, Scale, Optimize\n"
-        "    ✗ Generic English nouns: Requirements, Architecture, Infrastructure, Environment, System,\n"
+        "    X Generic English nouns: Requirements, Architecture, Infrastructure, Environment, System,\n"
         "      Server, Network, Platform, Application, Solution, Service, Module, Component\n"
-        "    ✗ Soft skills or HR words: Communication, Teamwork, Leadership, Collaboration, Problem-Solving\n"
-        "    ✗ Adjectives or adverbs: Strong, Excellent, Proficient, Experienced, Knowledgeable\n"
+        "    X Soft skills or HR words: Communication, Teamwork, Leadership, Collaboration, Problem-Solving\n"
+        "    X Adjectives or adverbs: Strong, Excellent, Proficient, Experienced, Knowledgeable\n"
         "  RULE: Every single item in every skill category MUST be a real named product you could Google.\n"
         "  RULE: If a word could appear in a sentence as a common English verb or noun, REJECT IT.\n"
-        "  RULE: 'NET' alone is BANNED — always write the full product name: 'ASP.NET Core', '.NET 8', etc.\n\n"
+        "  RULE: 'NET' alone is BANNED - always write the full product name: 'ASP.NET Core', '.NET 8', etc.\n\n"
 
         "=== TECHNOLOGIES OBJECT ===\n"
         "mustHave: 10-14 items from JD CORE + top ecosystem companions.\n"
@@ -1123,12 +1123,12 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
 
         "=== ARCHITECTURES ===\n"
         "3-5 objects, each with 'name' and 'description' (25-40 words, JD technologies + concrete outcome).\n"
-        "Derive patterns from what the JD actually says — not from generic architecture patterns.\n\n"
+        "Derive patterns from what the JD actually says - not from generic architecture patterns.\n\n"
 
         "=== CORE COMPETENCIES ===\n"
-        "Exactly 10 phrases separated by ' • '. Each 2-4 words.\n"
+        "Exactly 10 phrases separated by ' * '. Each 2-4 words.\n"
         "Span 4 areas: Technical Practices, Domain Expertise, Engineering Process, Impact Areas.\n"
-        "ALL derived from the JD domain — zero generic phrases.\n\n"
+        "ALL derived from the JD domain - zero generic phrases.\n\n"
 
         "=== CV HEADLINE TITLE (CRITICAL - ANTI-COPY ENFORCEMENT) ===\n"
 "The 'title' field MUST be DIFFERENT from the job title. COPYING = FAILURE.\n"
@@ -1140,7 +1140,7 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
 "RULES:\n"
 "  1. Do NOT use the exact job title string anywhere in your output.\n"
 "  2. Change at least 2 words from the original job title.\n"
-"  3. Use a DIFFERENT function word (Engineer/Developer/Specialist/Analyst/Programmer) — NEVER use Architect unless explicitly mentioned in the JD.\n"
+"  3. Use a DIFFERENT function word (Engineer/Developer/Specialist/Analyst/Programmer) - NEVER use Architect unless explicitly mentioned in the JD.\n"
 "  4. If the job title has a technology name, replace it with a DIFFERENT technology from the JD's extracted list.\n"
 "  5. Exactly 3 technologies after the pipe. NO MORE, NO LESS.\n"
 "  6. The title MUST stay in the SAME ROLE LEVEL as the JD (e.g. if JD is Developer, DO NOT upgrade to Architect).\n"
@@ -1148,18 +1148,18 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
 "VALIDATION: Compare your title to the job title. If they look similar, regenerate.\n\n"
 
         "=== BANNED (instant failure) ===\n"
-	"- Job title duplication in the title field (e.g. 'Senior Senior Angular Developer') — normalize before outputting\n"
+	"- Job title duplication in the title field (e.g. 'Senior Senior Angular Developer') - normalize before outputting\n"
 	"- Location words (Dallas, Texas, Pakistan, Remote, USA) in title or technologies\n"
-	"- Copying the exact job title string into the 'title' field — VERBATIM MATCH IS INSTANT FAILURE\n"
-	"- More than 3 technologies after the pipe in the title — EXACTLY 3 REQUIRED\n"
+	"- Copying the exact job title string into the 'title' field - VERBATIM MATCH IS INSTANT FAILURE\n"
+	"- More than 3 technologies after the pipe in the title - EXACTLY 3 REQUIRED\n"
         "- Percentage skill bars\n"
         "- Placeholder text (Tech1, Category, kw1, JD-WebDev, JD-Backend)\n"
         "- Technologies not found in the JD or its ecosystem\n"
         "- Same bullet verb repeated across companies\n"
         "- Same metric repeated anywhere in the CV\n"
         "- Fewer than 10 items in any skill category\n"
-        "- Fewer than 5 skill categories — EXACTLY 5 are required\n"
-        "- More than 5 skill categories — EXACTLY 5 are required\n"
+        "- Fewer than 5 skill categories - EXACTLY 5 are required\n"
+        "- More than 5 skill categories - EXACTLY 5 are required\n"
         "- Any technology repeated across two or more skill categories\n"
         "- Database engines (PostgreSQL, MySQL, Redis, etc.) placed in the Frontend, Backend, Cloud, or Testing category\n"
         "- Backend frameworks (Express, Django, Laravel, etc.) placed in the Frontend, Database, Cloud, or Testing category\n"
@@ -1176,39 +1176,39 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "- Same sentence structure repeated across bullets or projects\n"
         "- Same metric format repeated across projects\n"
         "- Generic competency phrases like 'Problem Solving' or 'Teamwork'\n"
-        "- Hardcoding AWS/Azure/GCP when the JD does not mention or imply them — always infer from the JD\n"
-        "- Omitting a cloud/devops skill category — every CV MUST have one dedicated Cloud & DevOps category (Category 4)\n"
-        "- Cloud category with fewer than 10 items — expand with CI/CD, IaC, monitoring, and serverless tools\n"
+        "- Hardcoding AWS/Azure/GCP when the JD does not mention or imply them - always infer from the JD\n"
+        "- Omitting a cloud/devops skill category - every CV MUST have one dedicated Cloud & DevOps category (Category 4)\n"
+        "- Cloud category with fewer than 10 items - expand with CI/CD, IaC, monitoring, and serverless tools\n"
         + _seniority_ban
     ).replace("{total_years}", total_years)
 
-    # ── Dynamic per-company variables ────────────────────────────────────────
+    # -- Dynamic per-company variables ----------------------------------------
     num_cos = len(companies)
 
     # Seniority fully dynamic based on company count:
-    # 1 company  → Junior only (sole role, entry-level)
-    # 2 companies → plain (current) + Junior (previous)
-    # 3 companies → Senior (current) + plain (mid) + Junior (oldest)
+    # 1 company  -> Junior only (sole role, entry-level)
+    # 2 companies -> plain (current) + Junior (previous)
+    # 3 companies -> Senior (current) + plain (mid) + Junior (oldest)
     if num_cos == 1:
-        seniority_labels = ["current / only role — Junior"]
+        seniority_labels = ["current / only role - Junior"]
         r3_levels = [
             "Co1 (only company): MUST use 'Junior' as the seniority prefix. "
-            "The domain word and function word MUST come from the JD — identify the primary tech domain (e.g. backend, data, cloud, security, mobile, ML) and pick the most fitting function word from the pool below."
+            "The domain word and function word MUST come from the JD - identify the primary tech domain (e.g. backend, data, cloud, security, mobile, ML) and pick the most fitting function word from the pool below."
         ]
         json_seniority = ["Junior"]
     elif num_cos == 2:
         seniority_labels = ["current / plain no prefix", "previous / Junior"]
         r3_levels = [
-            "Co1 (current):  plain domain role title, NO seniority prefix — derive both the domain word and function word from the JD's primary tech stack and responsibilities.",
-            "Co2 (previous): MUST use 'Junior' as the seniority prefix — derive domain word from the JD, pick a DIFFERENT function word from the pool.",
+            "Co1 (current):  plain domain role title, NO seniority prefix - derive both the domain word and function word from the JD's primary tech stack and responsibilities.",
+            "Co2 (previous): MUST use 'Junior' as the seniority prefix - derive domain word from the JD, pick a DIFFERENT function word from the pool.",
         ]
         json_seniority = ["", "Junior"]
     else:
         seniority_labels = ["current / Senior", "mid-level / plain no prefix", "oldest / Junior"]
         r3_levels = [
-            "Co1 (current):  MUST use 'Senior' as the seniority prefix — derive the domain word from the JD's primary tech focus, pick a UNIQUE function word from the pool.",
-            "Co2 (mid):      plain domain role title, NO seniority prefix — derive domain word from the JD's secondary focus or a closely related specialisation, pick a DIFFERENT function word.",
-            "Co3 (oldest):   MUST use 'Junior' as the seniority prefix — derive domain word from the JD or a related sub-domain, pick ANOTHER DIFFERENT function word.",
+            "Co1 (current):  MUST use 'Senior' as the seniority prefix - derive the domain word from the JD's primary tech focus, pick a UNIQUE function word from the pool.",
+            "Co2 (mid):      plain domain role title, NO seniority prefix - derive domain word from the JD's secondary focus or a closely related specialisation, pick a DIFFERENT function word.",
+            "Co3 (oldest):   MUST use 'Junior' as the seniority prefix - derive domain word from the JD or a related sub-domain, pick ANOTHER DIFFERENT function word.",
         ]
         json_seniority = ["Senior", "", "Junior"]
 
@@ -1216,7 +1216,7 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
 
     co_prompt_lines = "\n".join(
         f'Co{i+1} ({seniority_labels[i]}):  "{companies[i]["name"]}"   '
-        f'{companies[i]["start"]} – {companies[i]["end"]}'
+        f'{companies[i]["start"]} - {companies[i]["end"]}'
         for i in range(num_cos)
     )
 
@@ -1224,24 +1224,24 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
     json_companies = ",".join(
         f'{{"company":"{companies[i]["name"]}",'
         f'"role":"{"" if not json_seniority[i] else json_seniority[i] + " "}[Domain] [{function_words[i]}/etc]",'
-        f'"dateRange":"{companies[i]["start"]} – {companies[i]["end"]}",'
+        f'"dateRange":"{companies[i]["start"]} - {companies[i]["end"]}",'
         f'"bullets":["Achievement + tech + metric","Achievement","Achievement","Achievement"],'
         f'"tech":"Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6 | Tech7"}}'
         for i in range(num_cos)
     )
 
-    # ── Build company intelligence block ────────────────────────────────────
+    # -- Build company intelligence block ------------------------------------
     if company_context:
         # Detect whether this came from the website or a web search
         if company_context.startswith("[Company website:"):
-            site_label = "COMPANY WEBSITE DATA (use for project 3 — website-driven):"
-            google_label = "GOOGLE / GENERAL KNOWLEDGE (use for project 4 — reason from the company name and sector):"
+            site_label = "COMPANY WEBSITE DATA (use for project 3 - website-driven):"
+            google_label = "GOOGLE / GENERAL KNOWLEDGE (use for project 4 - reason from the company name and sector):"
         elif company_context.startswith("[Web search for:"):
-            site_label = "WEB SEARCH RESULTS ABOUT THE COMPANY (use for project 3 — website-driven):"
-            google_label = "GOOGLE / GENERAL KNOWLEDGE (use for project 4 — reason from the company name and sector):"
+            site_label = "WEB SEARCH RESULTS ABOUT THE COMPANY (use for project 3 - website-driven):"
+            google_label = "GOOGLE / GENERAL KNOWLEDGE (use for project 4 - reason from the company name and sector):"
         else:
-            site_label = "COMPANY CONTEXT (use for project 3 — website-driven):"
-            google_label = "GOOGLE / GENERAL KNOWLEDGE (use for project 4 — reason from the company name and sector):"
+            site_label = "COMPANY CONTEXT (use for project 3 - website-driven):"
+            google_label = "GOOGLE / GENERAL KNOWLEDGE (use for project 4 - reason from the company name and sector):"
 
         co_intel_block = f"""
 TARGET COMPANY INTELLIGENCE:
@@ -1253,7 +1253,7 @@ Company: {company_name or "the target company"}
 --- Company context end ---
 
 {google_label}
-Use your training knowledge of "{company_name or "this company"}" — their industry reputation, public sector, known offerings, and market positioning — to design an ANALOGOUS project for project 4. Do NOT copy their exact product; use an adjacent domain with the same underlying technology pattern.
+Use your training knowledge of "{company_name or "this company"}" - their industry reputation, public sector, known offerings, and market positioning - to design an ANALOGOUS project for project 4. Do NOT copy their exact product; use an adjacent domain with the same underlying technology pattern.
 """
     elif company_name:
         co_intel_block = f"""
@@ -1261,17 +1261,68 @@ TARGET COMPANY: {company_name}
 
 For project 3: Use your knowledge of what {company_name} does (website/product) to infer an ANALOGOUS project in an adjacent domain.
 For project 4: Use broader public knowledge of {company_name}'s industry/sector to infer another ANALOGOUS project in a different adjacent domain.
-REMINDER: Do NOT copy {company_name}'s exact product or service — use parallel domain projects with the same underlying tech pattern.
+REMINDER: Do NOT copy {company_name}'s exact product or service - use parallel domain projects with the same underlying tech pattern.
 """
     else:
         co_intel_block = ""
 
     edu_start = edu["start"];   edu_end = edu["end"]
 
-    # Profile context block — used for multi-post / different applications
+    # Profile context block - used for multi-post / different applications
     profile_block = ""
     if req.profile and req.profile.strip():
-        profile_block = f"\nCANDIDATE PROFILE (use personal info like name/email/phone from here ONLY — do NOT use tech stack from profile if it conflicts with JD):\n{req.profile.strip()[:300]}\n"
+        profile_block = f"\nCANDIDATE PROFILE (use personal info like name/email/phone from here ONLY - do NOT use tech stack from profile if it conflicts with JD):\n{req.profile.strip()[:300]}\n"
+
+    # Pre-compute company project rules block (avoids nested f-string)
+    _co_name_str = company_name or "the target company"
+    if company_context or company_name:
+        _company_proj_block = (
+            "COMPANY-DRIVEN PROJECT RULES (CRITICAL - applies to projects 3 and 4):\n"
+            "You have been given real intelligence about the target company (" + _co_name_str + ").\n\n"
+            "*** ANALOGY RULE - THIS IS THE MOST IMPORTANT RULE FOR PROJECTS 3 AND 4 ***\n"
+            "You MUST NOT copy the company actual product name, service name, or literal business description into the project.\n"
+            "Instead, identify the ABSTRACT PATTERN the company business follows, then build a project in a PARALLEL or ADJACENT domain using that same pattern - with technologies drawn from the JD.\n\n"
+            "HOW TO APPLY THE ANALOGY RULE:\n"
+            "STEP 1 - Identify the company ABSTRACT PATTERN:\n"
+            "  What is the underlying technical/business pattern?\n"
+            "  (e.g. vendor-to-consumer marketplace, B2B CRM, booking/scheduling system, fleet/asset tracking, data analytics platform, workflow automation, content management, payments/billing, etc.)\n"
+            "STEP 2 - Identify the ADJACENT DOMAIN for project 3:\n"
+            "  Pick a DIFFERENT real-world sector that uses the same pattern but is clearly separate from the company actual sector.\n"
+            "  (e.g. if the company does energy marketplaces -> try telecom, insurance, or SaaS subscription; if the company does healthcare booking -> try legal, education, or hospitality)\n"
+            "STEP 3 - Identify a SECOND ADJACENT DOMAIN for project 4:\n"
+            "  Pick yet another adjacent sector or a scaled/enterprise variant of the same pattern.\n"
+            "STEP 4 - Name each project with a CATCHY, ORIGINAL SaaS-style product name:\n"
+            "  The name must NOT contain: the company name, their product name, their commodity/sector keyword, or any direct synonym of their business.\n"
+            "  Format: [OriginalProductName] - [What it does using JD technologies]\n"
+            "STEP 5 - Use ONLY technologies from the JD for all tech references in project names, overviews, and bullets.\n\n"
+            "PROJECT 1 & 2 (JD-driven) rules:\n"
+            "Identify 2 distinct core system types implied by the JD tech stack and role responsibilities.\n"
+            "Name each as a catchy original SaaS product using only JD technologies.\n\n"
+            "ALL 4 projects MUST have:\n"
+            "- name: [CoinedProductName] - [Specific what it does] [JD-Tech1, JD-Tech2]\n"
+            "- overview: 3-4 sentences covering PROBLEM -> SOLUTION -> FUNCTIONALITY -> BUSINESS IMPACT\n"
+            "- bullets: exactly 3 strings each describing a DIFFERENT specific feature or challenge:\n"
+            "    bullet 1: specific component/feature built + key JD technology used (20-30 words)\n"
+            "    bullet 2: hardest technical challenge + UNIQUE concrete metric (20-30 words)\n"
+            "    bullet 3: business outcome + UNIQUE number (20-30 words)\n"
+            "- No two projects may share the same bullet structure or the same metric format.\n"
+        )
+    else:
+        _company_proj_block = (
+            "PROJECT 1-4 are all JD-driven. Identify 4 distinct core system types implied by the JD tech stack and role responsibilities.\n"
+            "HOW TO DERIVE SYSTEM TYPES: Read the JD carefully - look at the tech stack, the listed responsibilities, the domain keywords, and the problem context.\n"
+            "  Look for signals like: the platform type (web, mobile, data, infra), the integration patterns (APIs, pipelines, queues), the user type (enterprise, consumer, internal), and the scale indicators.\n"
+            "  Derive 4 distinct but related system types from those signals - do not repeat the same system type with different names.\n"
+            "Name each as a catchy, original SaaS-style coined product name using only technologies from the JD - NEVER use generic names.\n"
+            "Each project MUST have:\n"
+            "- name: [CoinedProductName] - [Specific what it does] [JD-Tech1, JD-Tech2]\n"
+            "- overview: 3-4 sentences covering PROBLEM -> SOLUTION -> FUNCTIONALITY -> BUSINESS IMPACT\n"
+            "- bullets: exactly 3 strings each describing a DIFFERENT specific feature/challenge:\n"
+            "    bullet 1: specific component/feature built + key JD technology (20-30 words)\n"
+            "    bullet 2: hardest technical challenge + UNIQUE concrete metric (20-30 words)\n"
+            "    bullet 3: business outcome + UNIQUE number (no metric format repeated across projects) (20-30 words)\n"
+            "- No two projects may share the same bullet structure or metric format.\n"
+        )
 
     user = f"""Generate CV JSON for this job.
 
@@ -1282,11 +1333,11 @@ TOTAL EXPERIENCE: {total_years} years
 You MUST use exactly "{total_years}" in totalYears and start the summary with "{total_years} years of experience".
 Do NOT change this number. Do NOT round up or down.
 
-COMPANIES — produce EXACTLY {num_cos} company objects (use EXACTLY these names and date ranges — do not change them):
+COMPANIES - produce EXACTLY {num_cos} company objects (use EXACTLY these names and date ranges - do not change them):
 {co_prompt_lines}
 
 EDUCATION:
-Degree dates: {edu_start} – {edu_end}  (use EXACTLY these years for the education section)
+Degree dates: {edu_start} - {edu_end}  (use EXACTLY these years for the education section)
 
 RULES:
 
@@ -1296,15 +1347,15 @@ R1 DOMAIN: Identify the tech stack from JD keywords. Use matching tools + closel
 
 ANTI-COPY ENFORCEMENT (HARD RULE):
 "FIRST: Extract the primary technology domain from THIS SPECIFIC JD (not a generic placeholder).\n"
-STEP 1 — Write down the exact job title: "{req.job_title}".
-STEP 2 — Your proposed title MUST differ in at least TWO of the following ways:
-  a) Function word swapped (Engineer → Developer, Specialist → Architect, Trainee → Engineer, Developer → Programmer)
-  b) Scope broadened (e.g. 'PHP Developer' → 'Full-Stack Web Engineer', 'Laravel Trainee' → 'Backend Application Developer')
-  c) Platform angle shifted (e.g. 'Laravel Developer' → 'PHP & MySQL Application Engineer')
-  d) Domain emphasis changed (e.g. 'Backend Developer' → 'Server-Side Systems Architect')
-STEP 3 — Read your title and the job title side by side. If they look the same or share all the same words → REJECT and rederive.
-Step 4 — Your output title MUST NOT contain the exact original job title string as a substring.
-"Step 5 — Add a pipe and exactly 3 technologies extracted from THIS SPECIFIC JD (e.g. if JD mentions Laravel, PHP, MySQL, pick 3 from those).\n"
+STEP 1 - Write down the exact job title: "{req.job_title}".
+STEP 2 - Your proposed title MUST differ in at least TWO of the following ways:
+  a) Function word swapped (Engineer -> Developer, Specialist -> Architect, Trainee -> Engineer, Developer -> Programmer)
+  b) Scope broadened (e.g. 'PHP Developer' -> 'Full-Stack Web Engineer', 'Laravel Trainee' -> 'Backend Application Developer')
+  c) Platform angle shifted (e.g. 'Laravel Developer' -> 'PHP & MySQL Application Engineer')
+  d) Domain emphasis changed (e.g. 'Backend Developer' -> 'Server-Side Systems Architect')
+STEP 3 - Read your title and the job title side by side. If they look the same or share all the same words -> REJECT and rederive.
+Step 4 - Your output title MUST NOT contain the exact original job title string as a substring.
+"Step 5 - Add a pipe and exactly 3 technologies extracted from THIS SPECIFIC JD (e.g. if JD mentions Laravel, PHP, MySQL, pick 3 from those).\n"
 HOW TO DERIVE: Extract the PRIMARY tech domain from the JD requirements. Apply STEP 2 transformations.
 Pick 3 REAL technologies from the JD only for the subtitle after the pipe.
 ALSO BANNED: Do NOT copy or reuse the title from the candidate profile (e.g. if profile says "Laravel & PHP Development Specialist", that string is forbidden in the output title).
@@ -1316,23 +1367,23 @@ Each company MUST have a UNIQUE role title. BOTH seniority AND function word MUS
 Function word pool (each pick exactly one, no repeats): Engineer, Developer, Specialist, Architect, Consultant, Analyst, Programmer, Designer
 HARD RULE: No function word may be used at more than one company.
 
-R4 BULLETS: 4 per company, 20-30 words each. Every bullet: ≥1 JD technology + specific named system + unique metric.
+R4 BULLETS: 4 per company, 20-30 words each. Every bullet: >=1 JD technology + specific named system + unique metric.
 TECH ENFORCEMENT: Use ONLY technologies extracted from the JD. Never add technologies not in the JD.
 Every bullet must name at least one technology from the JD's REQUIRED or PREFERRED list.
 CLOUD BULLET RULE: Across all companies combined, at least 2 bullets MUST reference the cloud/hosting
 platform inferred from the JD (e.g. deployment to cloud, hosted on platform, CI/CD pipeline, auto-scaling,
-cloud-native service integration). Derive the platform from the JD — do NOT hardcode AWS/Azure/GCP.
-Verb guide (derive from the JD's domain — do not use generic verbs):
-  Co1 (most senior): high-ownership verbs reflecting leadership — Architected, Engineered, Led, Spearheaded, Established, Designed, Launched
-  {"Co2 (mid): improvement verbs — Optimised, Refactored, Scaled, Migrated, Integrated, Streamlined, Unified" if num_cos >= 2 else ""}
-  {"Co3 (junior): delivery verbs — Implemented, Built, Deployed, Configured, Automated, Developed, Instrumented" if num_cos >= 3 else ""}
+cloud-native service integration). Derive the platform from the JD - do NOT hardcode AWS/Azure/GCP.
+Verb guide (derive from the JD's domain - do not use generic verbs):
+  Co1 (most senior): high-ownership verbs reflecting leadership - Architected, Engineered, Led, Spearheaded, Established, Designed, Launched
+  {"Co2 (mid): improvement verbs - Optimised, Refactored, Scaled, Migrated, Integrated, Streamlined, Unified" if num_cos >= 2 else ""}
+  {"Co3 (junior): delivery verbs - Implemented, Built, Deployed, Configured, Automated, Developed, Instrumented" if num_cos >= 3 else ""}
 
 BULLET DIVERSITY (all 12 bullets across all companies must be unique):
-- Each bullet describes a DIFFERENT specific system or feature type — named precisely (e.g. 'real-time notification engine', 'multi-tenant billing service', 'role-based access middleware').
+- Each bullet describes a DIFFERENT specific system or feature type - named precisely (e.g. 'real-time notification engine', 'multi-tenant billing service', 'role-based access middleware').
 - Each bullet uses a DIFFERENT primary technology from the JD.
-- Each metric is UNIQUE — no two bullets share the same number, percentage, or user count.
-- Each bullet has a DIFFERENT sentence structure — no two bullets follow the same grammatical template.
-- NEVER use 'web application' or 'full stack application' as the deliverable — name the SPECIFIC system type.
+- Each metric is UNIQUE - no two bullets share the same number, percentage, or user count.
+- Each bullet has a DIFFERENT sentence structure - no two bullets follow the same grammatical template.
+- NEVER use 'web application' or 'full stack application' as the deliverable - name the SPECIFIC system type.
 - ZERO verbs repeated across any of the 12 bullets.
 
 R5 SUMMARY: Exactly 4 sentences, minimum 70 words.
@@ -1340,27 +1391,27 @@ S1: Start "{total_years} years of experience in [domain from JD], with a strong 
 S2: "Proficient in [JD-tech1], [JD-tech2], [JD-tech3], [JD-tech4], building [specific system type from JD]."
 S3: "Proven ability to [concrete achievement] handling [scale/complexity from JD context]."
 S4: "Committed to [methodology], delivering [business outcome] through [practice]."
-Use ONLY technologies extracted from the JD. Count words — under 70 is a FAILURE.
+Use ONLY technologies extracted from the JD. Count words - under 70 is a FAILURE.
 
-R6 SKILLS — FOLLOW THESE STEPS IN ORDER:
+R6 SKILLS - FOLLOW THESE STEPS IN ORDER:
 
 STEP R6-A: BUILD ALLOCATION TABLE (do this mentally before writing any JSON)
   Take every technology from your STEP 1 extraction. Assign each to ONE bucket only:
-    BUCKET A (Frontend/UI)        → UI frameworks, CSS tools, state managers, build tools, browser APIs
-    BUCKET B (Backend)            → Server languages, backend frameworks, REST/GraphQL APIs, auth libs, message queues
-    BUCKET C (Databases/Storage)  → RDBMS, NoSQL, caches, ORMs, migration tools, search engines, data warehouses
-    BUCKET D (Cloud & DevOps)     → Cloud services, Docker, Kubernetes, CI/CD, IaC, monitoring, container registries
-    BUCKET E (Testing & Tooling)  → Test frameworks, security scanners, linters, Git, version control, package managers
+    BUCKET A (Frontend/UI)        -> UI frameworks, CSS tools, state managers, build tools, browser APIs
+    BUCKET B (Backend)            -> Server languages, backend frameworks, REST/GraphQL APIs, auth libs, message queues
+    BUCKET C (Databases/Storage)  -> RDBMS, NoSQL, caches, ORMs, migration tools, search engines, data warehouses
+    BUCKET D (Cloud & DevOps)     -> Cloud services, Docker, Kubernetes, CI/CD, IaC, monitoring, container registries
+    BUCKET E (Testing & Tooling)  -> Test frameworks, security scanners, linters, Git, version control, package managers
 
-  ABSOLUTE PLACEMENT RULES — these override everything else:
-    Docker, Kubernetes                    → BUCKET D only. NEVER in A, B, C, or E.
-    Git, GitHub, npm, pip, yarn           → BUCKET E only. NEVER in A, B, C, or D.
-    C#, .NET 8, ASP.NET Core, Node.js     → BUCKET B only. NEVER in C or D.
-    SQL Server, PostgreSQL, MySQL, Redis  → BUCKET C only. NEVER in B or D.
-    React, Angular, Vue, Tailwind CSS     → BUCKET A only. NEVER in B, C, or D.
-    AWS/Azure/GCP services                → BUCKET D only. NEVER in B, C, or A.
+  ABSOLUTE PLACEMENT RULES - these override everything else:
+    Docker, Kubernetes                    -> BUCKET D only. NEVER in A, B, C, or E.
+    Git, GitHub, npm, pip, yarn           -> BUCKET E only. NEVER in A, B, C, or D.
+    C#, .NET 8, ASP.NET Core, Node.js     -> BUCKET B only. NEVER in C or D.
+    SQL Server, PostgreSQL, MySQL, Redis  -> BUCKET C only. NEVER in B or D.
+    React, Angular, Vue, Tailwind CSS     -> BUCKET A only. NEVER in B, C, or D.
+    AWS/Azure/GCP services                -> BUCKET D only. NEVER in B, C, or A.
 
-  STACK CONSISTENCY RULE (CRITICAL — overrides all defaults):
+  STACK CONSISTENCY RULE (CRITICAL - overrides all defaults):
   BEFORE adding any item to any bucket, ask: 'Would a developer working in this JD's primary stack actually use this tool?'
   If the JD is .NET/C#: Node.js, Express, Django, FastAPI, Spring Boot, Laravel, Flask are BANNED from ALL buckets.
   If the JD is Node.js: ASP.NET Core, Django, Spring Boot, Laravel, C# are BANNED from ALL buckets.
@@ -1370,73 +1421,73 @@ STEP R6-A: BUILD ALLOCATION TABLE (do this mentally before writing any JSON)
   EVERY item in EVERY bucket must belong to the same ecosystem as the JD's primary stack.
 
 STEP R6-B: DEDUPLICATION CHECK
-  Scan your allocation table. If any technology appears in more than one bucket → remove it from all but its most appropriate bucket.
-  The same string MUST NOT appear in two different skill categories. This includes partial matches (e.g. ".NET" and "ASP.NET Core" are different — keep both, but each in BUCKET B only).
+  Scan your allocation table. If any technology appears in more than one bucket -> remove it from all but its most appropriate bucket.
+  The same string MUST NOT appear in two different skill categories. This includes partial matches (e.g. ".NET" and "ASP.NET Core" are different - keep both, but each in BUCKET B only).
 
 STEP R6-C: COUNT CHECK
-  Each bucket must have at least 10 technologies. If any bucket has fewer than 10 → add closely adjacent tools from the same domain until it reaches 10.
-  TESTING BUCKET RULE — if Cat 5 has fewer than 10 items, fill it with: xUnit, NUnit, MSTest, Mocha, Pytest,
+  Each bucket must have at least 10 technologies. If any bucket has fewer than 10 -> add closely adjacent tools from the same domain until it reaches 10.
+  TESTING BUCKET RULE - if Cat 5 has fewer than 10 items, fill it with: xUnit, NUnit, MSTest, Mocha, Pytest,
     Selenium, Playwright, Postman, SonarQube, OWASP ZAP, Snyk, ESLint, Prettier, Swagger UI, Sentry.
     Git/GitHub/npm belong here ONLY if there is still space after filling with real test/security tools.
 
 STEP R6-D: WRITE THE JSON
   Only now output the 'skills' array with exactly 5 objects.
   Format: "CategoryName: item1, item2, item3, item4, item5, item6, item7"
-  Name each category specifically from the JD domain — e.g. "ASP.NET Core & C# Backend", "SQL Server & Data Layer", "AWS Infrastructure & CI/CD", "Angular & Web UI", "xUnit & Developer Tooling".
+  Name each category specifically from the JD domain - e.g. "ASP.NET Core & C# Backend", "SQL Server & Data Layer", "AWS Infrastructure & CI/CD", "Angular & Web UI", "xUnit & Developer Tooling".
   NEVER use a generic name like "Backend Skills", "Database", "Tools", "Cloud".
 
-VALID ITEMS ONLY — each item must be a real named software product:
-  ✓ VALID: ASP.NET Core, Entity Framework Core, SQL Server, Redis, Docker, xUnit, Swagger, GitHub Actions, Angular, TypeScript
-  ✗ BANNED (instant failure): Microservices, Web APIs, CI/CD, Relational Databases, Git Flow, Clean Architecture, REST, Agile, Scrum,
+VALID ITEMS ONLY - each item must be a real named software product:
+  OK VALID: ASP.NET Core, Entity Framework Core, SQL Server, Redis, Docker, xUnit, Swagger, GitHub Actions, Angular, TypeScript
+  X BANNED (instant failure): Microservices, Web APIs, CI/CD, Relational Databases, Git Flow, Clean Architecture, REST, Agile, Scrum,
     any verb (Deploy, Configure, Build, Test), any generic noun (Server, System, Platform, Infrastructure, Architecture, Environment)
 
 
 R7 PROJECTS: Produce EXACTLY 4 projects split as follows:
-  PROJECT 1 & 2 — JD-driven: Strictly aligned with the job description tech stack and role domain.
-  PROJECT 3 — Company-aligned: Based on what the company website/context reveals about their core product/platform domain.
-  PROJECT 4 — Company-sector: Based on broader public knowledge of what this company's sector/industry is known for.
+  PROJECT 1 & 2 - JD-driven: Strictly aligned with the job description tech stack and role domain.
+  PROJECT 3 - Company-aligned: Based on what the company website/context reveals about their core product/platform domain.
+  PROJECT 4 - Company-sector: Based on broader public knowledge of what this company's sector/industry is known for.
   If no company name or URL was provided, replace projects 3 and 4 with two additional domain-specific JD projects covering DIFFERENT system types.
 
-PROJECT TECH TAGS (CRITICAL — ABSOLUTE RULES):
+PROJECT TECH TAGS (CRITICAL - ABSOLUTE RULES):
   Each project MUST have EXACTLY 5-7 techTags. Fewer than 5 is a HARD FAILURE.
   ALL tags MUST be real named software tools/frameworks/platforms from the JD ecosystem.
   ABSOLUTELY BANNED from techTags (instant failure if any appear):
     'Cloud', 'Development', 'Web', 'Good', 'Strong', 'Hands', 'Ability', 'Remote', 'Setup',
     'APIs', 'REST', 'Data', 'Code', 'Net', 'App', 'Backend', 'Frontend', 'Database',
-    any plain English adjective, noun, or verb — ONLY real product names are valid.
+    any plain English adjective, noun, or verb - ONLY real product names are valid.
   VALID examples: 'ASP.NET Core', 'Angular', 'SQL Server', 'Entity Framework Core', 'Azure App Service'
   INVALID examples: 'Cloud', 'Development', 'Good', 'REST', 'Data', 'APIs'
 
-PROJECT NAMING RULES (CRITICAL — enforce before writing anything else):
+PROJECT NAMING RULES (CRITICAL - enforce before writing anything else):
   Every project name MUST be a coined, original SaaS-style product name reflecting a real-world problem.
   BANNED project name patterns (INSTANT FAILURE):
-    ✗ Technology-first names: 'Azure App', 'Angular Application', 'React Dashboard', 'Python Pipeline'
-    ✗ Standalone generic suffixes: 'Web Platform', 'Mobile App', 'ERP System', 'Web Application'
-    ✗ Any real company name inside the project name
-    ✗ Any name that could apply to any company or domain
-  REQUIRED format: '[CoinedProductName] — [Problem-domain description] [Tech1, Tech2]'
-  Good examples: 'ShiftSync — Real-Time Staff Scheduling Engine', 'NexaQueue — Priority-Based Job Dispatch System', 'PulseTrack — Live SLA Monitoring Dashboard'
+    X Technology-first names: 'Azure App', 'Angular Application', 'React Dashboard', 'Python Pipeline'
+    X Standalone generic suffixes: 'Web Platform', 'Mobile App', 'ERP System', 'Web Application'
+    X Any real company name inside the project name
+    X Any name that could apply to any company or domain
+  REQUIRED format: '[CoinedProductName] - [Problem-domain description] [Tech1, Tech2]'
+  Good examples: 'ShiftSync - Real-Time Staff Scheduling Engine', 'NexaQueue - Priority-Based Job Dispatch System', 'PulseTrack - Live SLA Monitoring Dashboard'
 
 PROJECT UNIQUENESS + RELEVANCE RULES (STRICT):
-  All 4 projects MUST differ in: Purpose, Domain, and Functionality — no reworded duplicates.
+  All 4 projects MUST differ in: Purpose, Domain, and Functionality - no reworded duplicates.
   Each project MUST still be strongly aligned with the same job role/domain.
-  Technology stacks MUST NOT be identical across all 4 projects — vary the specific tools used.
-  Each project MUST have a unique business impact metric — ZERO metric formats repeated.
+  Technology stacks MUST NOT be identical across all 4 projects - vary the specific tools used.
+  Each project MUST have a unique business impact metric - ZERO metric formats repeated.
 
 PROJECT COMPANY INTELLIGENCE RULE:
   For projects 3 & 4: Infer the company's domain from public knowledge of the company name and sector.
-  Projects MUST reflect what the company realistically builds — no random or generic assumptions.
+  Projects MUST reflect what the company realistically builds - no random or generic assumptions.
 
-PROJECT DESCRIPTION RULES — ABSOLUTE (MOST IMPORTANT FOR PROJECTS):
+PROJECT DESCRIPTION RULES - ABSOLUTE (MOST IMPORTANT FOR PROJECTS):
 Each project "overview" MUST tell a complete mini-story across 3-4 sentences covering ALL of:
   PROBLEM: What real-world business problem or pain point did this system solve? Be specific about who suffers and what they lose without this system.
   SOLUTION: What specific architectural approach or technical solution was designed? Name the actual JD technologies used.
   FUNCTIONALITY: What does the system do? Describe the key features and how users interact with it.
-  BUSINESS IMPACT: What measurable outcome was achieved? (revenue, uptime, users served, time saved, cost reduced — UNIQUE per project)
+  BUSINESS IMPACT: What measurable outcome was achieved? (revenue, uptime, users served, time saved, cost reduced - UNIQUE per project)
 EXAMPLE STRUCTURE (adapt to actual JD domain):
   "Enterprise procurement teams faced 3-5 day approval cycles due to fragmented manual workflows across departments. [Candidate] engineered a real-time workflow automation engine using [JD-Tech1] and [JD-Tech2], enabling end-to-end purchase order processing with role-based approval routing. The system integrates with ERP modules for inventory validation and budget checks, reducing cycle time to under 4 hours. Deployed to 200+ enterprise users, the platform eliminated 85% of manual email approvals, saving an estimated 1,200 staff-hours per month."
 HARD RULES FOR OVERVIEWS:
-- MINIMUM 3 sentences, ideally 4 — short 1-sentence overviews are a HARD FAILURE
+- MINIMUM 3 sentences, ideally 4 - short 1-sentence overviews are a HARD FAILURE
 - Each overview MUST name at least 2 specific JD technologies in the solution/functionality sentences
 - Each overview MUST include ONE unique business impact metric (number + unit) not reused in other projects
 - NO overview may reuse the same phrase or sentence structure as another project
@@ -1445,64 +1496,17 @@ HARD RULES FOR OVERVIEWS:
 - Each project name MUST be a coined, original SaaS-style product name (e.g. "ShiftSync", "NexaQueue", "PulseTrack") followed by a dash and a specific description of what it does.
 - Each project name MUST be a coined, original SaaS-style product name (e.g. "ShiftSync", "NexaQueue", "PulseTrack") followed by a dash and a specific description of what it does.
 
-{"COMPANY-DRIVEN PROJECT RULES (CRITICAL — applies to projects 3 and 4):" if company_context or company_name else ""}
-f"""You have been given real intelligence about the target company ({company_name or 'the target company'}).
-
-*** ANALOGY RULE — THIS IS THE MOST IMPORTANT RULE FOR PROJECTS 3 AND 4 ***
-You MUST NOT copy the company's actual product name, service name, or literal business description into the project.
-Instead, identify the ABSTRACT PATTERN the company's business follows, then build a project in a PARALLEL or ADJACENT domain using that same pattern — with technologies drawn from the JD.
-
-HOW TO APPLY THE ANALOGY RULE:
-STEP 1 — Identify the company's ABSTRACT PATTERN:
-  What is the underlying technical/business pattern?
-  (e.g. vendor-to-consumer marketplace, B2B CRM, booking/scheduling system, fleet/asset tracking, data analytics platform, workflow automation, content management, payments/billing, etc.)
-STEP 2 — Identify the ADJACENT DOMAIN for project 3:
-  Pick a DIFFERENT real-world sector that uses the same pattern but is clearly separate from the company's actual sector.
-  (e.g. if the company does energy marketplaces → try telecom, insurance, or SaaS subscription; if the company does healthcare booking → try legal, education, or hospitality)
-STEP 3 — Identify a SECOND ADJACENT DOMAIN for project 4:
-  Pick yet another adjacent sector or a scaled/enterprise variant of the same pattern.
-STEP 4 — Name each project with a CATCHY, ORIGINAL SaaS-style product name:
-  The name must NOT contain: the company name, their product name, their commodity/sector keyword, or any direct synonym of their business.
-  Format: "[OriginalProductName] — [What it does using JD technologies]"
-STEP 5 — Use ONLY technologies from the JD for all tech references in project names, overviews, and bullets.
-
-PROJECT 1 & 2 (JD-driven) rules:
-Identify 2 distinct core system types implied by the JD's tech stack and role responsibilities.
-Derive the system type from what the JD actually says — look at the tech stack, the role's responsibilities, the domain keywords, and the problem space described.
-Name each as a catchy original SaaS product using only JD technologies.
-
-ALL 4 projects MUST have:
-- "name": "[CoinedProductName] — [Specific what it does] [JD-Tech1, JD-Tech2]" — NEVER use any company name, generic platform name, or the company's exact product/service name
-- "overview": 3-4 sentences covering PROBLEM → SOLUTION → FUNCTIONALITY → BUSINESS IMPACT (see PROJECT DESCRIPTION RULES above)
-- "bullets": exactly 3 strings — each bullet must describe a DIFFERENT specific feature or challenge:
-    bullet 1: what specific component/feature you built + the key JD technology used (20-30 words)
-    bullet 2: the hardest technical challenge you solved + a concrete metric (UNIQUE — not reused from other projects) (20-30 words)
-    bullet 3: the business outcome + a number (revenue, users, time saved, error rate — all UNIQUE across all 4 projects) (20-30 words)
-- No two projects may share the same bullet structure or the same metric format.
-""" if company_context or company_name else """PROJECT 1-4 are all JD-driven. Identify 4 distinct core system types implied by the JD's tech stack and role responsibilities.
-HOW TO DERIVE SYSTEM TYPES: Read the JD carefully — look at the tech stack, the listed responsibilities, the domain keywords, and the problem context. From those signals, infer what category of system a developer in this role would realistically build or maintain.
-  Look for signals like: the platform type (web, mobile, data, infra), the integration patterns (APIs, pipelines, queues), the user type (enterprise, consumer, internal), and the scale indicators (users, events, throughput).
-  Derive 4 distinct but related system types from those signals — do not repeat the same system type with different names.
-Name each as a catchy, original SaaS-style coined product name using only technologies from the JD — NEVER use generic names like "E-commerce Platform" or "Social Media Platform".
-Each project MUST have:
-- "name": "[CoinedProductName] — [Specific what it does] [JD-Tech1, JD-Tech2]" — original product name, not a generic label
-- "overview": 3-4 sentences covering PROBLEM → SOLUTION → FUNCTIONALITY → BUSINESS IMPACT (see PROJECT DESCRIPTION RULES above)
-- "bullets": exactly 3 strings — each describing a DIFFERENT specific feature/challenge:
-    bullet 1: specific component/feature built + key JD technology (20-30 words)
-    bullet 2: hardest technical challenge + UNIQUE concrete metric (20-30 words)
-    bullet 3: business outcome + UNIQUE number (no metric format repeated across projects) (20-30 words)
-- No two projects may share the same bullet structure or metric format.
-"""}
+{_company_proj_block}
 
 R8 RELATED TECH: Exactly 5 boxes, specific real category names, 5-6 items each from JD ecosystem.
 
-R9 COMPETENCIES: Exactly 10 domain-specific phrases separated by •.
+R9 COMPETENCIES: Exactly 10 domain-specific phrases separated by *.
 STRUCTURE: The 10 phrases MUST span at least 4 different competency categories relevant to the JD:
   - Technical Practices: e.g. 'API Design', 'Test-Driven Development', 'Microservices Architecture', 'RESTful API Development'
   - Domain Expertise: e.g. 'ERP System Integration', 'Cloud-Native Development', 'Data Pipeline Engineering', 'Real-Time Analytics'
   - Engineering Process: e.g. 'CI/CD Pipeline Automation', 'Agile Sprint Delivery', 'Code Review Leadership', 'DevOps Practices'
   - Impact Areas: e.g. 'Performance Optimisation', 'System Scalability', 'Database Query Tuning', 'Security Hardening'
-DERIVATION: Extract competencies from JD methodologies, tools, practices, and outcomes — NOT generic soft skills.
+DERIVATION: Extract competencies from JD methodologies, tools, practices, and outcomes - NOT generic soft skills.
 If fewer than 10 domain-specific competencies are in the JD, extend with closely adjacent engineering practices in the SAME tech domain.
 Each phrase: 2-4 words, directly tied to JD tech domain. Fewer than 10 is a HARD FAILURE. Generic filler like "Problem Solving" or "Teamwork" is a HARD FAILURE.
 
@@ -1512,7 +1516,7 @@ R12 TECHNOLOGIES (mandatory, 3 sub-arrays):
 - "mustHave": All explicitly required/must-have tools from the JD + 1-3 closely related ecosystem tools (6-10 items total).
 - "niceToHave": All nice-to-have/preferred tools from the JD + 1-3 related ecosystem additions (5-8 items total).
 - "additional": 5-8 complementary tools NOT in the JD but standard in this role domain (e.g. testing, security, observability).
-Every item must be a real named tool — no placeholders. No item repeated across sub-arrays.
+Every item must be a real named tool - no placeholders. No item repeated across sub-arrays.
 
 R13 ARCHITECTURES (mandatory, 3-5 objects):
 Produce 3-5 objects, each with "name" (concise pattern) and "description" (1-2 sentences, 25-40 words, concrete tech + outcome).
@@ -1521,11 +1525,11 @@ Each description MUST name actual technologies from the JD and state a concrete 
 Do NOT use plain strings. Every item must have both "name" and "description".
 
 JSON shape (totalYears="{total_years}", degree years={edu_start}-{edu_end}, EXACTLY {num_cos} companies):
-{{"totalYears":"{total_years}","title":"Related Role Title - Tech1, Tech2, Tech3","summary":"[4 sentences, 70-80+ words, starting with {total_years} years of experience...]","companies":[{json_companies}],"skills":["BackendDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11","DatabaseDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11","FrontendDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11","CloudPlatform: NamedService1, NamedService2, NamedService3, NamedService4, NamedService5, NamedService6, NamedService7, NamedService8, NamedService9, NamedService10, NamedService11","DevOpsDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11","TestingDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11"],"education":{{"university":"QURTUBA UNIVERSITY OF SCIENCE AND INFORMATION TECHNOLOGY","degree":"Bachelor of Science in Computer Science (BSCS)","cgpa":"3.97/4.0","years":"{edu_start} - {edu_end}","achievement":"Gold Medalist for Academic Excellence"}},"projects":[{{"name":"CoinedName — Specific what it does [Tech1, Tech2]","overview":"[PROBLEM: who is affected and what they lose.] [SOLUTION: architecture + 2 JD techs.] [FUNCTIONALITY: key features.] [BUSINESS IMPACT: unique metric.]","bullets":["Component built using JD-tech — what it enables (20-30 words)","Challenge solved + unique concrete metric not reused (20-30 words)","Business outcome with unique number (20-30 words)"]}},{{"name":"CoinedName — Specific what it does [Tech1, Tech2]","overview":"[PROBLEM.] [SOLUTION with 2 JD techs.] [FUNCTIONALITY.] [BUSINESS IMPACT unique metric.]","bullets":["built+tech (20-30w)","challenge+UNIQUE metric (20-30w)","outcome+UNIQUE number (20-30w)"]}},{{"name":"CoinedName — Specific what it does [Tech1, Tech2]","overview":"[PROBLEM.] [SOLUTION with 2 JD techs.] [FUNCTIONALITY.] [BUSINESS IMPACT unique metric.]","bullets":["built+tech (20-30w)","challenge+UNIQUE metric (20-30w)","outcome+UNIQUE number (20-30w)"]}},{{"name":"CoinedName — Specific what it does [Tech1, Tech2]","overview":"[PROBLEM.] [SOLUTION with 2 JD techs.] [FUNCTIONALITY.] [BUSINESS IMPACT unique metric.]","bullets":["built+tech (20-30w)","challenge+UNIQUE metric (20-30w)","outcome+UNIQUE number (20-30w)"]}}],"competencies":"TechPractice1 • DomainExpertise1 • EngineeringProcess1 • ImpactArea1 • TechPractice2 • DomainExpertise2 • EngineeringProcess2 • ImpactArea2 • TechPractice3 • DomainExpertise3","relatedTech":[{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}}],"keywords":"kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18","technologies":{{"mustHave":["tool1","tool2","tool3","tool4","tool5","tool6","tool7"],"niceToHave":["tool1","tool2","tool3","tool4","tool5","tool6"],"additional":["tool1","tool2","tool3","tool4","tool5","tool6"]}},"architectures":[{{"name":"Pattern Name 1","description":"How you applied this pattern with concrete tech and outcome metric."}},{{"name":"Pattern Name 2","description":"How you applied this pattern with concrete tech and outcome metric."}},{{"name":"Pattern Name 3","description":"How you applied this pattern with concrete tech and outcome metric."}}]}}"""
+{{"totalYears":"{total_years}","title":"Related Role Title - Tech1, Tech2, Tech3","summary":"[4 sentences, 70-80+ words, starting with {total_years} years of experience...]","companies":[{json_companies}],"skills":["BackendDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11","DatabaseDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11","FrontendDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11","CloudPlatform: NamedService1, NamedService2, NamedService3, NamedService4, NamedService5, NamedService6, NamedService7, NamedService8, NamedService9, NamedService10, NamedService11","DevOpsDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11","TestingDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11"],"education":{{"university":"QURTUBA UNIVERSITY OF SCIENCE AND INFORMATION TECHNOLOGY","degree":"Bachelor of Science in Computer Science (BSCS)","cgpa":"3.97/4.0","years":"{edu_start} - {edu_end}","achievement":"Gold Medalist for Academic Excellence"}},"projects":[{{"name":"CoinedName - Specific what it does [Tech1, Tech2]","overview":"[PROBLEM: who is affected and what they lose.] [SOLUTION: architecture + 2 JD techs.] [FUNCTIONALITY: key features.] [BUSINESS IMPACT: unique metric.]","bullets":["Component built using JD-tech - what it enables (20-30 words)","Challenge solved + unique concrete metric not reused (20-30 words)","Business outcome with unique number (20-30 words)"]}},{{"name":"CoinedName - Specific what it does [Tech1, Tech2]","overview":"[PROBLEM.] [SOLUTION with 2 JD techs.] [FUNCTIONALITY.] [BUSINESS IMPACT unique metric.]","bullets":["built+tech (20-30w)","challenge+UNIQUE metric (20-30w)","outcome+UNIQUE number (20-30w)"]}},{{"name":"CoinedName - Specific what it does [Tech1, Tech2]","overview":"[PROBLEM.] [SOLUTION with 2 JD techs.] [FUNCTIONALITY.] [BUSINESS IMPACT unique metric.]","bullets":["built+tech (20-30w)","challenge+UNIQUE metric (20-30w)","outcome+UNIQUE number (20-30w)"]}},{{"name":"CoinedName - Specific what it does [Tech1, Tech2]","overview":"[PROBLEM.] [SOLUTION with 2 JD techs.] [FUNCTIONALITY.] [BUSINESS IMPACT unique metric.]","bullets":["built+tech (20-30w)","challenge+UNIQUE metric (20-30w)","outcome+UNIQUE number (20-30w)"]}}],"competencies":"TechPractice1 * DomainExpertise1 * EngineeringProcess1 * ImpactArea1 * TechPractice2 * DomainExpertise2 * EngineeringProcess2 * ImpactArea2 * TechPractice3 * DomainExpertise3","relatedTech":[{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}}],"keywords":"kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18","technologies":{{"mustHave":["tool1","tool2","tool3","tool4","tool5","tool6","tool7"],"niceToHave":["tool1","tool2","tool3","tool4","tool5","tool6"],"additional":["tool1","tool2","tool3","tool4","tool5","tool6"]}},"architectures":[{{"name":"Pattern Name 1","description":"How you applied this pattern with concrete tech and outcome metric."}},{{"name":"Pattern Name 2","description":"How you applied this pattern with concrete tech and outcome metric."}},{{"name":"Pattern Name 3","description":"How you applied this pattern with concrete tech and outcome metric."}}]}}"""
     return system, user
 
 
-# ── JSON extraction with truncation recovery ──────────────────────────────────
+# -- JSON extraction with truncation recovery ----------------------------------
 def extract_json(raw: str) -> dict:
     raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
     raw = re.sub(r"```(?:json)?", "", raw).strip().strip("`").strip()
@@ -1588,7 +1592,7 @@ def _repair_truncated_json(j: str) -> str:
     return j
 
 
-# ── Universal CV sanitiser ────────────────────────────────────────────────────
+# -- Universal CV sanitiser ----------------------------------------------------
 def _to_str(val, fallback: str = "") -> str:
     if val is None:
         return fallback
@@ -1631,7 +1635,7 @@ def sanitise_cv(cv: dict) -> dict:
     for field in ("totalYears", "title", "summary", "competencies", "keywords"):
         cv[field] = _to_str(cv.get(field), "")
 
-    # Normalize title — remove any duplicated words (e.g. "Senior Senior Angular Dev")
+    # Normalize title - remove any duplicated words (e.g. "Senior Senior Angular Dev")
     if cv.get("title"):
         cv["title"] = _normalize_job_title(cv["title"])
 
@@ -1673,7 +1677,7 @@ def sanitise_cv(cv: dict) -> dict:
     if not isinstance(projects, list):
         projects = []
 
-    # ── Generic project name detection ────────────────────────────────────────
+    # -- Generic project name detection ----------------------------------------
     _GENERIC_PROJECT_PATTERNS = re.compile(
         r'^(azure app|angular application|react (app|application|dashboard)|'
         r'web (platform|application|app)|mobile app|laravel (app|application)|'
@@ -1709,9 +1713,9 @@ def sanitise_cv(cv: dict) -> dict:
             proj_name = _to_str(p.get("name") or p.get("title") or "")
             # Strip any real company name from project name if it slips through
             # (project names must be coined product names, not generic labels)
-            bare_name = re.sub(r'\s*\[.*?\]', '', proj_name).split('—')[0].strip()
+            bare_name = re.sub(r'\s*\[.*?\]', '', proj_name).split('-')[0].strip()
             if _GENERIC_PROJECT_PATTERNS.match(bare_name):
-                # Flag it but still include — the prompt should prevent this
+                # Flag it but still include - the prompt should prevent this
                 proj_name = proj_name  # Keep as-is; log warning could go here
 
             clean_projects.append({
@@ -1725,14 +1729,14 @@ def sanitise_cv(cv: dict) -> dict:
             clean_projects.append({"name": p, "overview": "", "bullets": [], "desc": ""})
     cv["projects"] = clean_projects[:4]
 
-    # ── Education block ─────────────────────────────────────────────────────────
+    # -- Education block ---------------------------------------------------------
     edu_raw = cv.get("education")
     if isinstance(edu_raw, dict):
         cv["education"] = {
             "university":  _to_str(edu_raw.get("university",  "QURTUBA UNIVERSITY OF SCIENCE AND INFORMATION TECHNOLOGY")),
             "degree":      _to_str(edu_raw.get("degree",      "Bachelor of Science in Computer Science (BSCS)")),
             "cgpa":        _to_str(edu_raw.get("cgpa",        "3.97/4.0")),
-            "years":       _to_str(edu_raw.get("years",       "2017 – 2021")),
+            "years":       _to_str(edu_raw.get("years",       "2017 - 2021")),
             "achievement": _to_str(edu_raw.get("achievement", "Gold Medalist for Academic Excellence")),
         }
     elif not isinstance(cv.get("education"), dict):
@@ -1740,7 +1744,7 @@ def sanitise_cv(cv: dict) -> dict:
             "university":  "QURTUBA UNIVERSITY OF SCIENCE AND INFORMATION TECHNOLOGY",
             "degree":      "Bachelor of Science in Computer Science (BSCS)",
             "cgpa":        "3.97/4.0",
-            "years":       "2017 – 2021",
+            "years":       "2017 - 2021",
             "achievement": "Gold Medalist for Academic Excellence",
         }
 
@@ -1773,7 +1777,7 @@ def sanitise_cv(cv: dict) -> dict:
         cat["items"] = unique[:13]
     cv["relatedTech"] = [c for c in clean_related if c.get("items")][:6]
 
-    # ── Technologies block (mustHave / niceToHave / additional) ────────────────
+    # -- Technologies block (mustHave / niceToHave / additional) ----------------
     tech_raw = cv.get("technologies")
     if isinstance(tech_raw, dict):
         _seen_tech = set()
@@ -1793,7 +1797,7 @@ def sanitise_cv(cv: dict) -> dict:
     elif not isinstance(cv.get("technologies"), dict):
         cv["technologies"] = {"mustHave": [], "niceToHave": [], "additional": []}
 
-    # ── Architectures block ────────────────────────────────────────────────────
+    # -- Architectures block ----------------------------------------------------
     arch_raw = cv.get("architectures")
     clean_arch = []
     if isinstance(arch_raw, list):
@@ -1807,7 +1811,7 @@ def sanitise_cv(cv: dict) -> dict:
                 # Legacy plain-string fallback: promote to object with empty description
                 clean_arch.append({"name": a.strip(), "description": ""})
     elif isinstance(arch_raw, str) and arch_raw.strip():
-        for s in re.split(r"[,•|]", arch_raw):
+        for s in re.split(r"[,*|]", arch_raw):
             if s.strip():
                 clean_arch.append({"name": s.strip(), "description": ""})
     # Clamp to 3-5 items
@@ -1823,9 +1827,9 @@ def _is_real_tech(token: str) -> bool:
         return False
     # Blocklist of non-tech English words that slip through
     # NOTE: "web", "hands", "good", "ability", "strong", "dev", "net" (alone) are the
-    # classic thin-JD hallucinations — the AI picks up plain-English prose words as tech tags.
+    # classic thin-JD hallucinations - the AI picks up plain-English prose words as tech tags.
     FAKE_TECH = {
-        # Thin-JD culprits — single plain-English words that appear in bullet-point JDs
+        # Thin-JD culprits - single plain-English words that appear in bullet-point JDs
         "web", "hands", "good", "ability", "strong", "dev", "remote", "setup",
         "mindset", "detail", "attention", "focus", "solid", "working", "independent",
         "effectively", "efficiently", "proficiency", "familiarity",
@@ -1903,14 +1907,14 @@ def _sanitize_skills_list(skills: list) -> list:
     Rules applied:
       - Split on comma; strip each token; reject tokens that fail _is_real_tech
       - Also reject any token that is a single generic English word (first-letter-cap check)
-      - Keep the row only if ≥3 real items remain (rows with fewer are dropped)
+      - Keep the row only if >=3 real items remain (rows with fewer are dropped)
     """
     cleaned = []
     for row in skills:
         if not row:
             continue
         if ":" not in row:
-            # No colon → treat the whole row as a category name without items; keep as-is
+            # No colon -> treat the whole row as a category name without items; keep as-is
             cleaned.append(row)
             continue
         colon = row.index(":")
@@ -1951,7 +1955,7 @@ def _sanitize_skills_list(skills: list) -> list:
                     real_items.append(t)
                     continue
                 # Allow known camelCase / PascalCase tech names (React, Vue, Django, etc.)
-                # by checking: starts with uppercase but contains lowercase → likely a proper noun/tech name
+                # by checking: starts with uppercase but contains lowercase -> likely a proper noun/tech name
                 # Reject if it looks like a plain English verb or noun
                 if w[0].isupper() and any(c.islower() for c in w[1:]):
                     # Additional verb pattern rejection: common -ing, -ed, -ment, -tion, -ment endings
@@ -1960,19 +1964,19 @@ def _sanitize_skills_list(skills: list) -> list:
                         "ise", "ize", "ify", "age", "ance", "ence",
                     )
                     if w.lower().endswith(_bad_endings):
-                        continue  # skip — looks like a verb/gerund/noun
+                        continue  # skip - looks like a verb/gerund/noun
                     real_items.append(t)
                 elif w[0].isupper() and w[1:].isupper():
-                    # All-caps after first letter → acronym variant (e.g. "ASP.NET" handled separately)
+                    # All-caps after first letter -> acronym variant (e.g. "ASP.NET" handled separately)
                     real_items.append(t)
                 else:
                     real_items.append(t)
             else:
-                # Multi-word items (e.g. "Azure DevOps", "Entity Framework") — keep if not all-fake
+                # Multi-word items (e.g. "Azure DevOps", "Entity Framework") - keep if not all-fake
                 real_items.append(t)
         if len(real_items) >= 3:
             cleaned.append(f"{cat}: {', '.join(real_items)}")
-        # Rows with fewer than 3 real items are dropped entirely — do NOT keep bad originals
+        # Rows with fewer than 3 real items are dropped entirely - do NOT keep bad originals
     return cleaned
 
 
@@ -1986,10 +1990,10 @@ def fix_companies(cv: dict) -> dict:
     except Exception:
         real_years = 3.0
 
-    # Seniority tiers — strictly based on number of companies present:
-    # 1 company  (≤1 yr)  → Junior only
-    # 2 companies (≤2 yr)  → Co1: plain (no prefix), Co2: Junior
-    # 3 companies (3+ yr)  → Co1: Senior, Co2: plain (no prefix), Co3: Junior
+    # Seniority tiers - strictly based on number of companies present:
+    # 1 company  (<=1 yr)  -> Junior only
+    # 2 companies (<=2 yr)  -> Co1: plain (no prefix), Co2: Junior
+    # 3 companies (3+ yr)  -> Co1: Senior, Co2: plain (no prefix), Co3: Junior
     num_cos = len(companies)
     if num_cos == 1:
         tier_labels = ["Junior"]
@@ -2010,7 +2014,7 @@ def fix_companies(cv: dict) -> dict:
         name = (co.get("company") or co.get("name") or "").strip()
         if not name or re.match(r"(?i)(company\s*\d|placeholder|example)", name):
             co["company"]   = real["name"]
-            co["dateRange"] = f"{real['start']} – {real['end']}"
+            co["dateRange"] = f"{real['start']} - {real['end']}"
         co.setdefault("company", real["name"])
 
         # Strip any existing seniority prefix from role
@@ -2037,7 +2041,7 @@ def fix_companies(cv: dict) -> dict:
             domain = re.sub(r"\s+", " ", domain).strip()
 
         tier = tier_labels[min(i, len(tier_labels) - 1)]
-        # Avoid double-prefix: "Senior Senior Engineer" → just set the role cleanly
+        # Avoid double-prefix: "Senior Senior Engineer" -> just set the role cleanly
         # When tier is empty (plain, no prefix), just use the domain directly
         co["role"] = f"{tier} {domain}".strip() if tier else domain
 
@@ -2088,23 +2092,23 @@ def _clean_skill_row(row: str) -> str:
 
 
 def final_polish(cv: dict, years_exp: str = "") -> dict:
-    # 1. Clean tech strings per company — remove fake/non-tech words
+    # 1. Clean tech strings per company - remove fake/non-tech words
     for co in cv.get("companies", []):
         co["tech"] = _sanitize_tech_string(co.get("tech", ""))
 
-    # 2. Clean + deduplicate skill rows — also remove fake tech words
+    # 2. Clean + deduplicate skill rows - also remove fake tech words
     cv["skills"] = [_clean_skill_row(s) for s in cv.get("skills", []) if s]
     cv["skills"] = _sanitize_skills_list(cv["skills"])
 
     # 3. Fix competencies separator + detect and replace placeholders
     comp = cv.get("competencies", "")
     if comp:
-        if "•" not in comp:
-            comp = re.sub(r"\s*[|,]\s*", " • ", comp)
+        if "*" not in comp:
+            comp = re.sub(r"\s*[|,]\s*", " * ", comp)
         comp = comp.strip()
 
-        # Detect placeholder competencies like "Competency • Competency • ..."
-        parts = [p.strip() for p in comp.split("•") if p.strip()]
+        # Detect placeholder competencies like "Competency * Competency * ..."
+        parts = [p.strip() for p in comp.split("*") if p.strip()]
         placeholder_count = sum(1 for p in parts
                                 if re.match(r"(?i)^competency\s*\d*$", p.strip()))
         if placeholder_count >= 3 or not parts:
@@ -2116,7 +2120,7 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
                 if colon > 0:
                     skill_cats.append(row[:colon].strip())
 
-            # Generic but real competency pool — better than placeholders
+            # Generic but real competency pool - better than placeholders
             domain_comp = [title_words] if title_words else []
             domain_comp += skill_cats[:5]
             domain_comp += [
@@ -2132,9 +2136,9 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
                 if c.lower() not in seen_c and c:
                     seen_c.add(c.lower())
                     unique_c.append(c)
-            comp = " • ".join(unique_c[:10])
+            comp = " * ".join(unique_c[:10])
         elif len(parts) < 10:
-            # AI gave fewer than 10 — pad with generic competencies
+            # AI gave fewer than 10 - pad with generic competencies
             generic_pool = [
                 "Agile Development", "Code Review", "System Design",
                 "Cross-functional Collaboration", "CI/CD Pipelines",
@@ -2148,7 +2152,7 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
                 if g.lower() not in seen_c:
                     parts.append(g)
                     seen_c.add(g.lower())
-            comp = " • ".join(parts[:10])
+            comp = " * ".join(parts[:10])
 
         cv["competencies"] = comp
 
@@ -2181,24 +2185,24 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
         dynamic_cos = _build_dynamic_companies(years_exp)
         for i, co in enumerate(cv.get("companies", [])):
             if i < len(dynamic_cos):
-                co["dateRange"] = f"{dynamic_cos[i]['start']} – {dynamic_cos[i]['end']}"
+                co["dateRange"] = f"{dynamic_cos[i]['start']} - {dynamic_cos[i]['end']}"
 
     # 8. Override education years with calculated values
     edu_years = _build_education_year(years_exp)
     edu = cv.get("education", {})
     if isinstance(edu, dict):
-        edu["years"] = f"{edu_years['start']} – {edu_years['end']}"
+        edu["years"] = f"{edu_years['start']} - {edu_years['end']}"
         cv["education"] = edu
 
     return cv
 
 
-# ── fix_skills: normalise only, no hardcoded fallbacks ───────────────────────
+# -- fix_skills: normalise only, no hardcoded fallbacks -----------------------
 def _rebuild_skills_from_techs(techs: dict, job_title: str = "") -> list:
     """
     Emergency fallback: build 5 skill categories from the techs dict.
-    Guarantees exactly 5 categories, each with ≥5 real items.
-    Nothing is hardcoded — categories are inferred from tech names and job title.
+    Guarantees exactly 5 categories, each with >=5 real items.
+    Nothing is hardcoded - categories are inferred from tech names and job title.
     """
     core      = [t for t in techs.get("core", [])      if _is_real_tech(t)]
     preferred = [t for t in techs.get("preferred", []) if _is_real_tech(t)]
@@ -2208,7 +2212,7 @@ def _rebuild_skills_from_techs(techs: dict, job_title: str = "") -> list:
     if not all_techs:
         return []
 
-    # ── Step 1: keyword-based first-pass bucketing ────────────────────────────
+    # -- Step 1: keyword-based first-pass bucketing ----------------------------
     DB_KW    = {"sql", "mysql", "postgres", "mongodb", "redis", "oracle", "sqlite",
                 "cassandra", "dynamodb", "cosmos", "firebase", "elastic", "mssql",
                 "mariadb", "neo4j", "influx", "prisma", "sequelize", "typeorm",
@@ -2248,7 +2252,7 @@ def _rebuild_skills_from_techs(techs: dict, job_title: str = "") -> list:
     else:
         primary_name = "Core Languages & Libraries"
 
-    # 5 named slots — order matters for assignment priority
+    # 5 named slots - order matters for assignment priority
     slots = [primary_name, "Database & Storage", "Cloud & Infrastructure",
              "Frontend Technologies", "DevOps & Quality"]
     buckets: dict = {s: [] for s in slots}
@@ -2270,7 +2274,7 @@ def _rebuild_skills_from_techs(techs: dict, job_title: str = "") -> list:
         else:
             buckets[primary_name].append(t)
 
-    # ── Step 2: pool all items and redistribute so each slot has ≥5 ──────────
+    # -- Step 2: pool all items and redistribute so each slot has >=5 ----------
     # Flatten all items in stable priority order (core first, preferred, ecosystem)
     ordered_pool = list(dict.fromkeys(all_techs))
 
@@ -2302,7 +2306,7 @@ def _rebuild_skills_from_techs(techs: dict, job_title: str = "") -> list:
                     buckets[slot].append(t)
                     in_slot.add(t.lower())
 
-    # ── Step 3: deduplicate within each category and cap at 13 ───────────────
+    # -- Step 3: deduplicate within each category and cap at 13 ---------------
     result = []
     for slot in slots:
         seen: set = set()
@@ -2321,7 +2325,7 @@ def _rebuild_skills_from_techs(techs: dict, job_title: str = "") -> list:
 def fix_skills(cv: dict) -> dict:
     """
     Normalise skills into 'Category: item1, item2, ...' strings.
-    Guarantees at least 5 categories with ≥5 real-tech items each.
+    Guarantees at least 5 categories with >=5 real-tech items each.
     If the LLM output is thin, rebuilds from cv['_techs'] (injected by generate_cv_atomic)
     or from a best-effort bucket split of the technologies block.
     """
@@ -2373,7 +2377,7 @@ def fix_skills(cv: dict) -> dict:
         cat_raw = row[:colon].strip()
         val_raw = row[colon + 1:].strip()
 
-        if not val_raw or val_raw.lower() in ("none", "n/a", "null", "-", "—", "[]", "{}"):
+        if not val_raw or val_raw.lower() in ("none", "n/a", "null", "-", "-", "[]", "{}"):
             continue  # skip empty rows
 
         items = [
@@ -2396,7 +2400,7 @@ def fix_skills(cv: dict) -> dict:
 
     cv["skills"] = cleaned
 
-    # ── FALLBACK: if fewer than 5 categories or any has <5 items, rebuild ─────
+    # -- FALLBACK: if fewer than 5 categories or any has <5 items, rebuild -----
     def _count_real_items(row: str) -> int:
         ci = row.find(":")
         if ci <= 0:
@@ -2444,7 +2448,7 @@ def fix_skills(cv: dict) -> dict:
     return cv
 
 
-# ── fix_projects: strip company names from project names/overviews ────────────
+# -- fix_projects: strip company names from project names/overviews ------------
 def fix_projects(cv: dict) -> dict:
     """
     Post-processing guard: remove any real company name or known brand
@@ -2476,7 +2480,7 @@ def fix_projects(cv: dict) -> dict:
                     pattern = r'\b' + re.escape(w) + r'\b'
                     if re.search(pattern, name, re.IGNORECASE):
                         name = re.sub(pattern, '', name, flags=re.IGNORECASE).strip()
-                        name = re.sub(r'\s{2,}', ' ', name).strip(' -—–')
+                        name = re.sub(r'\s{2,}', ' ', name).strip(' ---')
 
         # 2. Strip "Project " prefix if AI added it (e.g. "Project LeoConnect")
         name = re.sub(r'^Project\s+', '', name, flags=re.IGNORECASE).strip()
@@ -2486,7 +2490,7 @@ def fix_projects(cv: dict) -> dict:
         if len(name) < 4:
             name = re.sub(r'^Project\s+', '', original_name, flags=re.IGNORECASE).strip()
 
-        # 5. Sanitize techTags — remove fake words that are not real technology names
+        # 5. Sanitize techTags - remove fake words that are not real technology names
         for tag_field in ("techTags", "tech"):
             raw_tags = p.get(tag_field)
             if raw_tags is None:
@@ -2514,7 +2518,7 @@ def fix_projects(cv: dict) -> dict:
     return cv
 
 
-# ── fix_skills: detect and remove duplicate-tool categories ───────────────────
+# -- fix_skills: detect and remove duplicate-tool categories -------------------
 
 def _repair_project_tech_tags(cv: dict, techs: dict) -> dict:
     """
@@ -2710,11 +2714,11 @@ def fix_skills_dedup(cv: dict) -> dict:
 
 
 
-# ── Domain-enforcement maps ────────────────────────────────────────────────────
+# -- Domain-enforcement maps ----------------------------------------------------
 # Each tuple: (substring_to_match_in_tech_name_lowercase, canonical_bucket)
 # Buckets: "frontend" | "backend" | "database" | "cloud" | "testing"
 _DOMAIN_RULES: list = [
-    # ── DATABASE (must come before backend to catch ORM names first) ──────────
+    # -- DATABASE (must come before backend to catch ORM names first) ----------
     ("sql server",      "database"), ("postgresql",   "database"), ("postgres",     "database"),
     ("mysql",           "database"), ("sqlite",       "database"), ("mongodb",      "database"),
     ("redis",           "database"), ("elasticsearch","database"), ("cassandra",    "database"),
@@ -2728,7 +2732,7 @@ _DOMAIN_RULES: list = [
     ("dbeaver",         "database"), ("sqlalchemy",   "database"), ("knex",         "database"),
     ("mongoose",        "database"), ("nhibernate",   "database"),
 
-    # ── CLOUD / DEVOPS ────────────────────────────────────────────────────────
+    # -- CLOUD / DEVOPS --------------------------------------------------------
     ("azure devops",    "cloud"),    ("azure app service","cloud"),("azure functions","cloud"),
     ("azure sql",       "cloud"),    ("azure blob",   "cloud"),   ("azure key vault","cloud"),
     ("azure monitor",   "cloud"),    ("azure ad",     "cloud"),   ("azure container","cloud"),
@@ -2753,7 +2757,7 @@ _DOMAIN_RULES: list = [
     ("vault",           "cloud"),    ("consul",       "cloud"),   ("istio",        "cloud"),
     ("nginx",           "cloud"),    ("apache httpd", "cloud"),   ("haproxy",      "cloud"),
 
-    # ── TESTING / QA / TOOLING ────────────────────────────────────────────────
+    # -- TESTING / QA / TOOLING ------------------------------------------------
     ("jest",            "testing"),  ("mocha",        "testing"), ("chai",         "testing"),
     ("xunit",           "testing"),  ("nunit",        "testing"), ("mstest",       "testing"),
     ("pytest",          "testing"),  ("junit",        "testing"), ("testng",       "testing"),
@@ -2769,7 +2773,7 @@ _DOMAIN_RULES: list = [
     ("pip",             "testing"),  ("nuget",        "testing"), ("maven",        "testing"),
     ("gradle",          "testing"),  ("make",         "testing"), ("cargo",        "testing"),
 
-    # ── FRONTEND / UI ─────────────────────────────────────────────────────────
+    # -- FRONTEND / UI ---------------------------------------------------------
     ("angular",         "frontend"), ("react",        "frontend"), ("vue",         "frontend"),
     ("svelte",          "frontend"), ("next.js",      "frontend"), ("nuxt",        "frontend"),
     ("remix",           "frontend"), ("gatsby",       "frontend"), ("astro",       "frontend"),
@@ -2787,7 +2791,7 @@ _DOMAIN_RULES: list = [
     ("highcharts",      "frontend"), ("leaflet",      "frontend"), ("mapbox",      "frontend"),
     ("ionic",           "frontend"), ("nativescript",  "frontend"),
 
-    # ── BACKEND / SERVER-SIDE ─────────────────────────────────────────────────
+    # -- BACKEND / SERVER-SIDE -------------------------------------------------
     ("asp.net",         "backend"),  ("asp.net core", "backend"),  (".net",        "backend"),
     ("c#",              "backend"),  ("f#",           "backend"),   ("vb.net",     "backend"),
     ("node.js",         "backend"),  ("nodejs",       "backend"),   ("express",    "backend"),
@@ -2824,7 +2828,7 @@ def _classify_tech(tech: str) -> str:
         return "frontend"
     if tl.endswith(("db", " db", "sql", "base")):
         return "database"
-    return "backend"   # safe default — better backend than wrong category
+    return "backend"   # safe default - better backend than wrong category
 
 
 def _jd_allowed_stacks(techs: dict, job_title: str) -> set:
@@ -2840,7 +2844,7 @@ def _jd_allowed_stacks(techs: dict, job_title: str) -> set:
 
     title_lower = job_title.lower() if job_title else ""
 
-    # Map of ecosystem root → detection keywords
+    # Map of ecosystem root -> detection keywords
     STACKS = {
         "dotnet":   (".net", "c#", "asp.net", "blazor", "maui", "xamarin"),
         "node":     ("node.js", "nodejs", "express", "nestjs", "fastify"),
@@ -2887,9 +2891,9 @@ def _enforce_skill_domains(cv: dict, techs: dict, job_title: str = "") -> dict:
     Post-processing domain enforcer for the 'skills' section.
 
     Two problems solved:
-    1. MISPLACED ITEMS — a tech like Docker listed under 'Backend & Frameworks'
+    1. MISPLACED ITEMS - a tech like Docker listed under 'Backend & Frameworks'
        is moved to the correct cloud/devops category.
-    2. OFF-STACK ITEMS — techs from an entirely different language ecosystem
+    2. OFF-STACK ITEMS - techs from an entirely different language ecosystem
        (e.g. Node.js in a .NET CV, or Django in an Angular CV) are removed
        unless the JD explicitly extracted them.
 
@@ -2899,13 +2903,13 @@ def _enforce_skill_domains(cv: dict, techs: dict, job_title: str = "") -> dict:
       c) If an item's bucket doesn't match the row's inferred bucket, move it
          to the matching row (or a "pending" list if no row matches yet).
       d) Remove items whose ecosystem is not present in the JD extracted techs.
-      e) Redistribute any displaced items so each row keeps ≥5 items.
+      e) Redistribute any displaced items so each row keeps >=5 items.
     """
     skills = cv.get("skills", [])
     if not skills or len(skills) < 2:
         return cv
 
-    # ── Step 1: parse rows ────────────────────────────────────────────────────
+    # -- Step 1: parse rows ----------------------------------------------------
     parsed: list[tuple[str, list[str], str]] = []  # (heading, items, inferred_bucket)
     BUCKET_HINTS = {
         "frontend": "frontend", "ui":       "frontend", "angular":  "frontend",
@@ -2945,10 +2949,10 @@ def _enforce_skill_domains(cv: dict, techs: dict, job_title: str = "") -> dict:
     if not parsed:
         return cv
 
-    # ── Step 2: determine which stacks are present in the JD ──────────────────
+    # -- Step 2: determine which stacks are present in the JD ------------------
     allowed_stacks = _jd_allowed_stacks(techs, job_title)
 
-    # Map stack → bucket (which bucket that stack's items belong to)
+    # Map stack -> bucket (which bucket that stack's items belong to)
     STACK_BUCKET = {
         "dotnet": "backend", "node": "backend", "python": "backend",
         "java":   "backend", "php":  "backend", "go":     "backend",
@@ -2966,7 +2970,7 @@ def _enforce_skill_domains(cv: dict, techs: dict, job_title: str = "") -> dict:
         for stack, bucket in STACK_BUCKET.items():
             if stack in allowed_stacks:
                 continue  # this stack is allowed
-            # This stack is NOT in the JD — check if tech belongs to it
+            # This stack is NOT in the JD - check if tech belongs to it
             STACK_MARKERS = {
                 "dotnet": (".net", "c#", "asp.net", "blazor", "maui", "signalr",
                            "entity framework", "dapper", "nhibernate", "xunit",
@@ -2989,7 +2993,7 @@ def _enforce_skill_domains(cv: dict, techs: dict, job_title: str = "") -> dict:
                 return False  # belongs to an off-stack ecosystem
         return True
 
-    # ── Step 3: build bucket → row index map ──────────────────────────────────
+    # -- Step 3: build bucket -> row index map ----------------------------------
     # The 5 rows should map to the 5 canonical buckets.
     # If two rows infer the same bucket, use the first one for that bucket.
     bucket_row: dict[str, int] = {}
@@ -2997,7 +3001,7 @@ def _enforce_skill_domains(cv: dict, techs: dict, job_title: str = "") -> dict:
         if inferred not in bucket_row:
             bucket_row[inferred] = idx
 
-    # ── Step 4: re-bucket every item ──────────────────────────────────────────
+    # -- Step 4: re-bucket every item ------------------------------------------
     # Build clean_items per row
     clean: list[list[str]] = [[] for _ in parsed]
     displaced: list[tuple[str, str]] = []  # (tech, correct_bucket)
@@ -3010,7 +3014,7 @@ def _enforce_skill_domains(cv: dict, techs: dict, job_title: str = "") -> dict:
             target_idx = bucket_row.get(correct_bucket)
 
             if target_idx is None:
-                # No row for this bucket — keep in current row (avoids data loss)
+                # No row for this bucket - keep in current row (avoids data loss)
                 clean[row_idx].append(item)
             elif target_idx == row_idx:
                 clean[row_idx].append(item)
@@ -3018,7 +3022,7 @@ def _enforce_skill_domains(cv: dict, techs: dict, job_title: str = "") -> dict:
                 # Move to correct row
                 clean[target_idx].append(item)
 
-    # ── Step 5: dedup within each row ─────────────────────────────────────────
+    # -- Step 5: dedup within each row -----------------------------------------
     for i in range(len(clean)):
         seen: set[str] = set()
         deduped: list[str] = []
@@ -3028,7 +3032,7 @@ def _enforce_skill_domains(cv: dict, techs: dict, job_title: str = "") -> dict:
                 deduped.append(t)
         clean[i] = deduped
 
-    # ── Step 6: ensure every row has ≥5 items (pull from original if needed) ──
+    # -- Step 6: ensure every row has >=5 items (pull from original if needed) --
     for row_idx, (heading, orig_items, inferred) in enumerate(parsed):
         if len(clean[row_idx]) < 5:
             existing = {t.lower() for t in clean[row_idx]}
@@ -3039,7 +3043,7 @@ def _enforce_skill_domains(cv: dict, techs: dict, job_title: str = "") -> dict:
                     clean[row_idx].append(t)
                     existing.add(t.lower())
 
-    # ── Step 7: rebuild skill rows ────────────────────────────────────────────
+    # -- Step 7: rebuild skill rows --------------------------------------------
     result: list[str] = []
     for idx, (heading, _, _) in enumerate(parsed):
         items = clean[idx]
@@ -3063,7 +3067,7 @@ def _is_token_error(body: dict) -> bool:
     )
 
 
-# ── Smart key rotation ────────────────────────────────────────────────────────
+# -- Smart key rotation --------------------------------------------------------
 def _prioritised_keys(valid_keys: list) -> list:
     import time
     now = time.time()
@@ -3075,19 +3079,19 @@ def _prioritised_keys(valid_keys: list) -> list:
     return sorted(valid_keys, key=_sort_key)
 
 
-# ── Groq caller ───────────────────────────────────────────────────────────────
-# ═══════════════════════════════════════════════════════════════════
-# GROQ 6-PIPELINE ATOMIC GENERATION — mirrors Cerebras exactly
-# Each pipeline is a short, focused prompt — no truncation possible.
-# Pipeline 1  → technology extraction
-# Pipeline 2A → title only
-# Pipeline 2B → summary only
-# Pipeline 3A → Technical Skills  (5 categories × 10 items)
-# Pipeline 3B → Core Competencies (exactly 10 domain phrases)
-# Pipeline 4  → experience bullets + roles
-# Pipeline 5A → 4 projects (natural descriptions)
-# Pipeline 5B → Related Tech (5 boxes × 5 items)
-# ═══════════════════════════════════════════════════════════════════
+# -- Groq caller ---------------------------------------------------------------
+# ===================================================================
+# GROQ 6-PIPELINE ATOMIC GENERATION - mirrors Cerebras exactly
+# Each pipeline is a short, focused prompt - no truncation possible.
+# Pipeline 1  -> technology extraction
+# Pipeline 2A -> title only
+# Pipeline 2B -> summary only
+# Pipeline 3A -> Technical Skills  (5 categories x 10 items)
+# Pipeline 3B -> Core Competencies (exactly 10 domain phrases)
+# Pipeline 4  -> experience bullets + roles
+# Pipeline 5A -> 4 projects (natural descriptions)
+# Pipeline 5B -> Related Tech (5 boxes x 5 items)
+# ===================================================================
 
 async def call_groq(req: CVRequest) -> tuple:
     raw_keys = req.groq_keys or []
@@ -3118,24 +3122,24 @@ async def call_groq(req: CVRequest) -> tuple:
                     timeout=15,
                 )
                 if probe.status_code == 429:
-                    errors_by_key.append(f"Key {i+1} ({mk}): rate limited (429) — daily limit hit")
+                    errors_by_key.append(f"Key {i+1} ({mk}): rate limited (429) - daily limit hit")
                     last_error = "rate limited"
                     continue
                 if probe.status_code in (401, 403):
                     body = probe.text[:120] if probe.text else ""
-                    errors_by_key.append(f"Key {i+1} ({mk}): invalid key ({probe.status_code}) — {body}")
+                    errors_by_key.append(f"Key {i+1} ({mk}): invalid key ({probe.status_code}) - {body}")
                     last_error = f"invalid key ({probe.status_code})"
                     continue
                 if probe.status_code == 404:
                     errors_by_key.append(
-                        f"Key {i+1} ({mk}): model '{model}' not found (404) — "
+                        f"Key {i+1} ({mk}): model '{model}' not found (404) - "
                         "try llama-3.1-8b-instant in Keys & Model tab"
                     )
                     last_error = f"model '{model}' not found (404)"
                     break
                 if probe.status_code not in (200, 201):
                     body = probe.text[:150] if probe.text else "empty"
-                    errors_by_key.append(f"Key {i+1} ({mk}): HTTP {probe.status_code} — {body}")
+                    errors_by_key.append(f"Key {i+1} ({mk}): HTTP {probe.status_code} - {body}")
                     last_error = f"HTTP {probe.status_code}"
                     if probe.status_code < 500:
                         continue
@@ -3144,11 +3148,11 @@ async def call_groq(req: CVRequest) -> tuple:
                 last_error = "probe timeout"
                 continue
             except httpx.ConnectError as ce:
-                errors_by_key.append(f"Key {i+1} ({mk}): cannot connect to api.groq.com — {ce}")
+                errors_by_key.append(f"Key {i+1} ({mk}): cannot connect to api.groq.com - {ce}")
                 last_error = "connection error"
                 break
 
-            # Key is live — run full atomic pipeline generation
+            # Key is live - run full atomic pipeline generation
             # call_llm_atomic already retries on 429 with backoff, so a
             # rate-limit exception here means all retries were exhausted.
             try:
@@ -3160,7 +3164,7 @@ async def call_groq(req: CVRequest) -> tuple:
                 err_str = str(e).lower()
                 if "rate limited" in err_str or "429" in err_str:
                     errors_by_key.append(
-                        f"Key {i+1} ({mk}): rate limited during generation (retries exhausted) — "
+                        f"Key {i+1} ({mk}): rate limited during generation (retries exhausted) - "
                         "try switching to llama-3.1-8b-instant (lower token usage) or add more keys"
                     )
                     last_error = "rate limited during generation"
@@ -3174,12 +3178,12 @@ async def call_groq(req: CVRequest) -> tuple:
             except HTTPException:
                 raise
             except Exception as e:
-                errors_by_key.append(f"Key {i+1} ({mk}): {type(e).__name__} — {str(e)[:120]}")
+                errors_by_key.append(f"Key {i+1} ({mk}): {type(e).__name__} - {str(e)[:120]}")
                 last_error = str(e)
                 _log_generation(req.job_title, mk, i, 0, model, False, str(e))
                 continue
 
-    bullet_list = "\n".join(f"  • {e}" for e in errors_by_key)
+    bullet_list = "\n".join(f"  * {e}" for e in errors_by_key)
     model_used  = model.lower()
     if "deepseek-r1" in model_used:
         fix_hint = (
@@ -3187,12 +3191,12 @@ async def call_groq(req: CVRequest) -> tuple:
             "Best options:\n"
             "  1. Switch to llama-3.3-70b-versatile (Free + Smart, no reasoning overhead)\n"
             "  2. Switch to llama-3.1-8b-instant (fastest, lowest token usage)\n"
-            "  3. Add more Groq keys from console.groq.com — each key has its own 6K TPM quota"
+            "  3. Add more Groq keys from console.groq.com - each key has its own 6K TPM quota"
         )
     else:
         fix_hint = (
             "FIX: Switch model to llama-3.1-8b-instant in Keys & Model tab (uses ~4x fewer tokens), "
-            "or add more keys from console.groq.com — free & fast."
+            "or add more keys from console.groq.com - free & fast."
         )
     raise HTTPException(
         502,
@@ -3200,14 +3204,14 @@ async def call_groq(req: CVRequest) -> tuple:
     )
 
 
-# ── Cerebras caller ───────────────────────────────────────────────────────────
-# ═══════════════════════════════════════════════════════════════════
-# CEREBRAS 3-STAGE PIPELINE — Fully Dynamic, Zero Hardcoded Tech
+# -- Cerebras caller -----------------------------------------------------------
+# ===================================================================
+# CEREBRAS 3-STAGE PIPELINE - Fully Dynamic, Zero Hardcoded Tech
 # Every output is derived 100% from the JD submitted at runtime.
 # Stage 1: tech extraction + title + summary + skills + competencies
 # Stage 2: experience (companies, bullets, tech tags)
 # Stage 3: 4 projects + 6 relatedTech boxes
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 def build_stage1_prompt(req: CVRequest) -> tuple:
     jd           = req.job_description.strip()[:2000]
@@ -3216,49 +3220,49 @@ def build_stage1_prompt(req: CVRequest) -> tuple:
     company_name = (req.company_name or "").strip()
 
     system = (
-        "You are an expert ATS-focused CV writer. Output ONLY valid JSON — no markdown, no backticks. Start { end }.\n\n"
+        "You are an expert ATS-focused CV writer. Output ONLY valid JSON - no markdown, no backticks. Start { end }.\n\n"
 
         "=== STEP 1: EXTRACT TECHNOLOGIES FROM THIS SPECIFIC JD ===\n"
         "Read the JD carefully. Extract every named technology:\n"
         "  CORE: every tool/language/framework in Requirements, Responsibilities, Must Have\n"
         "  PREFERRED: every tool in Nice-to-Have, Preferred, Bonus sections\n"
         "  ECOSYSTEM: for each CORE and PREFERRED tool, identify its standard production companions\n"
-        "    — if JD names a backend framework: add its ORM, auth lib, test framework, logger, serialiser\n"
-        "    — if JD names a cloud platform: add the specific services named + closely related managed services\n"
-        "    — if JD names a frontend framework: add its state manager, router, UI library, build tool, test runner\n"
-        "    — if JD names a database: add its migration tool, admin tool, ORM/query builder, connection pooler\n"
-        "    — if JD names a DevOps/infra tool: add its CI/CD companion, registry, orchestration tool, IaC tool\n"
-        "    — apply this expansion to every technology in the JD, regardless of domain\n"
+        "    - if JD names a backend framework: add its ORM, auth lib, test framework, logger, serialiser\n"
+        "    - if JD names a cloud platform: add the specific services named + closely related managed services\n"
+        "    - if JD names a frontend framework: add its state manager, router, UI library, build tool, test runner\n"
+        "    - if JD names a database: add its migration tool, admin tool, ORM/query builder, connection pooler\n"
+        "    - if JD names a DevOps/infra tool: add its CI/CD companion, registry, orchestration tool, IaC tool\n"
+        "    - apply this expansion to every technology in the JD, regardless of domain\n"
         "ABSOLUTE: Every technology in the output MUST come from CORE, PREFERRED, or ECOSYSTEM of THIS JD.\n"
-        "ABSOLUTE: Technologies not in the JD are BANNED — do not add anything from your training knowledge.\n"
-        "ABSOLUTE: Output changes completely for every different JD — nothing is ever hardcoded.\n\n"
+        "ABSOLUTE: Technologies not in the JD are BANNED - do not add anything from your training knowledge.\n"
+        "ABSOLUTE: Output changes completely for every different JD - nothing is ever hardcoded.\n\n"
 
         "=== SKILLS (6 categories, 11-13 items each) ===\n"
         "Identify 6 distinct technical domains from the JD (e.g. backend, frontend, cloud, database, devops, testing).\n"
         "For each domain, list 11-13 technologies from your CORE + PREFERRED + ECOSYSTEM extraction.\n"
-        "Assign each technology to exactly ONE category — zero repeated items across categories.\n"
-        "Category names: derive from the actual JD domains — e.g. '[Language] Backend Development', '[Framework] Frontend', '[Cloud] Infrastructure'.\n"
+        "Assign each technology to exactly ONE category - zero repeated items across categories.\n"
+        "Category names: derive from the actual JD domains - e.g. '[Language] Backend Development', '[Framework] Frontend', '[Cloud] Infrastructure'.\n"
         "MINIMUM 11 items per category is a HARD FAILURE. MAXIMUM 13.\n\n"
 
         "=== TECHNOLOGIES OBJECT ===\n"
-        "mustHave: 10-14 items — CORE technologies + top ECOSYSTEM companions\n"
-        "niceToHave: 8-12 items — PREFERRED technologies + ECOSYSTEM companions (zero overlap with mustHave)\n"
-        "additional: 8-12 items — standard tools for this role domain not already listed above (zero overlap)\n\n"
+        "mustHave: 10-14 items - CORE technologies + top ECOSYSTEM companions\n"
+        "niceToHave: 8-12 items - PREFERRED technologies + ECOSYSTEM companions (zero overlap with mustHave)\n"
+        "additional: 8-12 items - standard tools for this role domain not already listed above (zero overlap)\n\n"
 
         "=== SUMMARY (4 sentences, 70+ words) ===\n"
         f"S1 MUST start: '{total_years} years of experience in [domain from JD]...'\n"
         "S2: name 4-5 technologies FROM THIS JD + the system types built\n"
         "S3: scale and complexity metrics derived from the JD\n"
         "S4: methodology and business outcome relevant to the target domain\n"
-        "Use ONLY technologies from this JD — never add outside technologies.\n\n"
+        "Use ONLY technologies from this JD - never add outside technologies.\n\n"
 
-        "=== COMPETENCIES (exactly 10, separated by ' • ') ===\n"
+        "=== COMPETENCIES (exactly 10, separated by ' * ') ===\n"
         "Each phrase 2-4 words. Span: Technical Practices, Domain Expertise, Engineering Process, Impact Areas.\n"
-        "Derive ALL from this JD's domain — zero generic phrases.\n\n"
+        "Derive ALL from this JD's domain - zero generic phrases.\n\n"
 
         "=== ARCHITECTURES (3-5 objects) ===\n"
         "Each: {name, description (25-40 words naming JD technologies + concrete outcome)}.\n"
-        "Derive patterns from what THIS JD says — not generic patterns.\n\n"
+        "Derive patterns from what THIS JD says - not generic patterns.\n\n"
 
         "BANNED: percentage bars, wrong technologies, <11 skill items per category, "
         "duplicate tools across categories, generic competencies."
@@ -3271,7 +3275,7 @@ Total Experience: {total_years} years
 Job Description:
 {jd}
 
-Output JSON with EXACTLY these keys — no companies, no projects yet:
+Output JSON with EXACTLY these keys - no companies, no projects yet:
 {{
   "  \"title\": \"[MUST BE DERIVED FROM JD: Change the job title by swapping function word and using a DIFFERENT core technology from the JD] | [Tech1 from JD], [Tech2 from JD], [Tech3 from JD]\",\n"
   "summary": "{total_years} years of experience in [JD domain]... (4 sentences, 70+ words, JD technologies only)",
@@ -3279,7 +3283,7 @@ Output JSON with EXACTLY these keys — no companies, no projects yet:
     "JD Domain Category: item1, item2, ...(11-13 items, all from JD ecosystem)",
     "... (6 categories total, zero items repeated across categories)"
   ],
-  "competencies": "JD-Phrase1 • JD-Phrase2 • ... (exactly 10, all from JD domain)",
+  "competencies": "JD-Phrase1 * JD-Phrase2 * ... (exactly 10, all from JD domain)",
   "keywords": "jd-term1, jd-term2, ... (18-20 ATS terms from JD)",
   "technologies": {{
     "mustHave": ["JD-core-tool", ... (10-14 items)],
@@ -3299,7 +3303,7 @@ def build_stage2_prompt(req: CVRequest, stage1: dict) -> tuple:
     companies   = _build_dynamic_companies(years_exp)
     num_cos     = len(companies)
 
-    # Build locked tech list from stage1 output — only what the model extracted from the JD
+    # Build locked tech list from stage1 output - only what the model extracted from the JD
     allowed = []
     seen_a  = set()
     for row in stage1.get("skills", []):
@@ -3317,13 +3321,13 @@ def build_stage2_prompt(req: CVRequest, stage1: dict) -> tuple:
 
     if num_cos == 1:
         sen = [("Junior", "only company")]
-        verbs = "Co1 (Junior — only role): Implemented, Built, Developed, Deployed, Configured, Automated."
+        verbs = "Co1 (Junior - only role): Implemented, Built, Developed, Deployed, Configured, Automated."
     elif num_cos == 2:
-        sen = [("", "current — NO prefix"), ("Junior", "oldest")]
+        sen = [("", "current - NO prefix"), ("Junior", "oldest")]
         verbs = ("Co1 (current): Developed, Engineered, Designed, Integrated, Streamlined, Built.\n"
                  "Co2 (Junior): Implemented, Configured, Deployed, Automated, Built, Assisted.")
     else:
-        sen = [("Senior", "current"), ("", "mid — NO prefix"), ("Junior", "oldest")]
+        sen = [("Senior", "current"), ("", "mid - NO prefix"), ("Junior", "oldest")]
         verbs = ("Co1 (Senior): Architected, Engineered, Led, Spearheaded, Established, Designed, Launched.\n"
                  "Co2 (mid): Optimised, Refactored, Scaled, Migrated, Integrated, Streamlined, Unified.\n"
                  "Co3 (Junior): Implemented, Built, Developed, Deployed, Configured, Automated, Instrumented.")
@@ -3332,7 +3336,7 @@ def build_stage2_prompt(req: CVRequest, stage1: dict) -> tuple:
     for i, co in enumerate(companies):
         prefix, label = sen[i]
         co_lines.append(
-            f'Co{i+1} ({label}): name="{co["name"]}", dates="{co["start"]} – {co["end"]}"'
+            f'Co{i+1} ({label}): name="{co["name"]}", dates="{co["start"]} - {co["end"]}"'
             + (f', role MUST start with "{prefix}"' if prefix else ', role has NO seniority prefix')
         )
     co_block = "\n".join(co_lines)
@@ -3340,7 +3344,7 @@ def build_stage2_prompt(req: CVRequest, stage1: dict) -> tuple:
     system = (
         "You are an expert ATS-focused CV writer. Output ONLY valid JSON. No markdown, no backticks. Start { end }.\n\n"
 
-        "=== LOCKED TECHNOLOGY LIST (use ONLY these — nothing else) ===\n"
+        "=== LOCKED TECHNOLOGY LIST (use ONLY these - nothing else) ===\n"
         f"{allowed_str}\n\n"
 
         "=== EXPERIENCE RULES ===\n"
@@ -3354,16 +3358,16 @@ def build_stage2_prompt(req: CVRequest, stage1: dict) -> tuple:
         "TECH TAGS:\n"
         "Each company 'tech': exactly 6-8 pipe-separated tools from the locked list above.\n"
         "Co1 gets architectural/advanced tools. Co2 gets mid-level. Co3 gets foundational.\n"
-        "NEVER fewer than 6 — hard failure.\n\n"
+        "NEVER fewer than 6 - hard failure.\n\n"
 
         "BULLETS (4 per company, 20-30 words each):\n"
         "ALL 12 bullets across all companies describe 12 DIFFERENT systems or features.\n"
-        "Before each bullet — ask: have I described this system type before? If yes, choose different.\n"
+        "Before each bullet - ask: have I described this system type before? If yes, choose different.\n"
         "Each bullet: 1+ technology from the locked list + specific named system + unique metric.\n"
         "ZERO verbs repeated across all 12 bullets.\n"
         "ZERO metrics repeated (no two bullets share the same number/percentage).\n"
         "ZERO sentence structures repeated.\n"
-        "NEVER 'web application' or 'full stack app' as deliverable — name the specific system.\n\n"
+        "NEVER 'web application' or 'full stack app' as deliverable - name the specific system.\n\n"
 
         f"VERB GUIDE:\n{verbs}\n\n"
 
@@ -3382,7 +3386,7 @@ JD context:
 Output JSON:
 {{"companies":[
   {{"company":"EXACT NAME","role":"Seniority JD-Domain UniqueFunction",
-    "dateRange":"Start – End",
+    "dateRange":"Start - End",
     "bullets":["20-30w bullet 1","20-30w bullet 2","20-30w bullet 3","20-30w bullet 4"],
     "tech":"JD-Tech1 | JD-Tech2 | JD-Tech3 | JD-Tech4 | JD-Tech5 | JD-Tech6"}},
   ...({num_cos} total)
@@ -3415,10 +3419,10 @@ def build_stage3_prompt(req: CVRequest, stage1: dict, stage2: dict) -> tuple:
         co_intel = (
             f"TARGET COMPANY: {company_name}\n"
             f"COMPANY DATA (from website/search):\n{company_ctx[:800]}\n\n"
-            "PROJECTS 3 & 4 — COMPANY-DOMAIN ALIGNMENT:\n"
+            "PROJECTS 3 & 4 - COMPANY-DOMAIN ALIGNMENT:\n"
             f"Read the company data above. Identify their CORE BUSINESS DOMAIN and PRODUCT PORTFOLIO.\n"
-            "Project 3: Build a project in an ADJACENT SECTOR using the SAME underlying tech pattern as the company's core product — using JD technologies only. Do NOT copy their product.\n"
-            "Project 4: Build a project inspired by the company's SECONDARY services or industry reputation — different adjacent domain, JD technologies only.\n"
+            "Project 3: Build a project in an ADJACENT SECTOR using the SAME underlying tech pattern as the company's core product - using JD technologies only. Do NOT copy their product.\n"
+            "Project 4: Build a project inspired by the company's SECONDARY services or industry reputation - different adjacent domain, JD technologies only.\n"
             "ANALOGY RULE: Abstract the company's business pattern (e.g. multi-tenant SaaS, marketplace, fleet management, billing engine) then apply it to a different sector.\n"
             "All 4 projects must feel like real-world systems a developer at this company would build.\n"
         )
@@ -3428,11 +3432,11 @@ def build_stage3_prompt(req: CVRequest, stage1: dict, stage2: dict) -> tuple:
             f"Use your knowledge of {company_name}'s products, services, and industry positioning.\n"
             "Project 3: Adjacent-sector project mirroring their core product pattern, using JD technologies.\n"
             "Project 4: Project inspired by their secondary offerings or market reputation, different sector, JD technologies.\n"
-            f"NEVER copy {company_name}'s exact product — build analogous systems in parallel domains.\n"
+            f"NEVER copy {company_name}'s exact product - build analogous systems in parallel domains.\n"
         )
     else:
         co_intel = (
-            "No company provided — all 4 projects are JD-driven.\n"
+            "No company provided - all 4 projects are JD-driven.\n"
             "Derive 4 different system types from the JD's tech stack, responsibilities, and domain signals.\n"
         )
 
@@ -3445,15 +3449,15 @@ def build_stage3_prompt(req: CVRequest, stage1: dict, stage2: dict) -> tuple:
         "=== 4 PROJECTS ===\n"
         "Each project: a coined SaaS-style product name + 3-4 sentence overview + 3 bullets.\n\n"
 
-        "NAMING: '[CoinedOriginalWord] — [what it does using JD tech]'\n"
+        "NAMING: '[CoinedOriginalWord] - [what it does using JD tech]'\n"
         "Product name: an original coined word (e.g. NexaFlow, VaultIQ, ShiftSync, PulseGrid).\n"
         "BANNED names: 'ERP Platform', 'Web App', 'Social Media Platform', 'Business Intelligence Platform', real company names.\n\n"
 
         "OVERVIEW (3-4 sentences, MANDATORY structure per project):\n"
-        "  Sentence 1 — PROBLEM: who is affected, what they lose without this system\n"
-        "  Sentence 2 — SOLUTION: architecture designed + 2 specific JD technologies used\n"
-        "  Sentence 3 — FUNCTIONALITY: what the system does, how users interact\n"
-        "  Sentence 4 — BUSINESS IMPACT: one unique measurable outcome (number unique per project)\n"
+        "  Sentence 1 - PROBLEM: who is affected, what they lose without this system\n"
+        "  Sentence 2 - SOLUTION: architecture designed + 2 specific JD technologies used\n"
+        "  Sentence 3 - FUNCTIONALITY: what the system does, how users interact\n"
+        "  Sentence 4 - BUSINESS IMPACT: one unique measurable outcome (number unique per project)\n"
         "Each overview opens with a DIFFERENT sentence structure across the 4 projects.\n"
         "ZERO repeated metrics across all 4 projects.\n\n"
 
@@ -3466,7 +3470,7 @@ def build_stage3_prompt(req: CVRequest, stage1: dict, stage2: dict) -> tuple:
         "=== 6 RELATED TECH BOXES ===\n"
         "6 category boxes. Each box: EXACTLY 10-13 items from the JD ecosystem. Fewer than 10 items per box is a HARD FAILURE.\\n"
         "ZERO items repeated across any of the 6 boxes.\n"
-        "Category names reflect actual JD technical domains — not generic labels.\n\n"
+        "Category names reflect actual JD technical domains - not generic labels.\n\n"
 
         "BANNED: generic project names, <3 sentence overviews, repeated metrics, "
         "real company names in projects, technologies outside locked list, <10 relatedTech items per box, "
@@ -3486,7 +3490,7 @@ SYSTEMS ALREADY IN EXPERIENCE (do NOT repeat in projects):
 
 Output JSON:
 {{"projects":[
-  {{"name":"CoinedWord — what it does [JD-Tech1, JD-Tech2]",
+  {{"name":"CoinedWord - what it does [JD-Tech1, JD-Tech2]",
     "overview":"PROBLEM sentence. SOLUTION sentence (2 JD techs). FUNCTIONALITY sentence. BUSINESS IMPACT (unique number).",
     "bullets":["component + JD tech (20-30w)","challenge + unique metric (20-30w)","outcome + unique number (20-30w)"]}},
   ...(4 projects: 1&2 JD-driven, 3&4 company-domain-driven per above rules)
@@ -3548,7 +3552,7 @@ def _merge_stages(stage1: dict, stage2: dict, stage3: dict, req: CVRequest) -> d
             "university":  "QURTUBA UNIVERSITY OF SCIENCE AND INFORMATION TECHNOLOGY",
             "degree":      "Bachelor of Science in Computer Science (BSCS)",
             "cgpa":        "3.97/4.0",
-            "years":       f"{edu['start']} – {edu['end']}",
+            "years":       f"{edu['start']} - {edu['end']}",
             "achievement": "Gold Medalist for Academic Excellence",
         },
     }
@@ -3568,10 +3572,10 @@ def _merge_stages(stage1: dict, stage2: dict, stage3: dict, req: CVRequest) -> d
     )
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # 5-PIPELINE ATOMIC GENERATION - No prompt ever truncated
 # Each pipeline is <1500 tokens, well under all model limits
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 def build_pipeline1_tech(req: CVRequest) -> tuple:
     jd = req.job_description.strip()[:1000]
@@ -3581,14 +3585,14 @@ def build_pipeline1_tech(req: CVRequest) -> tuple:
         "MISSION: Extract every technology from the JD, then for each one, "
         "add its standard production companion tools.\n"
         "For example:\n"
-        "  - A real-time protocol → add its broker, client library, message format, monitoring tool\n"
-        "  - A frontend language → add its build tool, bundler, linter, test runner, UI library\n"
-        "  - A backend language → add its framework, ORM, auth lib, task queue, test framework\n"
-        "  - A database → add its migration tool, admin UI, caching layer, connection pooler\n"
-        "  - A cloud service → add related managed services from the same provider\n"
+        "  - A real-time protocol -> add its broker, client library, message format, monitoring tool\n"
+        "  - A frontend language -> add its build tool, bundler, linter, test runner, UI library\n"
+        "  - A backend language -> add its framework, ORM, auth lib, task queue, test framework\n"
+        "  - A database -> add its migration tool, admin UI, caching layer, connection pooler\n"
+        "  - A cloud service -> add related managed services from the same provider\n"
         "Apply companion expansion to EVERY technology found in the JD.\n"
         "Target: at least 30 distinct named tools across all three arrays.\n"
-        "Every item must be a real named tool — no generic words."
+        "Every item must be a real named tool - no generic words."
     )
 
     user = f"""Job Title: {req.job_title}
@@ -3596,8 +3600,8 @@ def build_pipeline1_tech(req: CVRequest) -> tuple:
 Job Description:
 {jd}
 
-Step 1: List every technology explicitly named in the JD → these are 'core' or 'preferred'.
-Step 2: For each technology found, add 3-5 standard companion tools → these are 'ecosystem'.
+Step 1: List every technology explicitly named in the JD -> these are 'core' or 'preferred'.
+Step 2: For each technology found, add 3-5 standard companion tools -> these are 'ecosystem'.
 Step 3: Output the result.
 
 Output JSON (aim for 30+ total items):
@@ -3633,10 +3637,10 @@ Title rules (STRICT - MUST FOLLOW):
 - Use 3 different technologies from the list above
 - Format: "Transformed Title | Tech1, Tech2, Tech3"
 
-Examples of acceptable transformations (these are FORMAT examples only — use technologies from the JD, not these):
-- "[Role A]" → "[Different Function Word] | [JD-Tech1], [JD-Tech2], [JD-Tech3]"
-- "[Role B]" → "[Domain]-Focused [Function] | [JD-Tech1], [JD-Tech2], [JD-Tech3]"
-- "[Role C]" → "[Scope-shifted Title] | [JD-Tech1], [JD-Tech2], [JD-Tech3]"
+Examples of acceptable transformations (these are FORMAT examples only - use technologies from the JD, not these):
+- "[Role A]" -> "[Different Function Word] | [JD-Tech1], [JD-Tech2], [JD-Tech3]"
+- "[Role B]" -> "[Domain]-Focused [Function] | [JD-Tech1], [JD-Tech2], [JD-Tech3]"
+- "[Role C]" -> "[Scope-shifted Title] | [JD-Tech1], [JD-Tech2], [JD-Tech3]"
 
 NEVER output the exact job title. ALWAYS transform it using the rules above.
 
@@ -3707,12 +3711,12 @@ CRITICAL RULES:
 - Keep title under 60 characters before the pipe
 
 BAD examples (REJECT):
-- "Dallas-Based Software Architect" → has location
-- "Remote [Role]" → has location word
-- "Pakistan [Role]" → has location word
-- "Company X Lead Developer" → has company name
+- "Dallas-Based Software Architect" -> has location
+- "Remote [Role]" -> has location word
+- "Pakistan [Role]" -> has location word
+- "Company X Lead Developer" -> has company name
 
-GOOD examples (FORMAT only — use JD technologies, not these):
+GOOD examples (FORMAT only - use JD technologies, not these):
 - "[Domain] [Function] | [JD-Tech1], [JD-Tech2], [JD-Tech3]"
 - "[Seniority] [Domain] [Function] | [JD-Tech1], [JD-Tech2], [JD-Tech3]"
 """
@@ -3730,7 +3734,7 @@ Output JSON:
     return system, user
 
 def build_pipeline3a_skills(req: CVRequest, techs: dict) -> tuple:
-    """Pipeline 3A: Generate ONLY Technical Skills — dedicated pipeline.
+    """Pipeline 3A: Generate ONLY Technical Skills - dedicated pipeline.
     Produces exactly 5 categories, each with exactly 10-12 items,
     all strictly derived from the JD's technology stack.
     """
@@ -3747,9 +3751,9 @@ def build_pipeline3a_skills(req: CVRequest, techs: dict) -> tuple:
         "You are an expert CV technical skills writer. Output ONLY valid JSON. "
         "No markdown, no backticks, no explanations. Start { end }.\n\n"
         "MISSION: Produce exactly 5 skill categories for a CV 'Technical Skills' section.\n"
-        "EVERY item must come from the technologies list provided — nothing invented.\n"
+        "EVERY item must come from the technologies list provided - nothing invented.\n"
         "Each category MUST have exactly 10 items (hard minimum and maximum).\n"
-        "Assign each technology to ONE category only — zero items repeated across categories.\n"
+        "Assign each technology to ONE category only - zero items repeated across categories.\n"
         "Category names MUST reflect the JD's actual technical domains "
         "(e.g. 'Backend Frameworks', 'Cloud & DevOps', 'Frontend Technologies', "
         "'Database & Storage', 'Testing & Quality'). "
@@ -3761,18 +3765,18 @@ def build_pipeline3a_skills(req: CVRequest, techs: dict) -> tuple:
 Job Description:
 {jd}
 
-Allowed Technologies (use ONLY technologies from this list — nothing else):
+Allowed Technologies (use ONLY technologies from this list - nothing else):
 {techs_str}
 
 TASK: Create exactly 5 skill categories. Each category must have EXACTLY 10 items.
 
 RULES:
-1. Category names come from the JD's actual technical domains — infer from the job title and JD.
+1. Category names come from the JD's actual technical domains - infer from the job title and JD.
 2. Populate each category by grouping related technologies from the allowed list.
 3. If a domain has fewer than 10 items in the allowed list, include the closest ecosystem companions standard to that domain.
 4. ZERO items repeated across any two categories.
-5. EXACTLY 5 categories — no more, no less.
-6. EXACTLY 10 items per category — no more, no less.
+5. EXACTLY 5 categories - no more, no less.
+6. EXACTLY 10 items per category - no more, no less.
 
 Output JSON (exactly this shape):
 {{"skills": [
@@ -3787,7 +3791,7 @@ Output JSON (exactly this shape):
 
 
 def build_pipeline3b_competencies(req: CVRequest, techs: dict) -> tuple:
-    """Pipeline 3B: Generate ONLY Core Competencies — dedicated pipeline.
+    """Pipeline 3B: Generate ONLY Core Competencies - dedicated pipeline.
     Produces exactly 10 domain-specific 2-4 word phrases from the JD.
     """
     jd = req.job_description.strip()[:700]
@@ -3797,8 +3801,8 @@ def build_pipeline3b_competencies(req: CVRequest, techs: dict) -> tuple:
         "You are an expert CV writer. Output ONLY valid JSON. "
         "No markdown, no backticks, no explanations. Start { end }.\n\n"
         "MISSION: Produce exactly 10 core competency phrases for a CV.\n"
-        "ALL phrases must be derived from the job description's domain — zero generic soft skills.\n"
-        "Each phrase: 2-4 words. Format: separated by ' • '.\n"
+        "ALL phrases must be derived from the job description's domain - zero generic soft skills.\n"
+        "Each phrase: 2-4 words. Format: separated by ' * '.\n"
         "Span these 4 areas:\n"
         "  Technical Practices (e.g. 'API Design', 'Test-Driven Development')\n"
         "  Domain Expertise (e.g. 'Cloud-Native Architecture', 'Real-Time Analytics')\n"
@@ -3819,12 +3823,12 @@ TASK: Generate exactly 10 core competency phrases.
 RULES:
 1. Each phrase: 2-4 words, directly tied to the JD's technical domain.
 2. Must span all 4 areas: Technical Practices, Domain Expertise, Engineering Process, Impact Areas.
-3. Derive ALL from the JD — read the responsibilities, tech stack, and outcomes mentioned.
+3. Derive ALL from the JD - read the responsibilities, tech stack, and outcomes mentioned.
 4. Zero generic phrases (no 'Problem Solving', 'Teamwork', 'Communication').
-5. Exactly 10 phrases — no more, no less.
+5. Exactly 10 phrases - no more, no less.
 
 Output JSON:
-{{"competencies": "Phrase1 • Phrase2 • Phrase3 • Phrase4 • Phrase5 • Phrase6 • Phrase7 • Phrase8 • Phrase9 • Phrase10"}}"""
+{{"competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10"}}"""
 
     return system, user
 
@@ -3841,7 +3845,7 @@ def build_pipeline4_experience(req: CVRequest, techs: dict) -> tuple:
     ecosystem = techs.get("ecosystem", [])
     all_techs = list(dict.fromkeys(core + preferred + ecosystem))
 
-    # Slice into non-overlapping pools — one per company
+    # Slice into non-overlapping pools - one per company
     # Co1 gets first slice (most advanced), Co2 middle, Co3 last (foundational)
     chunk = max(6, len(all_techs) // num_cos) if num_cos > 0 else len(all_techs)
     co_tech_pools = []
@@ -3881,31 +3885,31 @@ def build_pipeline4_experience(req: CVRequest, techs: dict) -> tuple:
         prefix = seniority[i] if i < len(seniority) else ""
         pool_str = " | ".join(co_tech_pools[i]) if i < len(co_tech_pools) else ""
         co_lines.append(
-            f'Co{i+1}: company="{co["name"]}", dates="{co["start"]} – {co["end"]}"'
+            f'Co{i+1}: company="{co["name"]}", dates="{co["start"]} - {co["end"]}"'
             + (f', role MUST start with "{prefix}"' if prefix else ", role has NO seniority prefix")
             + f'\n  *** LOCKED TECH POOL (use ONLY these for Co{i+1} tech tags AND bullets): {pool_str} ***'
-            + f'\n  Tech tags: pick exactly 6-8 from the locked pool above — DIFFERENT from every other company.'
+            + f'\n  Tech tags: pick exactly 6-8 from the locked pool above - DIFFERENT from every other company.'
         )
     co_block = "\n\n".join(co_lines)
 
     system = (
         "You are an expert ATS-focused CV writer. Output ONLY valid JSON. No markdown, no backticks. Start { end }.\n\n"
 
-        "=== TECH TAG UNIQUENESS — THIS IS THE #1 RULE ===\n"
+        "=== TECH TAG UNIQUENESS - THIS IS THE #1 RULE ===\n"
         "Each company has a LOCKED tech pool printed below. "
         "You MUST pick tech tags ONLY from that company's locked pool.\n"
         "HARD RULE: A technology that appears in Co1's tags MUST NOT appear in Co2's or Co3's tags.\n"
         "HARD RULE: A technology that appears in Co2's tags MUST NOT appear in Co3's tags.\n"
-        "HARD RULE: Zero tech overlap across any two companies — every company's tag set is 100% unique.\n"
+        "HARD RULE: Zero tech overlap across any two companies - every company's tag set is 100% unique.\n"
         "HARD RULE: Bullets for each company must reference technologies from THAT company's locked pool.\n\n"
 
         "=== BULLET RULES ===\n"
         "4 bullets per company. Each bullet 20-30 words.\n"
         "All 12 bullets describe 12 COMPLETELY DIFFERENT systems or features.\n"
         "ZERO verbs repeated across all 12 bullets.\n"
-        "ZERO metrics repeated — every number/percentage is unique.\n"
+        "ZERO metrics repeated - every number/percentage is unique.\n"
         "ZERO sentence structures repeated.\n"
-        "Name the SPECIFIC system type in every bullet — never say 'web application' or 'full stack app'.\n\n"
+        "Name the SPECIFIC system type in every bullet - never say 'web application' or 'full stack app'.\n\n"
 
         f"VERB GUIDE:\n{verb_guide}\n\n"
 
@@ -3927,7 +3931,7 @@ COMPANIES WITH LOCKED TECH POOLS:
 Output JSON:
 {{"companies":[
   {{"company":"EXACT NAME","role":"Seniority JD-Domain Function",
-    "dateRange":"Start – End",
+    "dateRange":"Start - End",
     "bullets":["20-30w bullet using Co1 pool tech","20-30w bullet","20-30w bullet","20-30w bullet"],
     "tech":"Co1-Pool-Tech1 | Co1-Pool-Tech2 | Co1-Pool-Tech3 | Co1-Pool-Tech4 | Co1-Pool-Tech5 | Co1-Pool-Tech6"}},
   ...({num_cos} total, each using ONLY its own locked pool)
@@ -3944,7 +3948,7 @@ def build_pipeline4_roles_only(req: CVRequest, techs: dict, companies_list: list
     # Build company list with their years ranges
     company_details = []
     for i, co in enumerate(companies_list):
-        company_details.append(f"Company {i+1}: {co['name']} ({co['start']} – {co['end']})")
+        company_details.append(f"Company {i+1}: {co['name']} ({co['start']} - {co['end']})")
     companies_str = "\n".join(company_details)
     
     # Determine seniority based on years and position
@@ -4000,15 +4004,15 @@ TECH TAGS (6-8 technologies per company):
 - Company 3: foundational technologies
 - NO technology can appear in more than one company's tech tags
 
-GOOD role title examples FORMAT (ACCEPT — use JD domain, not these specific words):
+GOOD role title examples FORMAT (ACCEPT - use JD domain, not these specific words):
 - "[Seniority] [JD-Domain] [Function]"   e.g. Senior [JD domain word] Engineer
 - "[JD-Domain] [Function]"               e.g. [JD domain word] Developer
 - "Junior [JD-Domain] [Function]"        e.g. Junior [JD domain word] Specialist
 
 BAD role title examples (REJECT):
-- "[Role] Dallas" → has location
-- "Remote [Role]" → has location
-- "Pakistan [Role]" → has location"""
+- "[Role] Dallas" -> has location
+- "Remote [Role]" -> has location
+- "Pakistan [Role]" -> has location"""
 
     user = f"""Job Title from JD: {req.job_title}
 Total Experience: {total_years} years
@@ -4075,7 +4079,7 @@ IMPORTANT:
 def assign_project_techs(techs: dict, num_projects: int = 4) -> list:
     """
     Simply slice the full tech list into 4 non-overlapping groups.
-    Each group becomes one project's tech pool — guaranteeing zero overlap.
+    Each group becomes one project's tech pool - guaranteeing zero overlap.
     """
     core      = techs.get("core", [])
     preferred = techs.get("preferred", [])
@@ -4103,7 +4107,7 @@ def assign_project_techs(techs: dict, num_projects: int = 4) -> list:
     return assignments
 
 def build_pipeline5a_projects(req: CVRequest, techs: dict, experience: dict) -> tuple:
-    """Pipeline 5A: Generate ONLY 4 projects — each locked to a unique primary technology."""
+    """Pipeline 5A: Generate ONLY 4 projects - each locked to a unique primary technology."""
     company_name = (req.company_name or "").strip()
     company_ctx  = (req.company_context or "").strip()[:700]
     all_techs    = techs.get("core", []) + techs.get("preferred", []) + techs.get("ecosystem", [])
@@ -4122,7 +4126,7 @@ def build_pipeline5a_projects(req: CVRequest, techs: dict, experience: dict) -> 
         company_intel = (
             f"Target Company: {company_name}\n"
             f"Company Context: {company_ctx[:400]}\n"
-            "Projects 3 & 4 should be analogous to this company's domain — "
+            "Projects 3 & 4 should be analogous to this company's domain - "
             "use the same underlying tech pattern but in a different adjacent sector.\n"
         )
     elif company_name:
@@ -4168,26 +4172,26 @@ def build_pipeline5a_projects(req: CVRequest, techs: dict, experience: dict) -> 
         "Each project must be in a DIFFERENT problem domain with a DIFFERENT primary technology.\n\n"
 
         "=== DIVERSITY HARD RULES ===\n"
-        "- All 12 bullets (3 per project × 4 projects) must open with a DIFFERENT verb — zero repeats.\n"
+        "- All 12 bullets (3 per project x 4 projects) must open with a DIFFERENT verb - zero repeats.\n"
         "- All 4 overviews must describe DIFFERENT user personas (not all 'enterprise administrators').\n"
         "- All 4 business impact metrics must use DIFFERENT units or formats.\n"
         "- All 4 system domains must be DIFFERENT (not all 'real-time dashboards').\n"
         "- NEVER use 'JavaScript and WebSocket' as the solution in more than ONE project.\n\n"
 
         "PROJECT NAMING:\n"
-        "- Each name: a coined original SaaS-style word followed by ' — ' and what it does.\n"
+        "- Each name: a coined original SaaS-style word followed by ' - ' and what it does.\n"
         "- BANNED: 'ERP Platform', 'Web App', 'Social Media Platform', real company names.\n\n"
 
         "OVERVIEW (3-4 sentences, MANDATORY structure):\n"
-        "  S1 PROBLEM: specific user persona + what they lose — DIFFERENT persona each project.\n"
+        "  S1 PROBLEM: specific user persona + what they lose - DIFFERENT persona each project.\n"
         "  S2 SOLUTION: architecture using the project's ASSIGNED primary technology + 1 supporting tech.\n"
         "  S3 FUNCTIONALITY: key features of this specific system type.\n"
-        "  S4 BUSINESS IMPACT: unique measurable outcome — number and unit differ across all 4 projects.\n\n"
+        "  S4 BUSINESS IMPACT: unique measurable outcome - number and unit differ across all 4 projects.\n\n"
 
         "BULLETS (3 per project):\n"
         "  B1: component built using the project's ASSIGNED primary technology (20-30 words).\n"
-        "  B2: hardest technical challenge + concrete metric — metric format unique across all projects (20-30 words).\n"
-        "  B3: business outcome + unique number — unit must differ from all other B3s (20-30 words).\n"
+        "  B2: hardest technical challenge + concrete metric - metric format unique across all projects (20-30 words).\n"
+        "  B3: business outcome + unique number - unit must differ from all other B3s (20-30 words).\n"
         "ZERO repeated verbs across all 12 bullets.\n\n"
 
         "TECH TAGS: Each project gets 5-7 tags. "
@@ -4212,10 +4216,10 @@ Generate EXACTLY 4 projects. Each must be in a different domain with its assigne
 
 Output JSON:
 {{"projects":[
-  {{"name":"CoinedWord — what it does","overview":"PROBLEM (specific persona). SOLUTION (assigned primary tech + 1 supporting). FUNCTIONALITY. BUSINESS IMPACT (unique metric).","bullets":["component + assigned primary tech (20-30w)","challenge + unique metric format (20-30w)","outcome + unique number+unit (20-30w)"],"techTags":["AssignedPrimaryTech","supporting1","supporting2","supporting3","supporting4"]}},
-  {{"name":"CoinedWord — what it does","overview":"...","bullets":["b1","b2","b3"],"techTags":["AssignedPrimaryTech","s1","s2","s3","s4"]}},
-  {{"name":"CoinedWord — what it does","overview":"...","bullets":["b1","b2","b3"],"techTags":["AssignedPrimaryTech","s1","s2","s3","s4"]}},
-  {{"name":"CoinedWord — what it does","overview":"...","bullets":["b1","b2","b3"],"techTags":["AssignedPrimaryTech","s1","s2","s3","s4"]}}
+  {{"name":"CoinedWord - what it does","overview":"PROBLEM (specific persona). SOLUTION (assigned primary tech + 1 supporting). FUNCTIONALITY. BUSINESS IMPACT (unique metric).","bullets":["component + assigned primary tech (20-30w)","challenge + unique metric format (20-30w)","outcome + unique number+unit (20-30w)"],"techTags":["AssignedPrimaryTech","supporting1","supporting2","supporting3","supporting4"]}},
+  {{"name":"CoinedWord - what it does","overview":"...","bullets":["b1","b2","b3"],"techTags":["AssignedPrimaryTech","s1","s2","s3","s4"]}},
+  {{"name":"CoinedWord - what it does","overview":"...","bullets":["b1","b2","b3"],"techTags":["AssignedPrimaryTech","s1","s2","s3","s4"]}},
+  {{"name":"CoinedWord - what it does","overview":"...","bullets":["b1","b2","b3"],"techTags":["AssignedPrimaryTech","s1","s2","s3","s4"]}}
 ]}}"""
 
     return system, user
@@ -4253,7 +4257,7 @@ Projects 3 & 4: Use your knowledge of {company_name}'s industry for analogous pr
 
 CRITICAL RULES FOR PROJECT DESCRIPTIONS:
 - Write NATURAL, flowing sentences - NO labels like "S1:", "PROBLEM:", "SOLUTION:", etc.
-- Each overview MUST tell a complete story: what problem existed → what you built → how it worked → what result achieved
+- Each overview MUST tell a complete story: what problem existed -> what you built -> how it worked -> what result achieved
 - Write 3-4 complete, professional sentences that flow naturally
 - Each sentence must be substantive and technical
 
@@ -4271,7 +4275,7 @@ BULLETS (3 per project):
 - All 12 bullets across 4 projects must open with DIFFERENT verbs
 
 PROJECT NAMING:
-- Format: "ProductName — What it does [Tech1, Tech2, Tech3]" - show 3 key techs in name
+- Format: "ProductName - What it does [Tech1, Tech2, Tech3]" - show 3 key techs in name
 
 BANNED: S1/S2/S3/S4 labels, "Problem:" "Solution:" labels, generic project names, real company names in projects, repeated verbs across bullets, fewer than 5 tech tags per project."""
     user = f"""Job Title: {req.job_title}
@@ -4289,7 +4293,7 @@ Generate EXACTLY 4 projects. Each project MUST have 5-7 UNIQUE technologies in t
 Output JSON:
 {{"projects": [
     {{
-        "name": "[CoinedName] — [Specific system description using JD-Tech1, JD-Tech2]",
+        "name": "[CoinedName] - [Specific system description using JD-Tech1, JD-Tech2]",
         "overview": "[PROBLEM: who suffers and what they lose.] [SOLUTION: architecture using JD-Tech1 and JD-Tech2.] [FUNCTIONALITY: key features.] [BUSINESS IMPACT: unique metric.]",
         "bullets": [
             "[Verb] [specific component] using [JD-Tech1] and [JD-Tech2], enabling [outcome] for [scale].",
@@ -4299,7 +4303,7 @@ Output JSON:
         "techTags": ["[JD-Tech1]", "[JD-Tech2]", "[JD-Tech3]", "[JD-Tech4]", "[JD-Tech5]", "[JD-Tech6]", "[JD-Tech7]"]
     }},
     {{
-        "name": "[CoinedName] — [Specific system description using JD-Tech1, JD-Tech2]",
+        "name": "[CoinedName] - [Specific system description using JD-Tech1, JD-Tech2]",
         "overview": "[PROBLEM.] [SOLUTION with JD-Tech1 and JD-Tech2.] [FUNCTIONALITY.] [BUSINESS IMPACT: unique metric.]",
         "bullets": [
             "[Verb] [specific component] using [JD-Tech1], enabling [outcome] for [scale].",
@@ -4309,7 +4313,7 @@ Output JSON:
         "techTags": ["[JD-Tech1]", "[JD-Tech2]", "[JD-Tech3]", "[JD-Tech4]", "[JD-Tech5]", "[JD-Tech6]", "[JD-Tech7]"]
     }},
     {{
-        "name": "[CoinedName] — [Specific system description using JD-Tech1, JD-Tech2]",
+        "name": "[CoinedName] - [Specific system description using JD-Tech1, JD-Tech2]",
         "overview": "[PROBLEM.] [SOLUTION with JD-Tech1 and JD-Tech2.] [FUNCTIONALITY.] [BUSINESS IMPACT: unique metric.]",
         "bullets": [
             "[Verb] [specific component] using [JD-Tech1] and [JD-Tech2], serving [scale] with [outcome].",
@@ -4319,7 +4323,7 @@ Output JSON:
         "techTags": ["[JD-Tech1]", "[JD-Tech2]", "[JD-Tech3]", "[JD-Tech4]", "[JD-Tech5]", "[JD-Tech6]", "[JD-Tech7]"]
     }},
     {{
-        "name": "[CoinedName] — [Specific system description using JD-Tech1, JD-Tech2]",
+        "name": "[CoinedName] - [Specific system description using JD-Tech1, JD-Tech2]",
         "overview": "[PROBLEM.] [SOLUTION with JD-Tech1 and JD-Tech2.] [FUNCTIONALITY.] [BUSINESS IMPACT: unique metric.]",
         "bullets": [
             "[Verb] [specific component] using [JD-Tech1], classifying [scale] items on [schedule].",
@@ -4371,7 +4375,7 @@ def validate_project_techs(projects_result: dict, techs: dict) -> dict:
         if isinstance(raw_tags, str):
             raw_tags = [t.strip() for t in re.split(r"[|,;]", raw_tags) if t.strip()]
 
-        # Step 1 — keep only real, non-duplicate tags
+        # Step 1 - keep only real, non-duplicate tags
         seen_local: set = set()
         valid_tags: list = []
         for t in raw_tags:
@@ -4397,7 +4401,7 @@ def validate_project_techs(projects_result: dict, techs: dict) -> dict:
                 valid_tags.append(t)
                 seen_local.add(tl)
 
-        # Step 2 — backfill from JD pool if fewer than 5
+        # Step 2 - backfill from JD pool if fewer than 5
         if len(valid_tags) < 5:
             for t in all_allowed:
                 if len(valid_tags) >= 7:
@@ -4407,7 +4411,7 @@ def validate_project_techs(projects_result: dict, techs: dict) -> dict:
                     valid_tags.append(t)
                     seen_local.add(tl)
 
-        # Step 3 — still under 5? relax global uniqueness and pull from pool again
+        # Step 3 - still under 5? relax global uniqueness and pull from pool again
         if len(valid_tags) < 5:
             for t in all_allowed:
                 if len(valid_tags) >= 5:
@@ -4420,7 +4424,7 @@ def validate_project_techs(projects_result: dict, techs: dict) -> dict:
         # Cap at 7
         valid_tags = valid_tags[:7]
 
-        # Track globally (soft — we allow some overlap between projects if pool is small)
+        # Track globally (soft - we allow some overlap between projects if pool is small)
         for t in valid_tags:
             used_global.add(t.lower())
 
@@ -4430,9 +4434,9 @@ def validate_project_techs(projects_result: dict, techs: dict) -> dict:
 
 
 def build_pipeline5b_related_tech(req: CVRequest, techs: dict) -> tuple:
-    """Pipeline 5B: Generate ONLY Related Technologies & Tools — dedicated pipeline.
+    """Pipeline 5B: Generate ONLY Related Technologies & Tools - dedicated pipeline.
     Produces exactly 5 category boxes, each with exactly 5 items.
-    NO raw JD text is passed — only the pre-extracted technology list,
+    NO raw JD text is passed - only the pre-extracted technology list,
     preventing the model from grabbing non-tech words from the JD body.
     """
     core      = techs.get("core", [])
@@ -4441,7 +4445,7 @@ def build_pipeline5b_related_tech(req: CVRequest, techs: dict) -> tuple:
     all_techs = list(dict.fromkeys(core + preferred + ecosystem))[:50]
 
     # Hard guard: if extraction yielded fewer than 10 real techs, the model
-    # has nothing useful to group — return empty so the sanitiser skips it.
+    # has nothing useful to group - return empty so the sanitiser skips it.
     if len(all_techs) < 5:
         # Return a dummy prompt that will produce an empty relatedTech list.
         return ("Output ONLY: {}", '{{"relatedTech":[]}}')
@@ -4466,7 +4470,7 @@ def build_pipeline5b_related_tech(req: CVRequest, techs: dict) -> tuple:
     user = f"""Job Role: {req.job_title}
 
 This is the COMPLETE list of technologies extracted from the job description.
-Use ONLY items from this list — copy them exactly as written:
+Use ONLY items from this list - copy them exactly as written:
 
 {techs_str}
 
@@ -4474,7 +4478,7 @@ TASK: Group these technologies into exactly 5 category boxes.
 
 STRICT RULES:
 1. Exactly 5 categories.
-2. Exactly 5 items per category — pick from the list above only.
+2. Exactly 5 items per category - pick from the list above only.
 3. Each item must be a real named technology (framework, language, tool, platform, library).
    If an entry in the list above looks like a non-tech word (e.g. a company name, benefit,
    location), skip it and pick something else from the list.
@@ -4492,14 +4496,14 @@ Output JSON:
 ]}}"""
 
     return system, user
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # UNIVERSAL LLM CALLER - Works for Groq, Cerebras, OpenAI, DeepSeek
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 async def call_llm_atomic(client, key: str, model: str, url: str,
                           system: str, user: str, stage: str,
                           headers: dict, max_tokens: int = 1200) -> dict:
-    """Universal atomic LLM call — honours Retry-After on 429, one retry.
+    """Universal atomic LLM call - honours Retry-After on 429, one retry.
 
     Per-call timeout strategy:
       - Cerebras: 90 s  (fast inference but occasionally slow cold-starts)
@@ -4534,9 +4538,9 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             )
         except httpx.TimeoutException:
             if attempt == 0:
-                # Give Cerebras one extra chance — it can be slow on cold starts
+                # Give Cerebras one extra chance - it can be slow on cold starts
                 if url == CEREBRAS_URL:
-                    raise ValueError(f"Stage {stage} timed out after {per_call_timeout}s — Cerebras slow; try again or switch to Groq")
+                    raise ValueError(f"Stage {stage} timed out after {per_call_timeout}s - Cerebras slow; try again or switch to Groq")
                 raise ValueError(f"Stage {stage} timed out after {per_call_timeout}s")
             raise ValueError(f"Stage {stage} timed out after {per_call_timeout}s")
         except Exception as e:
@@ -4573,7 +4577,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             raise ValueError(f"HTTP {r.status_code} on {stage}")
     raise ValueError(f"Rate limited on {stage} (retry-after=30)")
 
-# ── Technology sanitiser — removes non-tech words from Pipeline 1 output ──────
+# -- Technology sanitiser - removes non-tech words from Pipeline 1 output ------
 # Words that commonly leak into the tech list from JD prose/boilerplate
 _NON_TECH_WORDS = {
     # months / time
@@ -4627,22 +4631,22 @@ def _sanitise_techs(techs: dict) -> dict:
     return clean
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # MAIN ATOMIC GENERATION - 5 pipelines, never truncated
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 async def generate_cv_atomic(req: CVRequest, client, key: str, model: str, 
                               url: str, headers: dict) -> dict:
-    """Generate CV using 3 merged pipelines — fits within Groq free tier (30 RPM, 6k TPM).
+    """Generate CV using 3 merged pipelines - fits within Groq free tier (30 RPM, 6k TPM).
 
-    Call 1 → tech extraction + title + summary + competencies  (~600 output tokens)
-    Call 2 → skills + experience                               (~1500 output tokens)
-    Call 3 → projects + related tech                           (~1800 output tokens)
+    Call 1 -> tech extraction + title + summary + competencies  (~600 output tokens)
+    Call 2 -> skills + experience                               (~1500 output tokens)
+    Call 3 -> projects + related tech                           (~1800 output tokens)
     """
     import asyncio as _asyncio
 
     # Delay between calls for Groq free tier (6K TPM limit)
-    # DeepSeek-R1 outputs extra <think> reasoning tokens — needs longer delay + shorter JD
+    # DeepSeek-R1 outputs extra <think> reasoning tokens - needs longer delay + shorter JD
     _is_r1    = "deepseek-r1" in model.lower()
     _delay    = 8 if (_is_r1 and url == GROQ_URL) else (3 if url == GROQ_URL else 0)
     _jd_limit = 700 if (_is_r1 and url == GROQ_URL) else 1200
@@ -4656,7 +4660,7 @@ async def generate_cv_atomic(req: CVRequest, client, key: str, model: str,
     company_name = (req.company_name or "").strip()
     company_ctx  = (req.company_context or "").strip()[:400]
 
-    # ── CALL 1: Tech + Title + Summary + Competencies ─────────────────────────
+    # -- CALL 1: Tech + Title + Summary + Competencies -------------------------
     sys1 = (
         "You are an expert CV writer and tech extractor. Output ONLY valid JSON. No markdown, no backticks.\n\n"
         "Do ALL of these tasks from the job description below:\n"
@@ -4664,7 +4668,7 @@ async def generate_cv_atomic(req: CVRequest, client, key: str, model: str,
         "2. TITLE: A transformed role title different from the input job title. "
         "Format: \'Transformed Title | Tech1, Tech2, Tech3\'\n"
         "3. SUMMARY: 4 sentences, 70+ words, start with \'" + total_years + " years of experience...\'\n"
-        "4. COMPETENCIES: exactly 10 domain-specific 2-4 word phrases separated by \' • \'"
+        "4. COMPETENCIES: exactly 10 domain-specific 2-4 word phrases separated by \' * \'"
     )
     usr1 = f"""Job Title: {req.job_title}
 {"Target Company: " + company_name if company_name else ""}
@@ -4677,7 +4681,7 @@ Output JSON:
 {{"core":["tech1","tech2"],"preferred":["tech1"],"ecosystem":["companion1","companion2"],
 "title":"Transformed Title | Tech1, Tech2, Tech3",
 "summary":"{total_years} years of experience in [domain]... (4 sentences, 70+ words)",
-"competencies":"Phrase1 • Phrase2 • Phrase3 • Phrase4 • Phrase5 • Phrase6 • Phrase7 • Phrase8 • Phrase9 • Phrase10"}}"""
+"competencies":"Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10"}}"""
 
     result1 = await call_llm_atomic(client, key, model, url, sys1, usr1, "Call1-TechTitleSummary", headers, max_tokens=700)
 
@@ -4707,11 +4711,11 @@ Output JSON:
     if not summary_out:
         summary_out = f"{total_years} years of experience in software development with expertise in {techs_str[:100]}."
     if not competencies_out:
-        competencies_out = "API Design • System Architecture • Cloud Integration • Performance Optimisation • CI/CD Automation • Database Optimisation • Agile Delivery • Code Quality • Test Coverage • Security Hardening"
+        competencies_out = "API Design * System Architecture * Cloud Integration * Performance Optimisation * CI/CD Automation * Database Optimisation * Agile Delivery * Code Quality * Test Coverage * Security Hardening"
 
     await _asyncio.sleep(_delay)
 
-    # ── CALL 2: Skills + Experience ───────────────────────────────────────────
+    # -- CALL 2: Skills + Experience -------------------------------------------
     if num_cos == 1:
         sen_rules = 'Co1 (only): role has Junior prefix'
         verb_guide = "Co1: Implemented, Built, Developed, Deployed, Configured, Automated."
@@ -4723,22 +4727,22 @@ Output JSON:
         verb_guide = "Co1 (Senior): Architected, Engineered, Led, Spearheaded.\nCo2: Optimised, Refactored, Scaled, Migrated.\nCo3 (Junior): Implemented, Built, Deployed, Configured."
 
     co_lines = "\n".join(
-        f'Co{i+1}: name="{c["name"]}", dates="{c["start"]} – {c["end"]}"' 
+        f'Co{i+1}: name="{c["name"]}", dates="{c["start"]} - {c["end"]}"' 
         for i, c in enumerate(companies_list)
     )
 
     sys2 = (
         "You are an expert CV writer. Output ONLY valid JSON. No markdown, no backticks.\n\n"
         f"Allowed technologies (use ONLY these): {techs_str}\n\n"
-        "TASK A — SKILLS: exactly 5 categories, each with exactly 7-10 items from the allowed list.\n"
+        "TASK A - SKILLS: exactly 5 categories, each with exactly 7-10 items from the allowed list.\n"
         "Category names must reflect JD technical domains (e.g. 'Backend & Frameworks', 'Database & Storage',\n"
         " 'Cloud & Infrastructure', 'Frontend Technologies', 'DevOps & Quality'). Zero items repeated across categories.\n"
-        "CRITICAL — VALID SKILL ITEMS ONLY: Every item MUST be a real named software product (a tool you could Google).\n"
-        "BANNED items — instant failure if any appear: Write, Read, Test, Debug, Troubleshoot, Configure, Deploy,\n"
+        "CRITICAL - VALID SKILL ITEMS ONLY: Every item MUST be a real named software product (a tool you could Google).\n"
+        "BANNED items - instant failure if any appear: Write, Read, Test, Debug, Troubleshoot, Configure, Deploy,\n"
         " Design, Implement, Develop, Build, Maintain, Monitor, Manage, Requirements, Architecture, Infrastructure,\n"
         " Environment, System, Server, Network, Platform, Application, Solution, Service, NET (alone).\n"
-        "MINIMUM 7 items per category — fewer is a hard failure.\n\n"
-        "TASK B — EXPERIENCE: exactly " + str(num_cos) + " companies.\n"
+        "MINIMUM 7 items per category - fewer is a hard failure.\n\n"
+        "TASK B - EXPERIENCE: exactly " + str(num_cos) + " companies.\n"
         f"Seniority: {sen_rules}\n"
         f"Verb guide:\n{verb_guide}\n"
         "Each company: unique role title, 4 bullets (20-30 words each), 6 tech tags.\n"
@@ -4756,7 +4760,7 @@ Job Description context:
 
 Output JSON:
 {{"skills":["BackendCategory: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7","DatabaseCategory: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7","CloudCategory: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7","FrontendCategory: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6","DevOpsCategory: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6"],
-"companies":[{{"company":"EXACT NAME","role":"Seniority Domain Function","dateRange":"Start – End","bullets":["20-30w bullet","20-30w bullet","20-30w bullet","20-30w bullet"],"tech":"Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6"}}]}}"""
+"companies":[{{"company":"EXACT NAME","role":"Seniority Domain Function","dateRange":"Start - End","bullets":["20-30w bullet","20-30w bullet","20-30w bullet","20-30w bullet"],"tech":"Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6"}}]}}"""
 
     result2 = await call_llm_atomic(client, key, model, url, sys2, usr2, "Call2-SkillsExperience", headers, max_tokens=1600)
 
@@ -4767,12 +4771,12 @@ Output JSON:
     for i, co in enumerate(companies_out):
         if i < len(companies_list):
             co["company"] = companies_list[i]["name"]
-            co["dateRange"] = f'{companies_list[i]["start"]} – {companies_list[i]["end"]}'
+            co["dateRange"] = f'{companies_list[i]["start"]} - {companies_list[i]["end"]}'
 
     if not companies_out:
         companies_out = [
             {"company": c["name"], "role": "Software Developer",
-             "dateRange": f'{c["start"]} – {c["end"]}',
+             "dateRange": f'{c["start"]} - {c["end"]}',
              "bullets": ["Developed scalable software solutions using " + (techs.get("core", ["the primary stack"])[0] if techs.get("core") else "the primary stack"),
                          "Implemented features improving system efficiency by 30%",
                          "Collaborated with cross-functional teams to deliver key projects",
@@ -4783,7 +4787,7 @@ Output JSON:
 
     await _asyncio.sleep(_delay)
 
-    # ── CALL 3: Projects + Related Tech ──────────────────────────────────────
+    # -- CALL 3: Projects + Related Tech --------------------------------------
     used_systems = []
     for co in companies_out:
         for b in (co.get("bullets") or []):
@@ -4800,13 +4804,13 @@ Output JSON:
     sys3 = (
         "You are an expert CV writer. Output ONLY valid JSON. No markdown, no backticks.\n\n"
         f"Allowed technologies: {techs_str}\n\n"
-        "TASK A — PROJECTS: exactly 4 projects. Each:\n"
-        "  name: \'CoinedWord — what it does [Tech1, Tech2]\'\n"
-        "  overview: 3-4 natural sentences (problem → solution → functionality → impact). NO S1/S2 labels.\n"
+        "TASK A - PROJECTS: exactly 4 projects. Each:\n"
+        "  name: \'CoinedWord - what it does [Tech1, Tech2]\'\n"
+        "  overview: 3-4 natural sentences (problem -> solution -> functionality -> impact). NO S1/S2 labels.\n"
         "  bullets: 3 strings (20-30 words each, different verb each, unique metric each)\n"
         "  techTags: 5-6 technologies from allowed list, none repeated across projects\n"
         "BANNED: generic names like \'Web App\', real company names in projects, repeated verbs/metrics.\n\n"
-        "TASK B — RELATED TECH: exactly 5 category boxes, 5 items each, all from allowed list, zero duplicates."
+        "TASK B - RELATED TECH: exactly 5 category boxes, 5 items each, all from allowed list, zero duplicates."
     )
     usr3 = f"""Job Title: {req.job_title}
 {co_intel}
@@ -4818,7 +4822,7 @@ Systems already in experience (do NOT repeat):
 {used_str}
 
 Output JSON:
-{{"projects":[{{"name":"CoinedName — what it does [Tech1, Tech2]","overview":"Natural 3-4 sentence story.","bullets":["verb component + tech (20-30w)","verb challenge + unique metric (20-30w)","verb outcome + unique number (20-30w)"],"techTags":["Tech1","Tech2","Tech3","Tech4","Tech5"]}}],"relatedTech":[{{"category":"Domain","items":["t1","t2","t3","t4","t5"]}}]}}"""
+{{"projects":[{{"name":"CoinedName - what it does [Tech1, Tech2]","overview":"Natural 3-4 sentence story.","bullets":["verb component + tech (20-30w)","verb challenge + unique metric (20-30w)","verb outcome + unique number (20-30w)"],"techTags":["Tech1","Tech2","Tech3","Tech4","Tech5"]}}],"relatedTech":[{{"category":"Domain","items":["t1","t2","t3","t4","t5"]}}]}}"""
 
     result3 = await call_llm_atomic(client, key, model, url, sys3, usr3, "Call3-ProjectsRelated", headers, max_tokens=1800)
 
@@ -4826,7 +4830,7 @@ Output JSON:
     related_out  = result3.get("relatedTech", [])
     projects_out = validate_project_techs({"projects": projects_out}, techs).get("projects", [])
 
-    # ── Assemble ──────────────────────────────────────────────────────────────
+    # -- Assemble --------------------------------------------------------------
     cv = {
         "totalYears":   total_years,
         "title":        title_out,
@@ -4845,7 +4849,7 @@ Output JSON:
             "university":  "QURTUBA UNIVERSITY OF SCIENCE AND INFORMATION TECHNOLOGY",
             "degree":      "Bachelor of Science in Computer Science (BSCS)",
             "cgpa":        "3.97/4.0",
-            "years":       f"{edu['start']} – {edu['end']}",
+            "years":       f"{edu['start']} - {edu['end']}",
             "achievement": "Gold Medalist for Academic Excellence",
         },
         "keywords": ", ".join(all_techs_flat[:15]),
@@ -4866,9 +4870,9 @@ Output JSON:
         fix_skills_dedup(fix_projects(cv_projtags)),
         years_exp=years_exp,
     )
-# ═══════════════════════════════════════════════════════════════════
-# call_cerebras — robust key rotation with detailed error reporting
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
+# call_cerebras - robust key rotation with detailed error reporting
+# ===================================================================
 
 async def call_cerebras(req: CVRequest) -> tuple:
     raw_keys = req.cerebras_keys or []
@@ -4897,7 +4901,7 @@ async def call_cerebras(req: CVRequest) -> tuple:
 
     # Session timeout reduced to match the 2-min goal
     async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=130, write=20, pool=10)) as client:
-        # ── PROBE: First check if the model is available on this key ──────────
+        # -- PROBE: First check if the model is available on this key ----------
         # This prevents spending 3 pipeline calls on a 404 model.
         for probe_key in sorted_keys:
             pk_mk = mask(probe_key)
@@ -4924,18 +4928,18 @@ async def call_cerebras(req: CVRequest) -> tuple:
                             fallback_used = fb_model
                             break
                     if fallback_used:
-                        errors_by_key.append(f"Model '{model}' not found — auto-switched to '{fallback_used}'")
+                        errors_by_key.append(f"Model '{model}' not found - auto-switched to '{fallback_used}'")
                         model = fallback_used
                         break
                     else:
-                        errors_by_key.append(f"Model '{model}' not found and no fallback available — try llama3.1-8b")
+                        errors_by_key.append(f"Model '{model}' not found and no fallback available - try llama3.1-8b")
                         last_error = "model not found"
                         continue
                 elif probe_r.status_code in (401, 403):
-                    errors_by_key.append(f"Key {pk_mk}: invalid key — skipping")
+                    errors_by_key.append(f"Key {pk_mk}: invalid key - skipping")
                     continue
                 elif probe_r.status_code == 429:
-                    errors_by_key.append(f"Key {pk_mk}: rate limited — skipping")
+                    errors_by_key.append(f"Key {pk_mk}: rate limited - skipping")
                     continue
                 elif probe_r.status_code == 200:
                     # Model found and key works - keep this key
@@ -4951,12 +4955,12 @@ async def call_cerebras(req: CVRequest) -> tuple:
             try:
                 headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
-                # ── NO probe for Cerebras ─────────────────────────────────────
+                # -- NO probe for Cerebras -------------------------------------
                 # The probe burns one request slot and can falsely trigger a 429
                 # before the real generation starts. Auth/model errors are caught
                 # below during the first pipeline call instead.
 
-                # Key is live — run full atomic pipeline generation
+                # Key is live - run full atomic pipeline generation
                 cv = await generate_cv_atomic(req, client, key, model, CEREBRAS_URL, headers)
 
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
@@ -4965,13 +4969,13 @@ async def call_cerebras(req: CVRequest) -> tuple:
 
             except ValueError as e:
                 err_str = str(e)
-                # ── 429: Cerebras resets per-minute, so wait & retry once ─────
+                # -- 429: Cerebras resets per-minute, so wait & retry once -----
                 if "rate limited" in err_str.lower() or "429" in err_str:
                     retry_match = re.search(r"retry.after[=:\s]+(\d+)", err_str, re.I)
                     wait_s = int(retry_match.group(1)) if retry_match else 30
                     wait_s = min(wait_s, 60)
                     errors_by_key.append(
-                        f"Key {i+1} ({mk}): rate limited (429) — "
+                        f"Key {i+1} ({mk}): rate limited (429) - "
                         f"waiting {wait_s}s then retrying"
                     )
                     last_error = "rate limited"
@@ -4980,68 +4984,68 @@ async def call_cerebras(req: CVRequest) -> tuple:
                         cv = await generate_cv_atomic(req, client, key, model, CEREBRAS_URL, headers)
                         _key_usage[mk] = _key_usage.get(mk, 0) + 1
                         _log_generation(req.job_title, mk, i, 0, model, True)
-                        errors_by_key.pop()   # remove the "waiting…" notice on success
+                        errors_by_key.pop()   # remove the "waiting?" notice on success
                         return cv, mk, i
                     except Exception as retry_exc:
                         retry_str = str(retry_exc)
                         if "rate limited" in retry_str.lower() or "429" in retry_str:
                             errors_by_key.append(
-                                f"Key {i+1} ({mk}): still rate limited after {wait_s}s — "
+                                f"Key {i+1} ({mk}): still rate limited after {wait_s}s - "
                                 "daily limit likely reached; try a different key"
                             )
                             last_error = "rate limited (daily limit)"
                         else:
-                            errors_by_key.append(f"Key {i+1} ({mk}): retry failed — {retry_str[:120]}")
+                            errors_by_key.append(f"Key {i+1} ({mk}): retry failed - {retry_str[:120]}")
                             last_error = retry_str[:120]
                     continue
                 if "invalid key" in err_str.lower() or "401" in err_str or "403" in err_str:
-                    errors_by_key.append(f"Key {i+1} ({mk}): key rejected — invalid or expired")
+                    errors_by_key.append(f"Key {i+1} ({mk}): key rejected - invalid or expired")
                     last_error = "invalid key"
                     continue
                 if "not found" in err_str.lower() and ("model" in err_str.lower() or "404" in err_str):
                     errors_by_key.append(
-                        f"Key {i+1} ({mk}): model \'{model}\' not found — "
+                        f"Key {i+1} ({mk}): model \'{model}\' not found - "
                         "open Keys & Model tab and switch to llama3.1-8b"
                     )
                     last_error = f"model \'{model}\' not found"
                     break
-                errors_by_key.append(f"Key {i+1} ({mk}): pipeline error — {err_str[:140]}")
+                errors_by_key.append(f"Key {i+1} ({mk}): pipeline error - {err_str[:140]}")
                 last_error = err_str[:140]
                 continue
             except httpx.TimeoutException:
                 errors_by_key.append(
-                    f"Key {i+1} ({mk}): generation timed out (>90 s per call) — "
+                    f"Key {i+1} ({mk}): generation timed out (>90 s per call) - "
                     "Cerebras may be under load; try again or switch to Groq"
                 )
                 last_error = "generation timeout"
                 continue
             except httpx.ConnectError as ce:
-                errors_by_key.append(f"Key {i+1} ({mk}): lost connection — {ce}")
+                errors_by_key.append(f"Key {i+1} ({mk}): lost connection - {ce}")
                 last_error = "connection lost"
                 break
             except Exception as e:
                 errors_by_key.append(
-                    f"Key {i+1} ({mk}): {type(e).__name__} — {str(e)[:120]}"
+                    f"Key {i+1} ({mk}): {type(e).__name__} - {str(e)[:120]}"
                 )
                 last_error = f"{type(e).__name__}: {str(e)[:120]}"
                 continue
 
     # Build a detailed, actionable error message
     lines = ["All Cerebras keys failed:"]
-    lines.extend(f"  • {err}" for err in errors_by_key)
+    lines.extend(f"  * {err}" for err in errors_by_key)
     lines.append("")
     if "rate limited" in last_error:
-        lines.append("FIX: Daily token limit reached. Add more keys (cloud.cerebras.ai — free per email) OR switch to Groq in the Keys & Model tab.")
+        lines.append("FIX: Daily token limit reached. Add more keys (cloud.cerebras.ai - free per email) OR switch to Groq in the Keys & Model tab.")
     elif "model" in last_error and "not found" in last_error:
-        lines.append(f"FIX: Model \'{model}\' is unavailable on your plan. Open Keys & Model tab → select llama3.1-8b.")
+        lines.append(f"FIX: Model \'{model}\' is unavailable on your plan. Open Keys & Model tab -> select llama3.1-8b.")
     elif "invalid key" in last_error or "unauthorized" in last_error:
         lines.append("FIX: Key is invalid or expired. Get a fresh key at cloud.cerebras.ai (free, no credit card).")
     elif "connection" in last_error:
         lines.append("FIX: Cannot reach api.cerebras.ai. Check your internet connection or VPN. Alternatively switch to Groq.")
     elif "timeout" in last_error:
-        lines.append("FIX: Cerebras is slow right now. Switch to Groq (console.groq.com — free) in Keys & Model tab.")
+        lines.append("FIX: Cerebras is slow right now. Switch to Groq (console.groq.com - free) in Keys & Model tab.")
     else:
-        lines.append("FIX: Try switching provider to Groq in the Keys & Model tab (console.groq.com — free & fast).")
+        lines.append("FIX: Try switching provider to Groq in the Keys & Model tab (console.groq.com - free & fast).")
 
     raise HTTPException(502, "\n".join(lines))
 
@@ -5095,9 +5099,9 @@ async def call_ollama(req: CVRequest) -> dict:
     return final_polish(fix_skills_dedup(fix_projects(_cv_raw)), years_exp=(req.years_exp or ''))
 
 
-# ── Main endpoint ─────────────────────────────────────────────────────────────
+# -- Main endpoint -------------------------------------------------------------
 
-# ── DeepSeek caller (OpenAI-compatible) ───────────────────────────────────────
+# -- DeepSeek caller (OpenAI-compatible) ---------------------------------------
 async def call_deepseek(req: CVRequest) -> tuple:
     raw_keys = req.deepseek_keys or []
     if not raw_keys:
@@ -5214,7 +5218,7 @@ async def call_deepseek(req: CVRequest) -> tuple:
     raise HTTPException(502, f"All DeepSeek keys failed. Last error: {last_error}")
 
 
-# ── OpenAI caller ─────────────────────────────────────────────────────────────
+# -- OpenAI caller -------------------------------------------------------------
 async def call_openai(req: CVRequest) -> tuple:
     raw_keys = req.openai_keys or []
     if not raw_keys:
@@ -5291,7 +5295,7 @@ async def call_openai(req: CVRequest) -> tuple:
 
                 elif r.status_code == 403:
                     exhausted.append(mk)
-                    last_error = f"{mk} access denied — check your OpenAI plan"
+                    last_error = f"{mk} access denied - check your OpenAI plan"
                     continue
 
                 elif r.status_code == 400:
@@ -5314,7 +5318,7 @@ async def call_openai(req: CVRequest) -> tuple:
             except (json.JSONDecodeError, ValueError) as e:
                 raise HTTPException(422, f"JSON parse error: {e}")
             except httpx.TimeoutException:
-                last_error = f"{mk} timed out — model may be slow"
+                last_error = f"{mk} timed out - model may be slow"
                 exhausted.append(mk)
                 continue
             except Exception as e:
@@ -5327,7 +5331,7 @@ async def call_openai(req: CVRequest) -> tuple:
 
 
 
-# ── Gemini caller (Google AI Studio — Free) ───────────────────────────────────
+# -- Gemini caller (Google AI Studio - Free) -----------------------------------
 async def call_gemini(req: CVRequest) -> tuple:
     """
     Calls Gemini using a 3-call atomic pipeline.
@@ -5345,8 +5349,8 @@ async def call_gemini(req: CVRequest) -> tuple:
 
     model = req.model or "gemini-2.0-flash"
 
-    # ── Helper: single Gemini call with one Retry-After retry ─────────────────
-    # Resolve actual model name — 2.5 has varied preview IDs; try and fall back
+    # -- Helper: single Gemini call with one Retry-After retry -----------------
+    # Resolve actual model name - 2.5 has varied preview IDs; try and fall back
     _resolved_model = model
     _MODEL_FALLBACKS = {
         "gemini-2.5-flash-preview-05-20": ["gemini-2.5-flash-preview-05-20", "gemini-2.5-flash", "gemini-2.0-flash"],
@@ -5382,7 +5386,7 @@ async def call_gemini(req: CVRequest) -> tuple:
                     try:
                         return json.loads(raw)
                     except json.JSONDecodeError:
-                        # ── Robust JSON repair: handle unterminated strings ──
+                        # -- Robust JSON repair: handle unterminated strings --
                         # The substring approach: extract only what can be parsed
                         i = len(raw)
                         while i > 0:
@@ -5403,7 +5407,7 @@ async def call_gemini(req: CVRequest) -> tuple:
                                 i -= 1
                                 continue
                         # Last resort: return empty dict
-                        print(f"Gemini {stage} — ALL JSON repair attempts failed for raw: {raw[:200]}")
+                        print(f"Gemini {stage} - ALL JSON repair attempts failed for raw: {raw[:200]}")
                         return {}
                 except Exception as ex:
                     raise ValueError(f"Parse error on {stage}: {ex}")
@@ -5412,14 +5416,14 @@ async def call_gemini(req: CVRequest) -> tuple:
                 tried_idx = model_candidates.index(_resolved_model) if _resolved_model in model_candidates else -1
                 if tried_idx < len(model_candidates) - 1:
                     _resolved_model = model_candidates[tried_idx + 1]
-                    print(f"Gemini 404 on {_resolved_model} — trying fallback")
+                    print(f"Gemini 404 on {_resolved_model} - trying fallback")
                     continue
-                raise ValueError(f"HTTP 404 on {stage} — model not available")
+                raise ValueError(f"HTTP 404 on {stage} - model not available")
             elif r.status_code == 429:
                 if attempt == 0:
                     wait = int(r.headers.get("Retry-After", r.headers.get("retry-after", 12)))
                     wait = min(wait, 20)
-                    print(f"Gemini {stage} 429 — wait {wait}s")
+                    print(f"Gemini {stage} 429 - wait {wait}s")
                     await asyncio.sleep(wait)
                     continue
                 raise ValueError(f"429 rate-limited on {stage} (both attempts)")
@@ -5431,12 +5435,12 @@ async def call_gemini(req: CVRequest) -> tuple:
                 raise ValueError(f"HTTP {r.status_code} on {stage}")
         raise ValueError(f"Rate-limited on {stage}")
 
-    # ── Try each key as the "primary" key; rotate remaining keys for calls 2+3 ─
+    # -- Try each key as the "primary" key; rotate remaining keys for calls 2+3 -
     sorted_keys = _prioritised_keys(valid_keys)
     last_error  = ""
     exhausted   = []
 
-    # Hard deadline: 3.5 minutes for Gemini (3 calls × ~40s each + overhead)
+    # Hard deadline: 3.5 minutes for Gemini (3 calls x ~40s each + overhead)
     import time as _time
     _deadline = _time.time() + 210  # 3.5 min for slower models like 2.5 Flash
 
@@ -5453,7 +5457,7 @@ async def call_gemini(req: CVRequest) -> tuple:
             if soonest > now:
                 wait = min(soonest - now + 1, 20, _deadline - now)
                 if wait > 0:
-                    print(f"All Gemini keys rate-limited — waiting {wait:.0f}s for cooldown")
+                    print(f"All Gemini keys rate-limited - waiting {wait:.0f}s for cooldown")
                     await asyncio.sleep(wait)
 
         await _maybe_wait_for_free_key()
@@ -5474,7 +5478,7 @@ async def call_gemini(req: CVRequest) -> tuple:
                 company_ctx    = (req.company_context or "").strip()[:400]
 
                 # Build a rotation pool: primary key first, then the rest round-robin
-                # This means Call1→key[i], Call2→key[i+1], Call3→key[i+2]
+                # This means Call1->key[i], Call2->key[i+1], Call3->key[i+2]
                 pool = sorted_keys[i:] + sorted_keys[:i]   # rotate starting at primary
 
                 def _key_for_call(call_n: int) -> str:
@@ -5495,14 +5499,14 @@ async def call_gemini(req: CVRequest) -> tuple:
                     sen_rules  = "Co1 (current): Senior prefix. Co2 (mid): no prefix. Co3 (oldest): Junior prefix"
                     verb_guide = "Co1: Architected, Engineered, Led.\nCo2: Optimised, Refactored, Scaled.\nCo3: Implemented, Built, Deployed."
 
-                # ── CALL 1 via primary key ─────────────────────────────────────
+                # -- CALL 1 via primary key -------------------------------------
                 sys1 = (
                     "You are an expert CV writer and tech extractor. Output ONLY valid JSON. No markdown, no backticks.\n\n"
                     "Do ALL of these tasks from the job description below:\n"
                     "1. TECH: Extract every named technology into core/preferred/ecosystem arrays (aim 30+ total items).\n"
                     "2. TITLE: A transformed role title. Format: \'Transformed Title | Tech1, Tech2, Tech3\'\n"
                     f"3. SUMMARY: 4 sentences, 70+ words, start with \'{total_years} years of experience...\'\n"
-                    "4. COMPETENCIES: exactly 10 domain-specific 2-4 word phrases separated by \' • \'"
+                    "4. COMPETENCIES: exactly 10 domain-specific 2-4 word phrases separated by \' * \'"
                 )
                 usr1 = f"""Job Title: {req.job_title}
 {"Target Company: " + company_name if company_name else ""}
@@ -5515,7 +5519,7 @@ Output JSON:
 {{"core":["tech1"],"preferred":["tech1"],"ecosystem":["companion1"],
 "title":"Transformed Title | Tech1, Tech2, Tech3",
 "summary":"{total_years} years of experience in [domain]... (4 sentences, 70+ words)",
-"competencies":"Phrase1 • Phrase2 • Phrase3 • Phrase4 • Phrase5 • Phrase6 • Phrase7 • Phrase8 • Phrase9 • Phrase10"}}"""
+"competencies":"Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10"}}"""
 
                 result1 = await _gcall(client, primary_key, sys1, usr1, 1200, "Call1")
 
@@ -5541,20 +5545,20 @@ Output JSON:
                 if not summary_out:
                     summary_out = f"{total_years} years of experience in software development with expertise in {techs_str[:100]}."
                 if not competencies_out:
-                    competencies_out = "Digital Marketing • SEO Strategy • Content Development • Analytics & Reporting • Campaign Management • E-Commerce Growth • Brand Positioning • Social Media • Conversion Optimisation • Performance Marketing"
+                    competencies_out = "Digital Marketing * SEO Strategy * Content Development * Analytics & Reporting * Campaign Management * E-Commerce Growth * Brand Positioning * Social Media * Conversion Optimisation * Performance Marketing"
 
-                # ── CALL 2 via next available key ─────────────────────────────
+                # -- CALL 2 via next available key -----------------------------
                 key2 = _key_for_call(1)
                 co_lines = "\n".join(
-                    f'Co{j+1}: name="{c["name"]}", dates="{c["start"]} – {c["end"]}"'
+                    f'Co{j+1}: name="{c["name"]}", dates="{c["start"]} - {c["end"]}"'
                     for j, c in enumerate(companies_list)
                 )
                 sys2 = (
                     "You are an expert CV writer. Output ONLY valid JSON. No markdown, no backticks.\n\n"
                     f"Allowed technologies (use ONLY these): {techs_str}\n\n"
-                    "TASK A — SKILLS: exactly 5 categories, 7-10 items each from allowed list. No repeated items.\n"
+                    "TASK A - SKILLS: exactly 5 categories, 7-10 items each from allowed list. No repeated items.\n"
                     "BANNED: Write, Read, Test, Debug, Troubleshoot, Configure, Deploy, Design, Implement, Build, Maintain, Monitor, Manage.\n\n"
-                    f"TASK B — EXPERIENCE: exactly {num_cos} companies.\n"
+                    f"TASK B - EXPERIENCE: exactly {num_cos} companies.\n"
                     f"Seniority: {sen_rules}\n"
                     f"Verb guide:\n{verb_guide}\n"
                     "Each company: unique role title, 4 bullets (20-30 words each), 6 tech tags from allowed list."
@@ -5567,7 +5571,7 @@ Job Description context:
 {jd[:600]}
 Output JSON:
 {{"skills":["Category: Tool1, Tool2, Tool3, Tool4, Tool5, Tool6, Tool7","Category: Tool1, Tool2, Tool3, Tool4, Tool5, Tool6, Tool7","Category: Tool1, Tool2, Tool3, Tool4, Tool5, Tool6, Tool7","Category: Tool1, Tool2, Tool3, Tool4, Tool5, Tool6","Category: Tool1, Tool2, Tool3, Tool4, Tool5, Tool6"],
-"companies":[{{"company":"EXACT NAME","role":"Seniority Domain Function","dateRange":"Start – End","bullets":["20-30w bullet","20-30w bullet","20-30w bullet","20-30w bullet"],"tech":"Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6"}}]}}"""
+"companies":[{{"company":"EXACT NAME","role":"Seniority Domain Function","dateRange":"Start - End","bullets":["20-30w bullet","20-30w bullet","20-30w bullet","20-30w bullet"],"tech":"Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6"}}]}}"""
 
                 result2 = await _gcall(client, key2, sys2, usr2, 2400, "Call2")
                 _key_usage[mask(key2)] = _key_usage.get(mask(key2), 0) + 1
@@ -5577,11 +5581,11 @@ Output JSON:
                 for j, co in enumerate(companies_out):
                     if j < len(companies_list):
                         co["company"]   = companies_list[j]["name"]
-                        co["dateRange"] = f'{companies_list[j]["start"]} – {companies_list[j]["end"]}'
+                        co["dateRange"] = f'{companies_list[j]["start"]} - {companies_list[j]["end"]}'
                 if not companies_out:
                     companies_out = [
                         {"company": c["name"], "role": "Software Developer",
-                         "dateRange": f'{c["start"]} – {c["end"]}',
+                         "dateRange": f'{c["start"]} - {c["end"]}',
                          "bullets": ["Developed scalable solutions using " + (techs.get("core", ["the primary stack"])[0] if techs.get("core") else "the primary stack"),
                                      "Implemented features improving efficiency by 30%",
                                      "Collaborated with cross-functional teams on key deliverables",
@@ -5590,7 +5594,7 @@ Output JSON:
                         for c in companies_list
                     ]
 
-                # ── CALL 3 via next available key ─────────────────────────────
+                # -- CALL 3 via next available key -----------------------------
                 key3 = _key_for_call(2)
                 used_systems = []
                 for co in companies_out:
@@ -5606,12 +5610,12 @@ Output JSON:
                 sys3 = (
                     "You are an expert CV writer. Output ONLY valid JSON. No markdown, no backticks.\n\n"
                     f"Allowed technologies: {techs_str}\n\n"
-                    "TASK A — PROJECTS: exactly 4 projects. Each:\n"
-                    "  name: \'CoinedWord — what it does [Tech1, Tech2]\'\n"
-                    "  overview: 3-4 natural sentences (problem → solution → functionality → impact).\n"
+                    "TASK A - PROJECTS: exactly 4 projects. Each:\n"
+                    "  name: \'CoinedWord - what it does [Tech1, Tech2]\'\n"
+                    "  overview: 3-4 natural sentences (problem -> solution -> functionality -> impact).\n"
                     "  bullets: 3 strings (20-30 words, different verb, unique metric)\n"
                     "  techTags: 5-6 from allowed list, none repeated across projects\n\n"
-                    "TASK B — RELATED TECH: exactly 5 category boxes, 5 items each, all from allowed list."
+                    "TASK B - RELATED TECH: exactly 5 category boxes, 5 items each, all from allowed list."
                 )
                 usr3 = f"""Job Title: {req.job_title}
 {co_intel}
@@ -5619,7 +5623,7 @@ Allowed technologies: {techs_str}
 Systems already in experience (do NOT repeat):
 {used_str}
 Output JSON:
-{{"projects":[{{"name":"CoinedName — what it does [Tech1, Tech2]","overview":"3-4 sentence story.","bullets":["verb + metric (20-30w)","verb + metric (20-30w)","verb + metric (20-30w)"],"techTags":["Tech1","Tech2","Tech3","Tech4","Tech5"]}}],"relatedTech":[{{"category":"Domain","items":["t1","t2","t3","t4","t5"]}}]}}"""
+{{"projects":[{{"name":"CoinedName - what it does [Tech1, Tech2]","overview":"3-4 sentence story.","bullets":["verb + metric (20-30w)","verb + metric (20-30w)","verb + metric (20-30w)"],"techTags":["Tech1","Tech2","Tech3","Tech4","Tech5"]}}],"relatedTech":[{{"category":"Domain","items":["t1","t2","t3","t4","t5"]}}]}}"""
 
                 result3 = await _gcall(client, key3, sys3, usr3, 2800, "Call3")
                 _key_usage[mask(key3)] = _key_usage.get(mask(key3), 0) + 1
@@ -5628,7 +5632,7 @@ Output JSON:
                 related_out  = result3.get("relatedTech", [])
                 projects_out = validate_project_techs({"projects": projects_out}, techs).get("projects", [])
 
-                # ── Assemble ──────────────────────────────────────────────────
+                # -- Assemble --------------------------------------------------
                 cv = {
                     "totalYears":   total_years,
                     "title":        title_out,
@@ -5647,7 +5651,7 @@ Output JSON:
                         "university":  "QURTUBA UNIVERSITY OF SCIENCE AND INFORMATION TECHNOLOGY",
                         "degree":      "Bachelor of Science in Computer Science (BSCS)",
                         "cgpa":        "3.97/4.0",
-                        "years":       f"{edu['start']} – {edu['end']}",
+                        "years":       f"{edu['start']} - {edu['end']}",
                         "achievement": "Gold Medalist for Academic Excellence",
                     },
                     "keywords":      ", ".join(all_techs_flat[:15]),
@@ -5682,9 +5686,9 @@ Output JSON:
                 if "429" in err_str or "rate-limited" in err_str.lower() or "rate limited" in err_str.lower():
                     wait = 12
                     _key_rate_limited_until[mk] = _time.time() + wait + 2
-                    last_error = f"{mk} rate limited — {err_str[:100]}"
+                    last_error = f"{mk} rate limited - {err_str[:100]}"
                 elif "401" in err_str or "403" in err_str or "Invalid key" in err_str:
-                    last_error = f"{mk} invalid key — {err_str[:100]}"
+                    last_error = f"{mk} invalid key - {err_str[:100]}"
                 else:
                     last_error = f"{mk}: {err_str[:140]}"
                 exhausted.append(mk)
@@ -5699,7 +5703,7 @@ Output JSON:
                 continue
 
     if "2-minute timeout" in last_error:
-        raise HTTPException(504, "Gemini timed out after 3.5 minutes. Try again — keys may need a moment to reset.")
+        raise HTTPException(504, "Gemini timed out after 3.5 minutes. Try again - keys may need a moment to reset.")
     n_limited = sum(1 for e in exhausted if "rate" in e.lower())
     n_keys    = len(sorted_keys)
     if n_limited >= n_keys:
@@ -5752,9 +5756,9 @@ async def generate_cv(req: CVRequest):
         raise HTTPException(500, str(e))
 
 
-# ════════════════════════════════════════════════════════════════════════════════
-#  /generate-pdf  — takes CV JSON, returns a true text-based PDF (ATS-readable)
-# ════════════════════════════════════════════════════════════════════════════════
+# ================================================================================
+#  /generate-pdf  - takes CV JSON, returns a true text-based PDF (ATS-readable)
+# ================================================================================
 
 STATIC_CANDIDATE = {
     "name":        "MUHAMMAD JUNAID",
@@ -5768,10 +5772,10 @@ STATIC_CANDIDATE = {
     "university":  "QURTUBA UNIVERSITY OF SCIENCE AND INFORMATION TECHNOLOGY",
     "degree":      "Bachelor of Science in Computer Science (BSCS)",
     "gpa":         "CGPA: 3.97 / 4.0",
-    "grad_year":   "2017 – 2021",
+    "grad_year":   "2017 - 2021",
     "achievement": "Gold Medalist for Academic Excellence",
     "companies":   ["MULTYLOGICS SOLUTIONS", "ENCS NETWORKS", "NOW TECHNOLOGIES (NOW.NET.PK)"],
-    "dates":       ["May 2024 – Present", "May 2022 – May 2024", "May 2020 – May 2022"],
+    "dates":       ["May 2024 - Present", "May 2022 - May 2024", "May 2020 - May 2022"],
 }
 
 # Full clickable URLs for PDF links
@@ -5807,7 +5811,7 @@ def _detect_job_domain(cv: dict) -> str:
                     'design', 'project_management', 'finance', 'software_dev'
     Defaults to 'software_dev' if domain cannot be determined.
 
-    IMPORTANT: software_dev signals take priority — a .NET or Angular developer CV
+    IMPORTANT: software_dev signals take priority - a .NET or Angular developer CV
     that happens to mention Terraform in a misplaced skills row must NOT be classified
     as 'devops'. Only classify as 'devops' if the title/role explicitly calls it out.
     """
@@ -5816,7 +5820,7 @@ def _detect_job_domain(cv: dict) -> str:
     skills_text = " ".join(str(s) for s in (cv.get("skills") or [])).lower()
     signals = f"{title} {summary} {skills_text}"
 
-    # ── Hard software_dev signals in TITLE — these always win ────────────────
+    # -- Hard software_dev signals in TITLE - these always win ----------------
     _SOFTDEV_TITLE_KW = (
         ".net", "c#", "asp.net", "angular", "react", "vue", "node.js",
         "python developer", "django", "flask", "fastapi", "java developer",
@@ -5849,7 +5853,7 @@ def _detect_job_domain(cv: dict) -> str:
     ]):
         return "mobile"
 
-    # devops only if TITLE explicitly says devops/sre/platform — not just because
+    # devops only if TITLE explicitly says devops/sre/platform - not just because
     # skills rows mention Docker or Terraform (those get correctly bucketed anyway)
     if any(w in title for w in [
         "devops", "site reliability", "sre", "infrastructure engineer",
@@ -5919,25 +5923,25 @@ def _get_domain_fallback_pools(domain: str) -> list:
              "GitHub", "Visual Studio", "VS Code"],
         ],
         "seo": [
-            # Bucket 0 — Core SEO & Research Tools
+            # Bucket 0 - Core SEO & Research Tools
             ["SEMrush", "Ahrefs", "Moz Pro", "Google Keyword Planner", "Screaming Frog",
              "Majestic", "SpyFu", "KWFinder", "Ubersuggest", "SERPstat",
              "Long Tail Pro", "Keyword Hero", "Answer The Public"],
-            # Bucket 1 — Analytics & Search Console
+            # Bucket 1 - Analytics & Search Console
             ["Google Analytics 4", "Google Search Console", "Google Tag Manager",
              "Looker Studio", "Adobe Analytics", "Hotjar", "Crazy Egg",
              "Microsoft Clarity", "GA4 Event Tracking", "BigQuery for GA4",
              "Search Console API", "Tag Assistant"],
-            # Bucket 2 — Content & On-Page
+            # Bucket 2 - Content & On-Page
             ["Surfer SEO", "Clearscope", "MarketMuse", "Frase.io", "Yoast SEO",
              "Rank Math", "All in One SEO", "Schema Markup", "Structured Data",
              "Content Gap Analysis", "TF-IDF Analysis", "LSI Graph", "SEOwind"],
-            # Bucket 3 — Technical SEO
+            # Bucket 3 - Technical SEO
             ["Core Web Vitals", "Google PageSpeed Insights", "GTmetrix", "Lighthouse",
              "Screaming Frog", "DeepCrawl", "Sitebulb", "Log File Analyser",
              "Cloudflare", "Nginx", "Apache", "XML Sitemap", "Robots.txt",
              "Canonical Tags", "hreflang"],
-            # Bucket 4 — Paid & Social / Reporting
+            # Bucket 4 - Paid & Social / Reporting
             ["Google Ads", "Google Display Network", "Meta Ads Manager",
              "LinkedIn Campaign Manager", "Microsoft Advertising", "Google Looker Studio",
              "Google Data Studio", "Supermetrics", "Zapier", "IFTTT",
@@ -6038,25 +6042,25 @@ def _get_domain_fallback_pools(domain: str) -> list:
 
 def _sanitize_skills(raw_skills: list, cv: dict = None) -> list:
     """
-    Server-side enforcement of the 5-category × 5-technology skills structure.
+    Server-side enforcement of the 5-category x 5-technology skills structure.
 
     Rules enforced here (regardless of what the AI returned):
       1. Parse every "Category: item1, item2, ..." string into (category_name, [items]).
-      2. Global dedup — if a technology appears in more than one category, keep it
+      2. Global dedup - if a technology appears in more than one category, keep it
          only in the FIRST category it appears in and remove it from all others.
-      3. Each category must have at least 5 items — categories with fewer are dropped.
+      3. Each category must have at least 5 items - categories with fewer are dropped.
       4. Keep exactly the first 5 valid categories.
       5. Re-serialise back to clean "Category: item1, item2, ..." strings.
 
     Domain-based bucket assignment (used to re-sort misplaced items):
     Items are MOVED to the correct bucket if they are clearly misplaced.
 
-    cv (optional): the CV dict — used to detect job domain for domain-aware fallback pools.
+    cv (optional): the CV dict - used to detect job domain for domain-aware fallback pools.
     """
     # Detect job domain for domain-aware fallback pools
     domain = _detect_job_domain(cv) if cv else "software_dev"
 
-    # ── Bucket ownership map: keyword → canonical bucket index (0-4) ──────────
+    # -- Bucket ownership map: keyword -> canonical bucket index (0-4) ----------
     # For non-software domains, the bucket meanings shift but index 0-4 still apply.
     # Lower index = higher priority when a conflict is detected.
     BUCKET_KEYWORDS = {
@@ -6118,7 +6122,7 @@ def _sanitize_skills(raw_skills: list, cv: dict = None) -> list:
         "jira": 4, "confluence": 4, "sentry": 4, "raygun": 4,
     }
 
-    # ── BANNED generic / non-product terms ────────────────────────────────────
+    # -- BANNED generic / non-product terms ------------------------------------
     BANNED_TERMS = {
         "microservices", "restful", "rest", "web apis", "web api",
         "relational databases", "relational database", "sql", "nosql",
@@ -6128,7 +6132,7 @@ def _sanitize_skills(raw_skills: list, cv: dict = None) -> list:
         "server", "network", "platform", "application", "solution",
         "module", "component", "interface", "integration", "requirements",
         "design", "development", "backend", "frontend", "full stack",
-        ".net", "net",   # too vague — full names like "ASP.NET Core" are fine
+        ".net", "net",   # too vague - full names like "ASP.NET Core" are fine
         # Thin-JD prose words that can appear as fake tech items
         "web development", "web", "hands", "good", "ability", "strong", "dev",
         "remote", "setup", "mindset", "detail", "attention", "focus", "solid",
@@ -6137,7 +6141,7 @@ def _sanitize_skills(raw_skills: list, cv: dict = None) -> list:
         "bind dns", "vpc", "vlan", "subnet", "load balancer",
     }
 
-    # ── Step 1: Parse all (category_name, [items]) pairs ─────────────────────
+    # -- Step 1: Parse all (category_name, [items]) pairs ---------------------
     parsed: list[tuple[str, list[str]]] = []
     for entry in raw_skills:
         if not isinstance(entry, str):
@@ -6158,9 +6162,9 @@ def _sanitize_skills(raw_skills: list, cv: dict = None) -> list:
             parsed.append((cat_name, items))
 
     if not parsed:
-        return raw_skills  # nothing to fix — return as-is
+        return raw_skills  # nothing to fix - return as-is
 
-    # ── Step 1b: Cross-stack contamination filter ────────────────────────────
+    # -- Step 1b: Cross-stack contamination filter ----------------------------
     # If we can detect the primary backend stack from items in the parsed data,
     # remove items that clearly belong to a completely different unrelated stack.
     all_items_lower = {it.lower() for _, items in parsed for it in items}
@@ -6227,7 +6231,7 @@ def _sanitize_skills(raw_skills: list, cv: dict = None) -> list:
                 cleaned_parsed.append((cat_name, filtered))
         parsed = cleaned_parsed
 
-    # ── Step 2: ITEM-LEVEL re-bucketing (the only correct approach) ──────────
+    # -- Step 2: ITEM-LEVEL re-bucketing (the only correct approach) ----------
     # Don't trust the AI's category assignments at all.
     # Each individual item is placed into the correct bucket by BUCKET_KEYWORDS.
     # Items not matched by any keyword go to bucket 1 (backend/primary domain) as default.
@@ -6236,7 +6240,7 @@ def _sanitize_skills(raw_skills: list, cv: dict = None) -> list:
     # entire wrongly-named categories together (e.g. "Infrastructure as Code" containing
     # Angular + Terraform + SQL together, all mis-assigned to one bucket).
 
-    # Bucket label names — always driven by domain, never by what the AI wrote.
+    # Bucket label names - always driven by domain, never by what the AI wrote.
     # The AI's category names are completely discarded; correct names come from here.
     _DOMAIN_BUCKET_NAMES = {
         "seo": [
@@ -6330,14 +6334,14 @@ def _sanitize_skills(raw_skills: list, cv: dict = None) -> list:
                 assigned = 1
             buckets[assigned].append(item)
 
-    # ── Step 3: Deduplicate (already done via seen_lower above) ──────────────
+    # -- Step 3: Deduplicate (already done via seen_lower above) --------------
     # buckets already contain unique items; just alias for clarity
     clean: list[list[str]] = buckets
 
-    # ── Step 4: Global seen set for fallback fills ────────────────────────────
+    # -- Step 4: Global seen set for fallback fills ----------------------------
     seen2: set = set(seen_lower)
 
-    # ── Step 5: Auto-fill sparse buckets to reach minimum 10 items ───────────
+    # -- Step 5: Auto-fill sparse buckets to reach minimum 10 items -----------
     # Strategy: prefer filling from OTHER buckets that have overflow items from the
     # same JD domain (re-distributing items the AI placed in wrong buckets),
     # then fall back to the domain fallback pool FILTERED to only include tools
@@ -6447,7 +6451,7 @@ def _sanitize_skills(raw_skills: list, cv: dict = None) -> list:
                          "Postman", "SonarQube", "Snyk", "Checkstyle", "SpotBugs",
                          "JaCoCo", "GitHub", "IntelliJ IDEA"]
     else:
-        # Generic software_dev fallback — only used when stack cannot be detected
+        # Generic software_dev fallback - only used when stack cannot be detected
         GENERIC_FALLBACK = _get_domain_fallback_pools(domain)
         _fb_frontend = GENERIC_FALLBACK[0]
         _fb_backend  = GENERIC_FALLBACK[1]
@@ -6460,7 +6464,7 @@ def _sanitize_skills(raw_skills: list, cv: dict = None) -> list:
     result: list[str] = []
     for b_idx in range(5):
         items = clean[b_idx][:MAX_ITEMS]
-        name  = BUCKET_NAMES[b_idx]   # always use canonical name — never the AI's name
+        name  = BUCKET_NAMES[b_idx]   # always use canonical name - never the AI's name
 
         # Auto-fill up to MIN_ITEMS using the stack-specific fallback pool
         if len(items) < MIN_ITEMS:
@@ -6498,7 +6502,7 @@ def build_cv_pdf(cv: dict) -> bytes:
         pagesize=A4,
         leftMargin=ML, rightMargin=MR,
         topMargin=MT, bottomMargin=MB,
-        title=f"Muhammad Junaid CV – {_safe(cv.get('title',''))}",
+        title=f"Muhammad Junaid CV - {_safe(cv.get('title',''))}",
         author="Muhammad Junaid",
         subject=_safe(cv.get("title", "")),
         keywords=_safe(cv.get("keywords", "")),
@@ -6506,7 +6510,7 @@ def build_cv_pdf(cv: dict) -> bytes:
 
     TW = PAGE_W - ML - MR
 
-    # ── STYLES WITH INCREASED FONT SIZE AND SPACING ─────────────────────────────
+    # -- STYLES WITH INCREASED FONT SIZE AND SPACING -----------------------------
     def ps(name, **kw):
         defaults = dict(fontName="Helvetica", fontSize=10, leading=14,
                         spaceAfter=0, spaceBefore=0, textColor=colors.HexColor("#111111"))
@@ -6566,7 +6570,7 @@ def build_cv_pdf(cv: dict) -> bytes:
 
     story = []
 
-            # ── HEADER ──────────────────────────────────────────────────────────────────
+            # -- HEADER ------------------------------------------------------------------
     total_years = _safe(cv.get("totalYears", ""))
     cv_title = _safe(cv.get("title", ""))
 
@@ -6605,7 +6609,7 @@ def build_cv_pdf(cv: dict) -> bytes:
     story.append(HR())
     story.append(Spacer(1, 2 * mm))
 
-    # ── SUMMARY ──
+    # -- SUMMARY --
     summary_text = _safe(cv.get("summary", ""))
     if total_years and summary_text:
         summary_text = re.sub(
@@ -6619,7 +6623,7 @@ def build_cv_pdf(cv: dict) -> bytes:
         story.append(Paragraph(summary_text, S["bullet"]))
         story.append(Spacer(1, 3 * mm))
 
-    # ── EXPERIENCE ──
+    # -- EXPERIENCE --
     companies = cv.get("companies") or []
     if companies:
         story.append(Paragraph("WORK EXPERIENCE", S["sec_title"]))
@@ -6659,7 +6663,7 @@ def build_cv_pdf(cv: dict) -> bytes:
             
             story.append(Spacer(1, 4 * mm))  # Space between companies
 
-    # ── TECHNICAL SKILLS ──
+    # -- TECHNICAL SKILLS --
     skills_raw = cv.get("skills") or []
     skills = _sanitize_skills(skills_raw, cv)   # enforce 5 buckets, dedup, re-sort
     if skills:
@@ -6688,7 +6692,7 @@ def build_cv_pdf(cv: dict) -> bytes:
                 items_str = entry.strip()
 
             item_list  = [i.strip() for i in re.split(r"[,|;]", items_str) if i.strip()]
-            items_text = "  ·  ".join(item_list)
+            items_text = "  ?  ".join(item_list)
 
             rows.append([
                 Paragraph(cat, cat_style),
@@ -6708,7 +6712,7 @@ def build_cv_pdf(cv: dict) -> bytes:
         story.append(t)
         story.append(Spacer(1, 3 * mm))
 
-    # ── PROJECTS ──
+    # -- PROJECTS --
     projects = cv.get("projects") or []
     if projects:
         story.append(Paragraph("KEY PROJECTS", S["sec_title"]))
@@ -6741,20 +6745,20 @@ def build_cv_pdf(cv: dict) -> bytes:
                 if tech_match:
                     tech_tags = [t.strip() for t in tech_match.group(1).split(",") if t.strip()]
 
-            # Display ALL tech tags — always show Stack line
+            # Display ALL tech tags - always show Stack line
             if tech_tags:
                 story.append(Paragraph(f"<b>Stack:</b> {', '.join(tech_tags[:7])}", S["proj_stack"]))
 
             story.append(Spacer(1, 4 * mm))  # Space between projects
 
-    # ── KEY COMPETENCIES ──
+    # -- KEY COMPETENCIES --
     competencies = _safe(cv.get("competencies", ""))
     if competencies:
         story.append(Paragraph("KEY COMPETENCIES", S["sec_title"]))
         story.append(Paragraph(competencies, S["competency"]))
         story.append(Spacer(1, 2 * mm))
 
-    # ── EDUCATION ──
+    # -- EDUCATION --
     edu_data = cv.get("education", {})
     grad_year = _safe(edu_data.get("years", STATIC_CANDIDATE["grad_year"])) if isinstance(edu_data, dict) else STATIC_CANDIDATE["grad_year"]
     university = _safe(edu_data.get("university", STATIC_CANDIDATE["university"])) if isinstance(edu_data, dict) else STATIC_CANDIDATE["university"]
