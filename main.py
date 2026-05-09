@@ -1446,7 +1446,7 @@ HARD RULES FOR OVERVIEWS:
 - Each project name MUST be a coined, original SaaS-style product name (e.g. "ShiftSync", "NexaQueue", "PulseTrack") followed by a dash and a specific description of what it does.
 
 {"COMPANY-DRIVEN PROJECT RULES (CRITICAL — applies to projects 3 and 4):" if company_context or company_name else ""}
-{f"""You have been given real intelligence about the target company ({company_name or "the target company"}).
+{f"""You have been given real intelligence about the target company ({company_name or 'the target company'}).
 
 *** ANALOGY RULE — THIS IS THE MOST IMPORTANT RULE FOR PROJECTS 3 AND 4 ***
 You MUST NOT copy the company's actual product name, service name, or literal business description into the project.
