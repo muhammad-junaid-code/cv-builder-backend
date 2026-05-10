@@ -937,6 +937,13 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "You are an expert ATS-focused CV writer. Output ONLY valid JSON. "
         "No text before/after, no markdown, no backticks. Start { end }.\n\n"
 
+        "=== CRITICAL PRIORITY RULE (HIGHEST PRIORITY) ===\n"
+        "JD relevance ALWAYS overrides AI defaults or training assumptions.\n"
+        "EVERY technology, skill, and section MUST be strictly aligned with the provided JD.\n"
+        "NEVER include a technology that is not mentioned in the JD or a standard companion\n"
+        "to a technology explicitly in the JD. For non-technical roles (PM, SEO, Marketing,\n"
+        "Finance, Design): DO NOT inject backend/infra technologies unless the JD requires them.\n\n"
+
         "=== STEP 0: JOB TITLE NORMALIZATION (CRITICAL - do this BEFORE anything else) ===\n"
         "Inspect the raw job title. Clean it:\n"
         "  1. Remove any duplicated words (e.g. 'Senior Senior Angular Developer' -> 'Senior Angular Developer').\n"
@@ -3575,10 +3582,8 @@ def _merge_stages(stage1: dict, stage2: dict, stage3: dict, req: CVRequest) -> d
     cv_skills     = fix_skills(cv_companies)
     cv_enforced   = _enforce_skill_domains(cv_skills, _techs_for_enforce, req.job_title)
     cv_projtags   = _repair_project_tech_tags(cv_enforced, _techs_for_enforce)
-    return final_polish(
-        fix_skills_dedup(fix_projects(cv_projtags)),
-        years_exp=years_exp
-    )
+    cv_polished   = final_polish(fix_skills_dedup(fix_projects(cv_projtags)), years_exp=years_exp)
+    return run_validation_pipeline(cv_polished, req.job_description, req.job_title, _techs_for_enforce)
 
 
 # ===================================================================
@@ -4641,6 +4646,436 @@ def _sanitise_techs(techs: dict) -> dict:
 
 
 # ===================================================================
+# SEPARATE VALIDATION PIPELINE
+# Runs AFTER generation and BEFORE final output.
+# Enforces: JD relevance, backend tech alignment, realism, title-match.
+# This runs independently of the main generation so models can't skip it.
+# ===================================================================
+
+# Tools that are ONLY relevant in specific business contexts — never generic backend tools
+_CONTEXT_SPECIFIC_TOOLS = {
+    # Communication/messaging APIs - only relevant if JD explicitly mentions them
+    "whatsapp": ["whatsapp", "whatsapp business", "whatsapp api"],
+    "twilio":   ["twilio", "twilio sms", "twilio voice"],
+    "sendgrid": ["sendgrid"],
+    "mailgun":  ["mailgun"],
+    "pusher":   ["pusher"],
+    "intercom": ["intercom"],
+    "zendesk":  ["zendesk"],
+    "chatwoot": ["chatwoot"],
+    "freshdesk":["freshdesk"],
+    "salesforce":["salesforce", "salesforce crm"],
+    "hubspot":  ["hubspot"],
+    "stripe":   ["stripe"],
+    "paypal":   ["paypal"],
+    "twilio":   ["twilio"],
+}
+
+def _is_context_tool_relevant(tool: str, jd: str, job_title: str) -> bool:
+    """
+    Check if a context-specific tool (e.g. WhatsApp, Stripe) is actually
+    mentioned in the JD or job title. If not, it should be stripped.
+    """
+    tl = tool.lower().strip()
+    jd_lower = jd.lower()
+    title_lower = job_title.lower()
+    combined = jd_lower + " " + title_lower
+
+    for group_key, variants in _CONTEXT_SPECIFIC_TOOLS.items():
+        if any(v in tl for v in variants):
+            # This tool belongs to a context-specific group — check if JD mentions any variant
+            return any(v in combined for v in variants)
+    return True  # Not a context-specific tool — always allowed
+
+
+def _filter_irrelevant_backend_techs(cv: dict, jd: str, job_title: str) -> dict:
+    """
+    VALIDATION STEP 1 — Backend Technology Alignment.
+
+    Problem: The AI sometimes injects tools like 'WhatsApp Business', 'Stripe',
+    'Salesforce' etc. into backend skill rows even when the JD has nothing to do
+    with those domains. This function strips them from skills and company tech tags
+    unless they are explicitly present in the job description or job title.
+
+    Rules:
+    - A context-specific tool is ONLY kept if it appears in the JD or job title.
+    - This applies to: skills rows, company tech tags, project tech tags.
+    - Tools that are universally relevant (Git, Docker, PostgreSQL, etc.) are never stripped.
+    """
+    jd_lower = jd.lower()
+    title_lower = job_title.lower()
+
+    def _filter_tech_string(tech_str: str) -> str:
+        if not tech_str:
+            return tech_str
+        sep = "|" if "|" in tech_str else ","
+        parts = [t.strip() for t in tech_str.split(sep) if t.strip()]
+        kept = [t for t in parts if _is_context_tool_relevant(t, jd, job_title)]
+        return " | ".join(kept) if "|" in tech_str else ", ".join(kept)
+
+    def _filter_tech_list(tech_list: list) -> list:
+        return [t for t in tech_list if _is_context_tool_relevant(t, jd, job_title)]
+
+    # 1. Filter skills rows
+    new_skills = []
+    for row in cv.get("skills", []):
+        if ":" not in row:
+            new_skills.append(row)
+            continue
+        colon = row.index(":")
+        cat = row[:colon].strip()
+        items_str = row[colon + 1:].strip()
+        items = [t.strip() for t in items_str.split(",") if t.strip()]
+        kept = [t for t in items if _is_context_tool_relevant(t, jd, job_title)]
+        if len(kept) >= 3:
+            new_skills.append(f"{cat}: {', '.join(kept)}")
+        else:
+            new_skills.append(row)  # Keep original if too many would be stripped
+    cv["skills"] = new_skills
+
+    # 2. Filter company tech tags
+    for co in cv.get("companies", []):
+        co["tech"] = _filter_tech_string(co.get("tech", ""))
+
+    # 3. Filter project tech tags
+    for proj in cv.get("projects", []):
+        if isinstance(proj.get("techTags"), list):
+            proj["techTags"] = _filter_tech_list(proj["techTags"])
+
+    # 4. Filter technologies block
+    tech_block = cv.get("technologies", {})
+    if isinstance(tech_block, dict):
+        for key in ("mustHave", "niceToHave", "additional"):
+            if isinstance(tech_block.get(key), list):
+                tech_block[key] = _filter_tech_list(tech_block[key])
+        cv["technologies"] = tech_block
+
+    return cv
+
+
+def _validate_jd_relevance(cv: dict, jd: str, job_title: str, techs: dict) -> dict:
+    """
+    VALIDATION STEP 2 — Strict JD Relevance Enforcement.
+
+    Problem: AI models sometimes inject technologies from their training data
+    that are NOT present in the JD or its ecosystem. This validator removes
+    any technology that cannot be traced back to the JD.
+
+    Algorithm:
+    1. Build the full allowed tech set from the extracted techs dict.
+    2. For any skill item that is NOT in the allowed set AND is not a neutral/cross-stack tool,
+       remove it.
+    3. Applies to skills, company tags, project tags, and the technologies block.
+
+    Priority rule: JD relevance > default AI assumptions.
+    """
+    # Build allowed set: everything in techs + neutral cross-stack tools
+    allowed: set = set()
+    for arr in ("core", "preferred", "ecosystem"):
+        for t in techs.get(arr, []):
+            allowed.add(t.lower().strip())
+
+    # Add all neutral tools to allowed (they are always acceptable)
+    for n in _NEUTRAL_TECHS:
+        allowed.add(n.lower().strip())
+
+    # If allowed set is too thin (<10 items), skip enforcement
+    # (thin set means tech extraction failed; don't strip everything)
+    if len(allowed) < 10:
+        return cv
+
+    def _is_jd_relevant(tech: str) -> bool:
+        tl = tech.lower().strip()
+        # Direct match
+        if tl in allowed:
+            return True
+        # Prefix/substring match for compound names (e.g. "AWS Lambda" matches "aws")
+        if any(tl.startswith(a) or a.startswith(tl) for a in allowed if len(a) > 3):
+            return True
+        # If the tech is short (2-3 chars, e.g. "Go", "C#"), be permissive
+        if len(tl) <= 3:
+            return True
+        return False
+
+    def _filter_items(items: list) -> list:
+        return [t for t in items if not _is_real_tech(t) or _is_jd_relevant(t)]
+
+    # Filter skills rows
+    new_skills = []
+    for row in cv.get("skills", []):
+        if ":" not in row:
+            new_skills.append(row)
+            continue
+        colon = row.index(":")
+        cat = row[:colon].strip()
+        items = [t.strip() for t in row[colon + 1:].split(",") if t.strip()]
+        kept = _filter_items(items)
+        if len(kept) >= 3:
+            new_skills.append(f"{cat}: {', '.join(kept)}")
+        else:
+            new_skills.append(row)  # Don't destroy rows with too few left
+    cv["skills"] = new_skills
+
+    return cv
+
+
+def _validate_realism(cv: dict, job_title: str, jd: str) -> dict:
+    """
+    VALIDATION STEP 3 — Realism Check.
+
+    Detects and fixes unrealistic or AI-generated patterns:
+    1. Repeated metric formats across bullets (e.g. all "X% improvement")
+    2. Repeated action verbs across bullets in the same company
+    3. Overly broad or repeated technology lists in projects
+    4. Non-technical role detecting technical injection
+
+    For non-technical roles (PM, SEO, Finance, Design), removes
+    backend/infrastructure technologies from skills and experience
+    unless they are explicitly in the JD.
+    """
+    title_lower = job_title.lower()
+    jd_lower    = jd.lower()
+
+    # Detect if this is a non-technical role
+    _NON_TECH_ROLE_KW = (
+        "seo", "digital marketing", "social media", "content manager",
+        "project manager", "product manager", "scrum master",
+        "financial analyst", "accountant", "business analyst",
+        "ux designer", "ui designer", "graphic designer",
+        "sales", "customer success", "account manager",
+    )
+    _is_non_tech = any(kw in title_lower for kw in _NON_TECH_ROLE_KW)
+
+    # For non-technical roles, strip backend/infra technologies from skills
+    # unless they appear in the JD
+    if _is_non_tech:
+        _BACKEND_INFRA_KW = (
+            "docker", "kubernetes", "terraform", "ansible",
+            "postgresql", "mysql", "mongodb", "redis",
+            "node.js", "express", "django", "flask",
+            "react", "angular", "vue", "typescript", "javascript",
+            "aws ec2", "aws lambda", "azure functions", "gcp",
+        )
+        def _should_strip_for_nontechrole(tech: str) -> bool:
+            tl = tech.lower().strip()
+            return any(kw in tl for kw in _BACKEND_INFRA_KW) and kw not in jd_lower
+
+        new_skills = []
+        for row in cv.get("skills", []):
+            if ":" not in row:
+                new_skills.append(row)
+                continue
+            colon = row.index(":")
+            cat = row[:colon].strip()
+            items = [t.strip() for t in row[colon + 1:].split(",") if t.strip()]
+            kept = []
+            for t in items:
+                tl = t.lower().strip()
+                strip = False
+                for kw in _BACKEND_INFRA_KW:
+                    if kw in tl and kw not in jd_lower:
+                        strip = True
+                        break
+                if not strip:
+                    kept.append(t)
+            if len(kept) >= 3:
+                new_skills.append(f"{cat}: {', '.join(kept)}")
+            else:
+                new_skills.append(row)
+        cv["skills"] = new_skills
+
+    # Deduplicate bullet verbs within each company (realism: same verb twice = AI flag)
+    for co in cv.get("companies", []):
+        bullets = co.get("bullets", [])
+        if not bullets:
+            continue
+        seen_verbs: set = set()
+        _VERB_REPLACEMENTS = [
+            "Developed", "Engineered", "Implemented", "Designed",
+            "Built", "Deployed", "Integrated", "Optimised",
+            "Delivered", "Established", "Streamlined", "Configured",
+        ]
+        replacement_idx = 0
+        new_bullets = []
+        for b in bullets:
+            if not b:
+                new_bullets.append(b)
+                continue
+            first_word = b.split()[0] if b.split() else ""
+            fl = first_word.lower()
+            if fl in seen_verbs:
+                # Replace the first verb with an unused one
+                while replacement_idx < len(_VERB_REPLACEMENTS):
+                    rep = _VERB_REPLACEMENTS[replacement_idx]
+                    replacement_idx += 1
+                    if rep.lower() not in seen_verbs:
+                        rest = b[len(first_word):] if len(b) > len(first_word) else b
+                        b = rep + rest
+                        seen_verbs.add(rep.lower())
+                        break
+            else:
+                seen_verbs.add(fl)
+            new_bullets.append(b)
+        co["bullets"] = new_bullets
+
+    return cv
+
+
+def _validate_title_alignment(cv: dict, job_title: str, jd: str) -> dict:
+    """
+    VALIDATION STEP 4 — Title Alignment.
+
+    Ensures the CV headline title:
+    1. Is not identical to the input job title.
+    2. Does not contain location words.
+    3. Has exactly 3 technologies after the pipe.
+    4. Does not use 'Architect' unless the JD explicitly requests it.
+    """
+    title = cv.get("title", "")
+    if not title:
+        return cv
+
+    jd_lower    = jd.lower()
+    title_clean = title.strip()
+
+    # Rule 1: Remove location words from title
+    _LOCATION_WORDS = (
+        "dallas", "texas", "tx", "pakistan", "lahore", "islamabad",
+        "karachi", "remote", "based", "located", "usa", "uk", "london",
+        "new york", "california", "ca", "ny", "dubai", "uae",
+    )
+    for loc in _LOCATION_WORDS:
+        pattern = r'(?i)\b' + re.escape(loc) + r'\b'
+        title_clean = re.sub(pattern, '', title_clean).strip()
+    title_clean = re.sub(r'\s+', ' ', title_clean).strip()
+    title_clean = title_clean.strip('|').strip()
+
+    # Rule 2: Remove 'Architect' unless JD explicitly mentions it
+    if "architect" not in jd_lower:
+        title_clean = re.sub(r'(?i)\barchitect\b', 'Engineer', title_clean)
+        title_clean = re.sub(r'\s+', ' ', title_clean).strip()
+
+    # Rule 3: Don't let title be identical to the job title (case-insensitive)
+    if title_clean.lower().split("|")[0].strip() == job_title.lower().split("|")[0].strip():
+        # Add a domain qualifier to differentiate
+        parts = title_clean.split("|")
+        if len(parts) >= 2:
+            domain_part = parts[0].strip()
+            tech_part   = parts[1].strip()
+            title_clean = f"Specialist {domain_part} | {tech_part}"
+
+    # Rule 4: Normalize double spaces, leading/trailing pipe chars
+    title_clean = re.sub(r'\s+', ' ', title_clean).strip().strip('|').strip()
+
+    cv["title"] = title_clean
+    return cv
+
+
+def _validate_skills_category_names(cv: dict, jd: str, job_title: str) -> dict:
+    """
+    VALIDATION STEP 5 — Skill Category Name Sanity.
+
+    Ensures skill category names reflect the ACTUAL JD domain, not generic labels.
+    Renames overly generic categories like 'Backend Technologies' to role-specific names.
+    Also ensures no category is named after a company or a location.
+    """
+    title_lower = job_title.lower()
+    skills = cv.get("skills", [])
+    if not skills:
+        return cv
+
+    _GENERIC_CAT_NAMES = {
+        "backend technologies", "backend", "frontend technologies", "frontend",
+        "database", "databases", "cloud", "devops", "skills", "tools",
+        "technologies", "other technologies", "additional skills",
+    }
+
+    new_skills = []
+    for row in skills:
+        if ":" not in row:
+            new_skills.append(row)
+            continue
+        colon = row.index(":")
+        cat = row[:colon].strip()
+        rest = row[colon + 1:]
+
+        # Rename overly generic category names by prepending domain signal
+        cat_lower = cat.lower()
+        if cat_lower in _GENERIC_CAT_NAMES:
+            # Derive a domain-specific prefix from job title or JD
+            if ".net" in title_lower or "c#" in title_lower:
+                prefix = ".NET & C#"
+            elif "angular" in title_lower:
+                prefix = "Angular & TypeScript"
+            elif "react" in title_lower:
+                prefix = "React & Frontend"
+            elif "node" in title_lower:
+                prefix = "Node.js & Backend"
+            elif "python" in title_lower or "django" in title_lower:
+                prefix = "Python & Backend"
+            elif "java" in title_lower:
+                prefix = "Java & Spring"
+            elif "php" in title_lower:
+                prefix = "PHP & Laravel"
+            elif "backend" in cat_lower:
+                # Try to infer from JD
+                if "node" in jd.lower():
+                    prefix = "Node.js & Backend"
+                elif ".net" in jd.lower() or "c#" in jd.lower():
+                    prefix = ".NET & C# Backend"
+                elif "python" in jd.lower():
+                    prefix = "Python Backend"
+                else:
+                    prefix = "Core Backend"
+            else:
+                new_skills.append(row)
+                continue
+            cat = prefix + " " + cat if prefix not in cat else cat
+
+        new_skills.append(f"{cat}:{rest}")
+    cv["skills"] = new_skills
+    return cv
+
+
+def run_validation_pipeline(cv: dict, jd: str, job_title: str, techs: dict) -> dict:
+    """
+    MASTER VALIDATION PIPELINE — runs ALL validation steps in order.
+
+    This is a separate, independent pipeline that enforces quality rules
+    AFTER the AI has generated the CV. It runs before final output and
+    cannot be bypassed by any AI model.
+
+    Steps run in order (each builds on the previous):
+      1. Filter irrelevant backend technologies (e.g. WhatsApp in a Java CV)
+      2. Validate strict JD relevance (remove off-stack technologies)
+      3. Realism check (deduplicate verbs, handle non-tech roles)
+      4. Title alignment (location words, architect guard, uniqueness)
+      5. Skill category name sanity
+
+    Priority: JD relevance ALWAYS overrides AI defaults.
+    """
+    if not cv or not jd:
+        return cv
+
+    # Step 1: Remove context-specific tools not in the JD
+    cv = _filter_irrelevant_backend_techs(cv, jd, job_title)
+
+    # Step 2: Remove technologies not traceable to the JD
+    cv = _validate_jd_relevance(cv, jd, job_title, techs)
+
+    # Step 3: Realism check
+    cv = _validate_realism(cv, job_title, jd)
+
+    # Step 4: Title alignment
+    cv = _validate_title_alignment(cv, job_title, jd)
+
+    # Step 5: Skill category name sanity
+    cv = _validate_skills_category_names(cv, jd, job_title)
+
+    return cv
+
+
+# ===================================================================
 # MAIN ATOMIC GENERATION - 5 pipelines, never truncated
 # ===================================================================
 
@@ -4742,6 +5177,7 @@ Output JSON:
 
     sys2 = (
         "You are an expert CV writer. Output ONLY valid JSON. No markdown, no backticks.\n\n"
+        "PRIORITY RULE: JD relevance is always highest priority. Use ONLY technologies from the JD or their standard companions. Never inject tools not traceable to this JD.\n\n"
         f"Allowed technologies (use ONLY these): {techs_str}\n\n"
         "TASK A - SKILLS: exactly 5 categories, each with exactly 7-10 items from the allowed list.\n"
         "Category names must reflect JD technical domains (e.g. 'Backend & Frameworks', 'Database & Storage',\n"
@@ -4875,10 +5311,8 @@ Output JSON:
     cv_enforced   = _enforce_skill_domains(cv_skills, techs, req.job_title)
     # Guarantee each project has 5-7 real JD-derived tech tags
     cv_projtags   = _repair_project_tech_tags(cv_enforced, techs)
-    return final_polish(
-        fix_skills_dedup(fix_projects(cv_projtags)),
-        years_exp=years_exp,
-    )
+    cv_polished   = final_polish(fix_skills_dedup(fix_projects(cv_projtags)), years_exp=years_exp)
+    return run_validation_pipeline(cv_polished, req.job_description, req.job_title, techs)
 # ===================================================================
 # call_cerebras - robust key rotation with detailed error reporting
 # ===================================================================
@@ -5105,7 +5539,8 @@ async def call_ollama(req: CVRequest) -> dict:
                 "ecosystem": _cv_raw.get("technologies",{}).get("additional",[])}
     _cv_raw  = _enforce_skill_domains(_cv_raw, _techs_o, req.job_title)
     _cv_raw  = _repair_project_tech_tags(_cv_raw, _techs_o)
-    return final_polish(fix_skills_dedup(fix_projects(_cv_raw)), years_exp=(req.years_exp or ''))
+    _cv_polished = final_polish(fix_skills_dedup(fix_projects(_cv_raw)), years_exp=(req.years_exp or ''))
+    return run_validation_pipeline(_cv_polished, req.job_description, req.job_title, _techs_o)
 
 
 # -- Main endpoint -------------------------------------------------------------
@@ -5170,8 +5605,8 @@ async def call_deepseek(req: CVRequest) -> tuple:
                                 "ecosystem": _cv_raw.get("technologies",{}).get("additional",[])}
                     _cv_raw  = _enforce_skill_domains(_cv_raw, _techs_d, req.job_title)
                     _cv_raw  = _repair_project_tech_tags(_cv_raw, _techs_d)
-                    cv = final_polish(fix_skills_dedup(fix_projects(_cv_raw)),
-                                      years_exp=(req.years_exp or ''))
+                    _cv_polished = final_polish(fix_skills_dedup(fix_projects(_cv_raw)), years_exp=(req.years_exp or ''))
+                    cv = run_validation_pipeline(_cv_polished, req.job_description, req.job_title, _techs_d)
                     return cv, mk, i
 
                 elif r.status_code == 429:
@@ -5288,8 +5723,8 @@ async def call_openai(req: CVRequest) -> tuple:
                                  "ecosystem": _cv_raw.get("technologies",{}).get("additional",[])}
                     _cv_raw  = _enforce_skill_domains(_cv_raw, _techs_oa, req.job_title)
                     _cv_raw  = _repair_project_tech_tags(_cv_raw, _techs_oa)
-                    cv = final_polish(fix_skills_dedup(fix_projects(_cv_raw)),
-                                      years_exp=(req.years_exp or ''))
+                    _cv_polished = final_polish(fix_skills_dedup(fix_projects(_cv_raw)), years_exp=(req.years_exp or ''))
+                    cv = run_validation_pipeline(_cv_polished, req.job_description, req.job_title, _techs_oa)
                     return cv, mk, i
 
                 elif r.status_code == 429:
@@ -5688,7 +6123,8 @@ Output JSON:
                         "ecosystem": cv_s.get("technologies", {}).get("additional", [])}
                 cv_s = _enforce_skill_domains(cv_s, _tg, req.job_title)
                 cv_s = _repair_project_tech_tags(cv_s, _tg)
-                return final_polish(fix_skills_dedup(fix_projects(cv_s)), years_exp=(req.years_exp or "")), mk, i
+                _cv_polished = final_polish(fix_skills_dedup(fix_projects(cv_s)), years_exp=(req.years_exp or ""))
+                return run_validation_pipeline(_cv_polished, req.job_description, req.job_title, _tg), mk, i
 
             except ValueError as e:
                 err_str = str(e)
