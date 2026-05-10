@@ -952,44 +952,40 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
     if _yrs_float <= 1.4:
         _seniority_rule = (
             f"SENIORITY RULE - {total_years} year experience: "
-            "Co1 MUST use 'Junior' prefix. Domain = top NAMED TECHNOLOGY from JD required skills "
-            "(e.g. 'Junior WordPress Developer' for WordPress JD — NOT 'Junior DevOps Engineer'). "
-            "BANNED domains: DevOps, Web, Software, Backend, Frontend. Use real tool names only.\n\n"
+            "Co1 MUST use 'Junior' prefix. Domain = primary NAMED TECHNOLOGY from JD "
+            "(e.g. 'Junior WordPress Developer' — NOT 'Junior DevOps Engineer').\n\n"
         )
         _seniority_ban = (
-            "- Missing 'Junior' prefix on Co1 role title\n"
+            "- Missing 'Junior' prefix on Co1\n"
             "- Generic domain word (DevOps, Web, Software, Backend, Frontend) in role title\n"
         )
     elif _yrs_float <= 2.4:
         _seniority_rule = (
             f"SENIORITY RULE - {total_years} years experience: "
             "Co1 NO prefix. Domain = PRIMARY named tech from JD (e.g. 'WordPress Developer'). "
-            "Co2 MUST use 'Junior' prefix. Domain = DIFFERENT named tech from JD (e.g. 'Junior Webflow Specialist'). "
-            "BANNED domains: DevOps, Web, Software, Backend, Frontend. Each title needs different domain AND function word.\n\n"
+            "Co2 MUST use 'Junior'. Domain = DIFFERENT named tech (e.g. 'Junior Webflow Specialist'). "
+            "BANNED domains: DevOps, Web, Software, Backend, Frontend.\n\n"
         )
         _seniority_ban = (
-            "- Missing 'Junior' prefix on Co2\n"
+            "- Missing 'Junior' on Co2\n"
             "- Seniority prefix on Co1\n"
-            "- Same domain word at both companies\n"
-            "- Generic domain word (DevOps, Web, Software, Backend, Frontend) in any role title\n"
+            "- Generic domain word (DevOps, Web, Software, Backend, Frontend)\n"
         )
     else:
         _seniority_rule = (
             f"SENIORITY RULE - {total_years} years experience: "
-            "Co1 MUST use 'Senior' prefix. Domain = PRIMARY named tech from JD "
-            "(e.g. 'Senior WordPress Engineer' — NEVER 'Senior DevOps Engineer' or 'Senior Web Developer'). "
-            "Co2 NO prefix. Domain = DIFFERENT named tech from JD (e.g. 'Webflow Developer'). "
-            "Co3 MUST use 'Junior' prefix. Domain = THIRD named tech from JD (e.g. 'Junior JavaScript Specialist'). "
-            "BANNED domains in ALL titles: DevOps, Web, Software, Backend, Frontend, Full-Stack, Digital, IT. "
-            "Every title needs a different domain word AND different function word.\n\n"
+            "Co1 MUST use 'Senior'. Domain = PRIMARY named tech from JD "
+            "(e.g. 'Senior WordPress Engineer' — NEVER 'Senior DevOps Engineer'). "
+            "Co2 NO prefix. Domain = DIFFERENT named tech (e.g. 'Webflow Developer'). "
+            "Co3 MUST use 'Junior'. Domain = THIRD named tech (e.g. 'Junior JavaScript Specialist'). "
+            "BANNED in ALL titles: DevOps, Web, Software, Backend, Frontend, Full-Stack, Digital, IT.\n\n"
         )
         _seniority_ban = (
-            "- Missing 'Senior' prefix on Co1\n"
+            "- Missing 'Senior' on Co1\n"
             "- Seniority prefix on Co2\n"
-            "- Missing 'Junior' prefix on Co3\n"
-            "- Same domain word in more than one title\n"
-            "- Generic domain word (DevOps, Web, Software, Backend, Frontend, Digital) in any title\n"
-            "- Invented adjective in CV title (Transformed, Innovative, Dynamic, Versatile, Creative)\n"
+            "- Missing 'Junior' on Co3\n"
+            "- Generic domain word (DevOps, Web, Software, Backend, Frontend, Digital)\n"
+            "- Invented adjective in CV title (Transformed, Innovative, Dynamic, Versatile)\n"
         )
 
     system = (
@@ -1109,32 +1105,15 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "Each company MUST have a 'tech' field with exactly 6-8 pipe-separated technologies from the extracted list.\n"
         "Fewer than 6 tech tags is a HARD FAILURE.\n\n"
 
-        f"=== ROLE TITLES (CRITICAL — READ EVERY WORD) ===\n"
-        f"Produce EXACTLY {len(companies)} company role titles. Each must be unique, realistic, and strictly derived from the JD.\n"
-        "━━━ STEP A — EXTRACT named technologies from the JD NOW ━━━\n"
-        "Read the JD requirements and list every named tool/framework/platform (e.g. 'WordPress', 'Webflow', 'Elementor', 'React', 'Laravel').\n"
-        "These named tools become the ONLY valid domain words for role titles.\n\n"
-        "━━━ STEP B — ASSIGN a DIFFERENT named technology to EACH company ━━━\n"
-        "Co1 (most recent) → PRIMARY named tech from JD required skills (e.g. 'WordPress' for a WordPress JD).\n"
-        "Co2 (previous)   → SECONDARY named tech from JD (e.g. 'Webflow', 'JavaScript', 'Elementor').\n"
-        "Co3 (oldest)     → THIRD named tech from JD or its closest ecosystem tool (e.g. 'PHP', 'SEO', 'HTML/CSS').\n"
-        "Each company MUST have a DIFFERENT domain word — reusing the same tech name across companies is a HARD FAILURE.\n\n"
-        "━━━ STEP C — PICK a DIFFERENT function word for EACH company ━━━\n"
-        "Full pool: Engineer, Developer, Specialist, Analyst, Programmer, Consultant, Designer, Technologist, Builder, Integrator\n"
-        "No function word may repeat across companies. If the JD title uses a function word, Co1 MUST use a different one.\n\n"
-        "━━━ ABSOLUTE BANNED DOMAIN WORDS (instant failure if used in ANY role title) ━━━\n"
-        "DevOps, Web, Software, Backend, Frontend, Full-Stack, Fullstack, IT, Tech, Digital\n"
-        "These are CATEGORY LABELS, not technology names. Use the actual named tool from the JD instead.\n"
-        "EXAMPLE OF FAILURE: 'Senior DevOps Engineer', 'Web Developer', 'Software Specialist' — all BANNED.\n"
-        "EXAMPLE OF CORRECT: 'Senior WordPress Engineer', 'Webflow Developer', 'Junior JavaScript Specialist'.\n\n"
-        "━━━ CAREER PROGRESSION RULE ━━━\n"
-        "Co1 MUST be most strictly aligned with the target job title and JD.\n"
-        "Co2 shows the logical previous step in the same career path (related tech, slightly less senior).\n"
-        "Co3 shows entry-level work in the same domain (Junior prefix, foundational tech from JD).\n\n"
-        "━━━ UNIQUENESS CHECK (run before finalising) ━━━\n"
-        "If any two titles share the same domain word OR the same function word → REGENERATE.\n"
-        "CORRECT: 'Senior WordPress Engineer' / 'Webflow Developer' / 'Junior JavaScript Specialist'\n"
-        "WRONG:   'Senior DevOps Engineer' / 'DevOps Developer' / 'Junior DevOps Analyst' — all BANNED\n"
+        f"=== ROLE TITLES ===\n"
+        f"Produce EXACTLY {len(companies)} company role titles. Each MUST use a NAMED TECHNOLOGY from the JD as the domain word.\n"
+        "FORMAT: '[Seniority] [Named JD Tech] [Function Word]' — e.g. 'Senior WordPress Engineer', 'Webflow Developer', 'Junior JavaScript Specialist'.\n"
+        "BANNED DOMAIN WORDS (never use these — they are category labels, not tech names):\n"
+        "  DevOps, Web, Software, Backend, Frontend, Full-Stack, Fullstack, IT, Tech, Digital\n"
+        "CORRECT for a WordPress/Webflow JD: 'Senior WordPress Engineer' / 'Webflow Developer' / 'Junior JavaScript Specialist'\n"
+        "WRONG: 'Senior DevOps Engineer' / 'Web Developer' / 'Junior Software Specialist' — ALL BANNED\n"
+        "Each company MUST have a DIFFERENT named-tech domain word AND a DIFFERENT function word.\n"
+        "Function pool (no repeats): Engineer, Developer, Specialist, Analyst, Programmer, Consultant, Designer, Technologist, Builder, Integrator\n"
         + _seniority_rule +
 
         "=== SUMMARY ===\n"
@@ -1218,24 +1197,12 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "Span 4 areas: Technical Practices, Domain Expertise, Engineering Process, Impact Areas.\n"
         "ALL derived from the JD domain - zero generic phrases.\n\n"
 
-        "=== CV HEADLINE TITLE (CRITICAL - ANTI-COPY ENFORCEMENT) ===\n"
-"The 'title' field MUST be derived only from JD words — no invented adjectives, no generic labels.\n"
+        "=== CV HEADLINE TITLE ===\n"
 "FORMAT: '[Named JD Tech] [Function Word] | [Tech1], [Tech2], [Tech3]'\n"
-"  WordPress JD example: 'WordPress & Webflow Engineer | WordPress, Webflow, Elementor'\n"
-"  React JD example: 'React & TypeScript Developer | React, TypeScript, Node.js'\n\n"
-"━━━ BANNED WORDS IN TITLE (instant failure) ━━━\n"
-"  Invented adjectives: Transformed, Innovative, Dynamic, Versatile, Experienced, Seasoned, Skilled, Expert, Creative, Enhanced, Advanced, Optimized\n"
-"  Generic labels: Web, Software, Backend, Frontend, DevOps, IT, Tech, Digital, Full-Stack\n"
-"  Location words: Pakistan, Remote, Karachi, Islamabad, USA, UK\n"
-"  Seniority inflation: Architect, Principal, Lead, Head (only if JD explicitly uses these)\n\n"
-"RULES:\n"
-"  1. Every word in the title MUST exist in the JD text or be a direct synonym of a JD word.\n"
-"  2. Do NOT copy the exact job title — change at least the function word and one tech.\n"
-"  3. Function word must differ from the job title's function word.\n"
-"  4. Exactly 3 named technologies after the pipe — from JD required or preferred list only.\n"
-"  5. Stay at the SAME seniority level as the JD.\n"
-"  6. Use pipe '|' not hyphens.\n"
-"VALIDATION: Does every word exist in the JD? If not — rewrite completely.\n\n"
+"Example for WordPress JD: 'WordPress & Webflow Engineer | WordPress, Webflow, Elementor'\n"
+"BANNED words in title: Transformed, Innovative, Dynamic, Versatile, Experienced, Seasoned, Skilled, Expert,\n"
+"  Creative, Enhanced, Advanced, Web, Software, Backend, Frontend, DevOps, Digital, Full-Stack\n"
+"Every word MUST come from the JD. Use pipe '|'. Exactly 3 techs after pipe.\n\n"
 
         "=== BANNED (instant failure) ===\n"
 	"- Job title duplication in the title field (e.g. 'Senior Senior Angular Developer') - normalize before outputting\n"
@@ -1258,8 +1225,8 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "- Fewer than 6 tech tags in any company\n"
         "- Summary shorter than 70 words\n"
         "- Generic role titles without JD tech domain\n"
-        "- Role title domain word is DevOps, Web, Software, Backend, Frontend, Full-Stack, Digital, IT — use real named tech\n"
-        "- Invented adjectives in CV title: Transformed, Innovative, Dynamic, Versatile, Creative, Seasoned, Enhanced, Advanced\n"
+        "- Role title with DevOps, Web, Software, Backend, Frontend, Full-Stack, Digital, IT as domain word\n"
+        "- Invented adjectives in CV title: Transformed, Innovative, Dynamic, Versatile, Creative, Seasoned\n"
         "- Same domain word in more than one company role title\n"
         "- Same function word in more than one company role title\n"
         "- 1-2 sentence project overviews\n"
@@ -1286,30 +1253,24 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
     if num_cos == 1:
         seniority_labels = ["current / only role - Junior"]
         r3_levels = [
-            "Co1: prefix=Junior. Domain = top NAMED TECHNOLOGY from JD required skills "
-            "(e.g. 'WordPress' for WordPress JD — NOT 'DevOps', 'Web', or 'Software'). "
-            "Function word: pick one DIFFERENT from the job title's function word."
+            "Co1: prefix=Junior. Domain = PRIMARY named tech from JD "
+            "(e.g. 'WordPress' for WordPress JD — NOT 'DevOps' or 'Web'). "
+            "Function word: differs from job title function word."
         ]
         json_seniority = ["Junior"]
     elif num_cos == 2:
         seniority_labels = ["current / plain no prefix", "previous / Junior"]
         r3_levels = [
-            "Co1: NO prefix. Domain = PRIMARY named tech from JD (e.g. 'WordPress', 'React', 'Laravel'). "
-            "NOT: 'Web', 'DevOps', 'Software'. Function word differs from job title.",
-            "Co2: prefix=Junior. Domain = DIFFERENT named tech from JD "
-            "(e.g. if Co1=WordPress → Co2=Webflow or JavaScript). Different function word from Co1.",
+            "Co1: NO prefix. Domain = PRIMARY named tech from JD (e.g. 'WordPress' not 'Web'). Different function word from job title.",
+            "Co2: prefix=Junior. Domain = DIFFERENT named tech (e.g. 'Webflow' if Co1=WordPress). Different function word from Co1.",
         ]
         json_seniority = ["", "Junior"]
     else:
         seniority_labels = ["current / Senior", "mid-level / plain no prefix", "oldest / Junior"]
         r3_levels = [
-            "Co1: prefix=Senior. Domain = PRIMARY named tech from JD "
-            "(e.g. 'Senior WordPress Engineer' — NEVER 'Senior DevOps Engineer'). "
-            "Function word: NOT the same as the job title's.",
-            "Co2: NO prefix. Domain = DIFFERENT named tech from JD "
-            "(e.g. Co1=WordPress → Co2=Webflow or Elementor). Different function word.",
-            "Co3: prefix=Junior. Domain = THIRD named tech from JD "
-            "(e.g. 'Junior JavaScript Specialist' or 'Junior PHP Programmer'). Third different function word.",
+            "Co1: prefix=Senior. Domain = PRIMARY named tech from JD (e.g. 'Senior WordPress Engineer' — NEVER 'Senior DevOps Engineer'). Unique function word.",
+            "Co2: NO prefix. Domain = DIFFERENT named tech from JD (e.g. 'Webflow Developer'). Different function word.",
+            "Co3: prefix=Junior. Domain = THIRD named tech (e.g. 'Junior JavaScript Specialist'). Third different function word.",
         ]
         json_seniority = ["Senior", "", "Junior"]
 
@@ -1466,11 +1427,10 @@ R3 SENIORITY + ROLE TITLES (critical):
 Each company MUST have a UNIQUE role title. BOTH seniority AND function word MUST differ:
 {r3_block}
 Function word pool (ONE per company, NO repeats): Engineer, Developer, Specialist, Analyst, Programmer, Consultant, Designer, Technologist, Builder, Integrator
-HARD RULE: No function word repeats across companies.
-HARD RULE: Domain word for EACH company = DIFFERENT named technology from JD.
-HARD RULE: DevOps, Web, Software, Backend, Frontend, Full-Stack, Digital, IT are BANNED as domain words.
-HARD RULE: Transformed, Innovative, Dynamic, Versatile, Creative are BANNED in the CV headline title.
-SELF-CHECK before output: list all role titles → verify (a) every domain = real named JD tech, (b) no domain repeats, (c) no function word repeats, (d) no banned words. Fail any → rewrite all.
+HARD RULE: No function word repeats.
+HARD RULE: Domain = real named JD technology per company (DevOps/Web/Software/Backend/Frontend BANNED).
+HARD RULE: Transformed/Innovative/Dynamic/Versatile/Creative BANNED in CV title.
+NOTE: A post-processor will automatically fix any role title that uses a banned domain word.
 
 R4 BULLETS: 4 per company, 20-30 words each. Every bullet: >=1 JD technology + specific named system + unique metric.
 TECH ENFORCEMENT: Use ONLY technologies extracted from the JD. Never add technologies not in the JD.
@@ -2086,71 +2046,8 @@ def _sanitize_skills_list(skills: list) -> list:
 
 
 
-# Words that indicate a bad/placeholder CV title — trigger domain fallback to job_title
-_BAD_TITLE_WORDS = {
-    "transformed", "innovative", "dynamic", "versatile", "experienced", "seasoned",
-    "skilled", "expert", "creative", "enhanced", "advanced", "optimized", "optimised",
-    "title", "placeholder", "role", "position", "candidate", "professional",
-}
-# Generic domain words banned from role titles — must be replaced with real tech names
-_BANNED_ROLE_DOMAINS = {
-    "devops", "web", "software", "backend", "frontend", "full-stack", "fullstack",
-    "it", "tech", "digital", "full stack", "developer", "engineer", "specialist",
-}
-
-def _extract_domain_from_job_title(job_title: str) -> str:
-    """Extract a clean domain phrase from the actual job title for use in role titles.
-    e.g. 'WordPress Developer Full Stack Theme & Plugin Development' -> 'WordPress Developer'
-    """
-    if not job_title:
-        return "WordPress Developer"
-    # Strip seniority prefixes
-    clean = re.sub(
-        r"(?i)(lead|principal|staff|senior|mid[\s\-]?level|junior|associate|graduate|entry[\s\-]?level)(\/\w+)?\s*",
-        "", job_title
-    ).strip()
-    # Take first 3-4 meaningful words
-    words = clean.split()
-    domain = " ".join(words[:3]).strip()
-    domain = re.sub(r"\s+", " ", domain).strip()
-    return domain or "WordPress Developer"
-
-
-def _is_bad_cv_title(title: str) -> bool:
-    """Return True if the AI-generated title contains invented/placeholder words."""
-    if not title:
-        return True
-    title_lower = title.lower()
-    # Check for known bad words in the part before the pipe
-    before_pipe = title_lower.split("|")[0].strip()
-    words = re.split(r"[\s\-&/|,]+", before_pipe)
-    bad_count = sum(1 for w in words if w in _BAD_TITLE_WORDS)
-    # Also bad if the whole title before pipe is only generic words
-    domain_words = [w for w in words if w not in {"senior", "junior", "mid", "level", "the", "a", "an", "&", "and"}]
-    all_generic = all(w in _BANNED_ROLE_DOMAINS or w in _BAD_TITLE_WORDS for w in domain_words if w)
-    return bad_count >= 1 or all_generic
-
-
-def _is_banned_domain(domain_str: str) -> bool:
-    """Return True if the domain part of a role title uses a banned generic word."""
-    if not domain_str:
-        return True
-    # Strip seniority to get the core domain
-    core = re.sub(
-        r"(?i)(senior|junior|associate|graduate|lead|staff|principal)\s*", "", domain_str
-    ).strip().lower()
-    words = re.split(r"[\s\-/]+", core)
-    # All meaningful words are banned generics
-    meaningful = [w for w in words if len(w) > 2]
-    if not meaningful:
-        return True
-    return all(w in _BANNED_ROLE_DOMAINS for w in meaningful)
-
-
-def fix_companies(cv: dict, job_title: str = "") -> dict:
-    """Fix placeholder names and enforce appropriate role titles.
-    Uses job_title directly to derive domain when AI produces garbage titles.
-    """
+def fix_companies(cv: dict) -> dict:
+    """Fix placeholder names and enforce appropriate role titles based on real years."""
     companies = cv.get("companies", [])
     real_years_str = cv.get("totalYears", _calc_total_years())
     try:
@@ -2158,6 +2055,10 @@ def fix_companies(cv: dict, job_title: str = "") -> dict:
     except Exception:
         real_years = 3.0
 
+    # Seniority tiers - strictly based on number of companies present:
+    # 1 company  (<=1 yr)  -> Junior only
+    # 2 companies (<=2 yr)  -> Co1: plain (no prefix), Co2: Junior
+    # 3 companies (3+ yr)  -> Co1: Senior, Co2: plain (no prefix), Co3: Junior
     num_cos = len(companies)
     if num_cos == 1:
         tier_labels = ["Junior"]
@@ -2166,26 +2067,9 @@ def fix_companies(cv: dict, job_title: str = "") -> dict:
     else:
         tier_labels = ["Senior", "", "Junior"]
 
-    # ── Sanitize cv["title"] before using it to derive domains ───────────────
-    cv_title_raw = (cv.get("title") or "").strip()
-    if _is_bad_cv_title(cv_title_raw) and job_title:
-        # Replace entirely with a clean title derived from actual job_title
-        domain_from_jt = _extract_domain_from_job_title(job_title)
-        # Try to keep the tech pipe section if it exists and isn't garbage
-        pipe_part = ""
-        if "|" in cv_title_raw:
-            candidate_pipe = cv_title_raw.split("|", 1)[1].strip()
-            # Keep only if it looks like real tech (no bad words)
-            if not _is_bad_cv_title(candidate_pipe):
-                pipe_part = " | " + candidate_pipe
-        cv["title"] = domain_from_jt + pipe_part
-        cv_title_raw = cv["title"]
-
-    cv_title_lower = cv_title_raw.lower()
+    # Only use Architect if the JD explicitly calls for it
+    cv_title_lower = (cv.get("title") or "").lower()
     jd_has_architect = "architect" in cv_title_lower
-
-    # ── Function word variants for making roles distinct ─────────────────────
-    function_word_variants = ["Engineer", "Developer", "Specialist", "Analyst", "Programmer"]
 
     for i, co in enumerate(companies):
         if i >= len(CANDIDATE_COMPANIES): break
@@ -2198,55 +2082,46 @@ def fix_companies(cv: dict, job_title: str = "") -> dict:
             co["dateRange"] = f"{real['start']} - {real['end']}"
         co.setdefault("company", real["name"])
 
-        # Strip seniority prefix from AI-generated role
+        # Strip any existing seniority prefix from role
         role = co.get("role", "").strip()
+        # Strip ALL seniority words including "Lead/Principal" slash combos
         domain = re.sub(
-            r"(?i)(lead|principal|staff|senior|mid[\s\-]?level|junior|associate|graduate|entry[\s\-]?level)(\/\w+)?\s*",
+            r"(?i)\b(lead|principal|staff|senior|mid[\s\-]?level|junior|associate|graduate|entry[\s\-]?level)(/\w+)?\b\s*",
             "", role
         ).strip()
         domain = re.sub(r"\s+", " ", domain).strip()
 
-        # If domain is empty, generic, or uses a banned category word → derive from job_title
-        if not domain or re.match(r"(?i)^(role|engineer|developer|specialist|analyst|programmer)$", domain)                 or _is_banned_domain(domain):
-            if job_title:
-                # Use job_title directly — this is the most reliable source
-                domain = _extract_domain_from_job_title(job_title)
-            else:
-                # Fall back to cv title (already sanitized above)
-                raw_title = cv_title_raw.split("|")[0].strip()
-                domain = re.sub(
-                    r"(?i)(lead|principal|staff|senior|mid[\s\-]?level|junior|associate)(\/\w+)?\s*",
-                    "", raw_title
-                ).strip()
-                domain = re.sub(r"\s+", " ", domain).strip() or "WordPress Developer"
+        # Fall back to title-derived domain if empty or generic
+        if not domain or re.match(r"(?i)^(role|engineer|developer|specialist)$", domain):
+            raw_title = (cv.get("title") or "Software Engineer").split("|")[0].strip()
+            domain = re.sub(
+                r"(?i)\b(lead|principal|staff|senior|mid[\s\-]?level|junior|associate)(/\w+)?\b\s*",
+                "", raw_title
+            ).strip()
+            domain = re.sub(r"\s+", " ", domain).strip() or "Software Engineer"
 
-            # Give each company a different function word suffix for uniqueness
-            fn = function_word_variants[i % len(function_word_variants)]
-            # Only append function word if domain doesn't already end with one
-            last_word = domain.split()[-1].lower() if domain.split() else ""
-            if last_word not in {w.lower() for w in function_word_variants}:
-                domain = domain + " " + fn
-
-        # Remove "Architect" unless JD asks for it
+        # Remove "Architect" from domain unless JD explicitly asks for it
         if not jd_has_architect:
-            domain = re.sub(r"(?i)\s*architect", " Engineer", domain).strip()
+            domain = re.sub(r"(?i)\s*\barchitect\b", " Engineer", domain).strip()
             domain = re.sub(r"\s+", " ", domain).strip()
 
         tier = tier_labels[min(i, len(tier_labels) - 1)]
+        # Avoid double-prefix: "Senior Senior Engineer" -> just set the role cleanly
+        # When tier is empty (plain, no prefix), just use the domain directly
         co["role"] = f"{tier} {domain}".strip() if tier else domain
 
-    # Ensure all roles are distinct (deduplicate by appending function word variant)
-    if len(companies) >= 2:
-        seen_roles = {}
-        for idx, co in enumerate(companies[:3]):
-            r = co.get("role", "").lower()
-            if r in seen_roles:
-                fn = function_word_variants[(idx + 2) % len(function_word_variants)]
-                base = re.sub(
-                    r"(?i)(engineer|developer|specialist|analyst|programmer)", fn, co["role"]
-                ).strip()
-                co["role"] = base
-            seen_roles[co.get("role", "").lower()] = idx
+    # Ensure all 3 roles are distinct
+    if len(companies) >= 3:
+        roles = [companies[j].get("role", "") for j in range(3)]
+        if len(set(r.lower() for r in roles)) < len(roles):
+            domain = re.sub(
+                r"(?i)\b(lead|principal|staff|senior|mid[\s\-]?level|junior|associate)(/\w+)?\b\s*",
+                "", roles[0]
+            ).strip()
+            domain = re.sub(r"\s+", " ", domain).strip() or "Software Engineer"
+            for idx in range(min(3, len(companies))):
+                t = tier_labels[idx]
+                companies[idx]["role"] = f"{t} {domain}".strip() if t else domain
 
     return cv
 
@@ -3752,7 +3627,7 @@ def _merge_stages(stage1: dict, stage2: dict, stage3: dict, req: CVRequest) -> d
         "ecosystem": stage1.get("technologies", {}).get("additional", []),
     }
     cv_sanitised  = sanitise_cv(cv)
-    cv_companies  = fix_companies(cv_sanitised, job_title=req.job_title)
+    cv_companies  = fix_companies(cv_sanitised)
     cv_skills     = fix_skills(cv_companies)
     cv_enforced   = _enforce_skill_domains(cv_skills, _techs_for_enforce, req.job_title)
     cv_projtags   = _repair_project_tech_tags(cv_enforced, _techs_for_enforce)
@@ -5211,6 +5086,131 @@ def _validate_skills_category_names(cv: dict, jd: str, job_title: str) -> dict:
     return cv
 
 
+
+# ── HARD ROLE-TITLE ENFORCER ─────────────────────────────────────────────────
+# Runs inside run_validation_pipeline (every model, every path).
+# Cannot be bypassed by any AI output.
+
+_BANNED_ROLE_DOMAINS_SET = {
+    "devops", "web", "software", "backend", "frontend", "full-stack", "fullstack",
+    "it", "tech", "digital", "full stack",
+}
+_BANNED_TITLE_ADJECTIVES = {
+    "transformed", "innovative", "dynamic", "versatile", "experienced", "seasoned",
+    "skilled", "expert", "creative", "enhanced", "advanced", "optimized", "optimised",
+    "title", "placeholder", "related", "generic",
+}
+_SENIORITY_WORDS = {"senior", "junior", "associate", "graduate", "lead", "principal", "staff"}
+_FUNCTION_WORDS  = {"engineer", "developer", "specialist", "analyst", "programmer",
+                    "consultant", "designer", "technologist", "builder", "integrator"}
+_FUNC_WORD_LIST  = ["Engineer", "Developer", "Specialist", "Analyst", "Programmer"]
+
+def _jt_primary_tech(job_title: str) -> str:
+    """Extract the primary named technology from a job title.
+    e.g. 'WordPress Developer Full Stack' -> 'WordPress'
+         'React & Node.js Engineer'       -> 'React'
+    """
+    if not job_title:
+        return ""
+    # Strip seniority words
+    clean = re.sub(r"(?i)\b(senior|junior|lead|staff|principal|associate|mid.?level)\b\s*", "", job_title).strip()
+    # Split on spaces, &, |, /
+    words = re.split(r"[\s&|/,]+", clean)
+    # Return first word that is NOT a function word, seniority word, or very short
+    for w in words:
+        wl = w.lower().strip(".")
+        if len(wl) > 2 and wl not in _FUNCTION_WORDS and wl not in _SENIORITY_WORDS:
+            return w.strip()
+    return clean.split()[0] if clean.split() else "WordPress"
+
+def _domain_is_banned(role: str) -> bool:
+    """Return True if the role's domain is a banned generic category word."""
+    # Strip seniority prefix
+    core = re.sub(r"(?i)\b(senior|junior|associate|lead|staff|principal)\b\s*", "", role).strip().lower()
+    words = re.split(r"[\s\-/]+", core)
+    # Get non-function words (the "domain" words)
+    domain_words = [w for w in words if w and w not in _FUNCTION_WORDS and len(w) > 1]
+    if not domain_words:
+        return True
+    # Banned if ALL domain words are in the banned set
+    return all(w in _BANNED_ROLE_DOMAINS_SET for w in domain_words)
+
+def _title_has_bad_adjective(title: str) -> bool:
+    """Return True if the CV headline title contains invented/placeholder adjectives."""
+    before_pipe = title.split("|")[0].lower() if title else ""
+    words = re.split(r"[\s\-&/|,]+", before_pipe)
+    return any(w in _BANNED_TITLE_ADJECTIVES for w in words)
+
+def _enforce_role_titles(cv: dict, job_title: str) -> dict:
+    """
+    Hard post-processor for role titles. Runs after ALL AI processing.
+    Guarantees no company role uses a banned generic domain (DevOps, Web, Software...).
+    Guarantees CV headline title contains no invented adjectives.
+    Uses job_title as the authoritative source for the correct domain.
+    """
+    if not job_title:
+        return cv
+
+    primary_tech = _jt_primary_tech(job_title)
+    companies = cv.get("companies", [])
+    num_cos = len(companies)
+
+    # Determine tier labels
+    if num_cos == 1:
+        tiers = ["Junior"]
+    elif num_cos == 2:
+        tiers = ["", "Junior"]
+    else:
+        tiers = ["Senior", "", "Junior"]
+
+    # Secondary and tertiary tech words from job_title for variety
+    all_jt_words = [w for w in re.split(r"[\s&|/,]+", job_title)
+                    if len(w) > 2
+                    and w.lower() not in _FUNCTION_WORDS
+                    and w.lower() not in _SENIORITY_WORDS
+                    and w.lower() not in {"full", "stack", "theme", "plugin", "development", "the", "and", "for"}]
+    tech_words = list(dict.fromkeys(all_jt_words))  # deduplicated, order preserved
+
+    for i, co in enumerate(companies[:3]):
+        role = (co.get("role") or "").strip()
+        if not role or _domain_is_banned(role):
+            # Pick a different tech word per company for variety
+            tech = tech_words[i % len(tech_words)] if tech_words else primary_tech
+            func = _FUNC_WORD_LIST[i % len(_FUNC_WORD_LIST)]
+            tier = tiers[min(i, len(tiers) - 1)]
+            new_role = f"{tier} {tech} {func}".strip() if tier else f"{tech} {func}"
+            co["role"] = re.sub(r"\s+", " ", new_role).strip()
+
+    # Ensure all roles are visually distinct
+    seen = {}
+    for i, co in enumerate(companies[:3]):
+        r = co.get("role", "").lower()
+        if r in seen:
+            # Swap function word to make distinct
+            func = _FUNC_WORD_LIST[(i + seen[r] + 1) % len(_FUNC_WORD_LIST)]
+            co["role"] = re.sub(
+                r"(?i)\b(" + "|".join(_FUNC_WORD_LIST) + r")\b",
+                func, co["role"]
+            ).strip()
+        seen[co.get("role", "").lower()] = i
+
+    # Fix CV headline title if it contains banned adjectives
+    title = (cv.get("title") or "").strip()
+    if _title_has_bad_adjective(title) or not title:
+        tech_pipe = ""
+        if "|" in title:
+            pipe_part = title.split("|", 1)[1].strip()
+            if not _title_has_bad_adjective(pipe_part):
+                tech_pipe = " | " + pipe_part
+        # Build clean title from job_title
+        clean_jt = re.sub(r"(?i)\b(senior|junior|lead|staff|principal|associate)\b\s*", "", job_title).strip()
+        clean_jt = re.sub(r"\s+", " ", clean_jt).strip()
+        # Use first 3 words max
+        words = clean_jt.split()[:3]
+        cv["title"] = " ".join(words) + tech_pipe
+
+    return cv
+
 def run_validation_pipeline(cv: dict, jd: str, job_title: str, techs: dict) -> dict:
     """
     MASTER VALIDATION PIPELINE — runs ALL validation steps in order.
@@ -5245,6 +5245,9 @@ def run_validation_pipeline(cv: dict, jd: str, job_title: str, techs: dict) -> d
 
     # Step 5: Skill category name sanity
     cv = _validate_skills_category_names(cv, jd, job_title)
+
+    # Step 6: Hard role-title enforcer — runs last, cannot be bypassed by any model
+    cv = _enforce_role_titles(cv, job_title)
 
     return cv
 
@@ -5706,7 +5709,7 @@ async def call_ollama(req: CVRequest) -> dict:
         raise HTTPException(502, f"Ollama '{model}' returned empty response. Try qwen2.5:7b.")
 
     _cv_raw  = sanitise_cv(extract_json(raw))
-    _cv_raw  = fix_companies(_cv_raw, job_title=req.job_title)
+    _cv_raw  = fix_companies(_cv_raw)
     _cv_raw  = fix_skills(_cv_raw)
     _techs_o = {"core": _cv_raw.get("technologies",{}).get("mustHave",[]),
                 "preferred": _cv_raw.get("technologies",{}).get("niceToHave",[]),
@@ -5772,7 +5775,7 @@ async def call_deepseek(req: CVRequest) -> tuple:
                         success       = True,
                     )
                     _cv_raw  = sanitise_cv(extract_json(raw_text))
-                    _cv_raw  = fix_companies(_cv_raw, job_title=req.job_title)
+                    _cv_raw  = fix_companies(_cv_raw)
                     _cv_raw  = fix_skills(_cv_raw)
                     _techs_d = {"core": _cv_raw.get("technologies",{}).get("mustHave",[]),
                                 "preferred": _cv_raw.get("technologies",{}).get("niceToHave",[]),
@@ -5890,7 +5893,7 @@ async def call_openai(req: CVRequest) -> tuple:
                         success       = True,
                     )
                     _cv_raw  = sanitise_cv(extract_json(raw_text))
-                    _cv_raw  = fix_companies(_cv_raw, job_title=req.job_title)
+                    _cv_raw  = fix_companies(_cv_raw)
                     _cv_raw  = fix_skills(_cv_raw)
                     _techs_oa = {"core": _cv_raw.get("technologies",{}).get("mustHave",[]),
                                  "preferred": _cv_raw.get("technologies",{}).get("niceToHave",[]),
@@ -6290,7 +6293,7 @@ Output JSON:
                 )
 
                 cv_s = sanitise_cv(cv)
-                cv_s = fix_companies(cv_s, job_title=req.job_title)
+                cv_s = fix_companies(cv_s)
                 cv_s = fix_skills(cv_s)
                 _tg  = {"core":      cv_s.get("technologies", {}).get("mustHave",   []),
                         "preferred": cv_s.get("technologies", {}).get("niceToHave", []),
