@@ -953,26 +953,31 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         _seniority_rule = (
             f"SENIORITY RULE - {total_years} year experience: "
             "Co1 (only company) MUST use 'Junior' as the seniority prefix. "
-            "The function word MUST match the JD domain (e.g. if JD is about backend -> 'Junior Backend Developer', "
-            "if JD is about data -> 'Junior Data Engineer', if JD is about security -> 'Junior Security Analyst'). "
-            "Derive the domain word and function word from the actual JD - do not hardcode. "
-            "Omitting 'Junior' is a HARD FAILURE.\n\n"
+            "The domain word MUST be a NAMED TECHNOLOGY from the JD (e.g. 'Junior WordPress Developer', "
+            "'Junior React Engineer', 'Junior Laravel Specialist') — NOT a generic word like 'Web', 'Backend', or 'DevOps'. "
+            "Pick the most prominently mentioned tool or framework in the JD requirements as the domain word. "
+            "Omitting 'Junior' is a HARD FAILURE. Using a generic domain word is a HARD FAILURE.\n\n"
         )
         _seniority_ban = (
             "- Missing 'Junior' prefix on Co1 role title - with 1 year experience, the only company MUST be Junior\n"
+            "- Generic domain word in role title (Web, Backend, Frontend, DevOps, Software) - use a real named technology\n"
         )
     elif _yrs_float <= 2.4:
         _seniority_rule = (
             f"SENIORITY RULE - {total_years} years experience: "
             "Co1 (current) must have a plain domain title with NO seniority prefix. "
             "Co2 (previous) MUST use 'Junior' as the seniority prefix. "
-            "Both titles MUST be derived from the JD domain - use the JD's tech stack and role type to pick the domain word. "
-            "Each company MUST use a DIFFERENT function word from the pool. "
+            "The domain word for EACH company MUST be a DIFFERENT named technology from the JD "
+            "(e.g. Co1='WordPress Developer', Co2='Junior Webflow Specialist' for a WordPress/Webflow JD). "
+            "BANNED domain words: Web, Backend, Frontend, DevOps, Software, Digital, IT — use real tool names. "
+            "Each company MUST use a DIFFERENT function word AND a DIFFERENT domain word. "
             "Getting this wrong is a HARD FAILURE.\n\n"
         )
         _seniority_ban = (
             "- Missing 'Junior' prefix on Co2 role title - the oldest company MUST be Junior\n"
             "- Adding ANY seniority prefix to Co1 role title - the current company must be plain\n"
+            "- Same domain word used at more than one company - each company needs a different named technology\n"
+            "- Generic domain word (Web, Backend, Frontend, DevOps, Software) - use real named technologies\n"
         )
     else:
         _seniority_rule = (
@@ -980,14 +985,19 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
             "Co1 (current) MUST use 'Senior' as the seniority prefix. "
             "Co2 (mid) must have a plain domain title with NO seniority prefix. "
             "Co3 (oldest) MUST use 'Junior' as the seniority prefix. "
-            "ALL titles MUST be derived from the JD domain - pick the domain word and function word from the JD's tech stack and role focus. "
-            "Each company MUST use a DIFFERENT function word from the pool. "
+            "The domain word for EACH company MUST be a DIFFERENT named technology from the JD "
+            "(e.g. for a WordPress/Webflow/JavaScript JD: Co1='Senior WordPress Engineer', Co2='Webflow Developer', Co3='Junior JavaScript Specialist'). "
+            "BANNED domain words anywhere in role titles: Web, Backend, Frontend, DevOps, Software, Digital, IT, Tech — "
+            "these are category labels, NOT technology names. Use the actual named tool from the JD instead. "
+            "Each company MUST use a DIFFERENT function word AND a DIFFERENT named-technology domain word. "
             "Getting this wrong is a HARD FAILURE.\n\n"
         )
         _seniority_ban = (
             "- Missing 'Senior' prefix on Co1 role title - current company MUST be Senior\n"
             "- Adding ANY seniority prefix to Co2 role title - mid company must be plain\n"
             "- Missing 'Junior' prefix on Co3 role title - oldest company MUST be Junior\n"
+            "- Same domain word used at more than one company - each needs a different named technology\n"
+            "- Generic domain word (Web, Backend, Frontend, DevOps, Software, Digital) - use real named technologies from the JD\n"
         )
 
     system = (
@@ -1109,17 +1119,26 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
 
         f"=== ROLE TITLES ===\n"
         f"Exactly {len(companies)} companies, each with a COMPLETELY DIFFERENT role title.\n"
-        f"Each title: '[Seniority] [Domain from JD] [UniqueFunction]' - derive domain from the actual JD tech stack.\n"
-        "Function word pool (no repeats across companies): Engineer, Developer, Specialist, Analyst, Programmer. "
-        "NEVER use Architect, Consultant, or Designer unless explicitly present in the JD.\n"
-        f"NEVER use a generic title without the JD's specific tech domain appended.\n"
-        "BANNED domain words: 'Full-Stack', 'Fullstack', 'Full Stack' — these are too generic. "
-        "Use the JD's primary technology or focus area as the domain word instead "
-        "(e.g. 'React', 'Node.js', 'Backend', 'Frontend', 'Python', 'TypeScript', 'API'). "
-        "If the JD is a full-stack role, pick the PRIMARY framework (frontend or backend) as the domain word.\n"
-        "UNIQUENESS RULE: ALL role titles MUST look visually different — different domain word AND different function word. "
-        "CORRECT: 'Senior React Engineer' / 'Node.js Developer' / 'Junior API Specialist'. "
-        "WRONG (too similar): 'Senior Backend Engineer' / 'Backend Developer' / 'Junior Backend Analyst'.\n"
+        "ROLE TITLE FORMAT: '[Seniority prefix] [Primary JD Technology] [Unique Function Word]'\n"
+        "STEP A — Pick the domain word: Extract the SINGLE most prominent named technology from the JD\n"
+        "  (e.g. 'WordPress', 'Webflow', 'React', 'Laravel', 'Python', 'Node.js', 'Angular', 'Django').\n"
+        "  For multi-tech JDs: Co1 uses the PRIMARY tech, Co2 uses a SECONDARY tech, Co3 uses a THIRD tech.\n"
+        "  The domain word for each company MUST be a different named technology from the JD.\n"
+        "STEP B — Pick the function word: Choose from the expanded pool below. NO repeats across companies.\n"
+        "  Function word pool: Engineer, Developer, Specialist, Analyst, Programmer, Consultant, Designer,\n"
+        "    Architect, Technologist, Implementer, Integrator, Builder, Practitioner\n"
+        "  If the JD title itself contains a function word, that word is BANNED for Co1 (use a different one).\n"
+        "STEP C — Add the seniority prefix per the SENIORITY RULE below.\n"
+        "BANNED domain words (too generic — instant failure if used): 'Full-Stack', 'Fullstack', 'Full Stack',\n"
+        "  'Backend', 'Frontend', 'Web', 'DevOps', 'Software', 'IT', 'Tech', 'Digital'.\n"
+        "  These are CATEGORY words, not technology names. You MUST use a real named tool/framework instead.\n"
+        "UNIQUENESS RULE: Every role title MUST differ in BOTH domain word AND function word.\n"
+        "  CORRECT examples for a WordPress/Webflow JD:\n"
+        "    'Senior WordPress Engineer' / 'Webflow Developer' / 'Junior JavaScript Specialist'\n"
+        "  CORRECT examples for a React/Node.js JD:\n"
+        "    'Senior React Engineer' / 'Node.js Developer' / 'Junior TypeScript Analyst'\n"
+        "  WRONG — banned generic domains:\n"
+        "    'Senior Web Engineer' / 'Frontend Developer' / 'Junior DevOps Specialist' — INSTANT FAILURE\n"
         + _seniority_rule +
 
         "=== SUMMARY ===\n"
@@ -1266,22 +1285,34 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         seniority_labels = ["current / only role - Junior"]
         r3_levels = [
             "Co1 (only company): MUST use 'Junior' as the seniority prefix. "
-            "The domain word and function word MUST come from the JD - identify the primary tech domain (e.g. backend, data, cloud, security, mobile, ML) and pick the most fitting function word from the pool below."
+            "The domain word MUST be the single most prominent named technology in the JD requirements "
+            "(e.g. 'WordPress', 'React', 'Laravel', 'Python') — NOT a generic category word like 'Web', 'Backend', or 'DevOps'. "
+            "Pick a unique function word from the pool that is NOT the same as the job title's function word."
         ]
         json_seniority = ["Junior"]
     elif num_cos == 2:
         seniority_labels = ["current / plain no prefix", "previous / Junior"]
         r3_levels = [
-            "Co1 (current):  plain domain role title, NO seniority prefix - derive both the domain word and function word from the JD's primary tech stack and responsibilities.",
-            "Co2 (previous): MUST use 'Junior' as the seniority prefix - derive domain word from the JD, pick a DIFFERENT function word from the pool.",
+            "Co1 (current):  plain domain role title, NO seniority prefix. "
+            "Domain word = the PRIMARY named technology in the JD (e.g. 'WordPress', 'React', 'Laravel'). "
+            "Pick a unique function word NOT matching the job title's function word.",
+            "Co2 (previous): MUST use 'Junior' as the seniority prefix. "
+            "Domain word = a DIFFERENT named technology from the JD (e.g. if Co1 used 'WordPress', use 'Webflow' or 'JavaScript'). "
+            "Pick a DIFFERENT function word from the pool.",
         ]
         json_seniority = ["", "Junior"]
     else:
         seniority_labels = ["current / Senior", "mid-level / plain no prefix", "oldest / Junior"]
         r3_levels = [
-            "Co1 (current):  MUST use 'Senior' as the seniority prefix - derive the domain word from the JD's primary tech focus, pick a UNIQUE function word from the pool.",
-            "Co2 (mid):      plain domain role title, NO seniority prefix - derive domain word from the JD's secondary focus or a closely related specialisation, pick a DIFFERENT function word.",
-            "Co3 (oldest):   MUST use 'Junior' as the seniority prefix - derive domain word from the JD or a related sub-domain, pick ANOTHER DIFFERENT function word.",
+            "Co1 (current):  MUST use 'Senior' prefix. "
+            "Domain word = the PRIMARY named technology in the JD (e.g. 'WordPress' for a WordPress JD, 'React' for a React JD). "
+            "Pick a unique function word NOT matching the job title's function word.",
+            "Co2 (mid):      NO seniority prefix. "
+            "Domain word = a DIFFERENT named technology from the JD than Co1 used (e.g. 'Webflow', 'JavaScript', 'Node.js'). "
+            "Pick a DIFFERENT function word from Co1.",
+            "Co3 (oldest):   MUST use 'Junior' prefix. "
+            "Domain word = a THIRD named technology from the JD, different from Co1 and Co2 (e.g. 'PHP', 'TypeScript', 'SEO tools'). "
+            "Pick a THIRD different function word.",
         ]
         json_seniority = ["Senior", "", "Junior"]
 
@@ -1293,13 +1324,14 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         for i in range(num_cos)
     )
 
-    function_words = ["Engineer", "Developer", "Specialist"]
+    function_words = ["Engineer", "Developer", "Specialist", "Analyst", "Programmer"]
+    domain_hints   = ["[Primary JD tech e.g. WordPress]", "[Secondary JD tech e.g. Webflow]", "[Third JD tech e.g. JavaScript]"]
     json_companies = ",".join(
         f'{{"company":"{companies[i]["name"]}",'
-        f'"role":"{"" if not json_seniority[i] else json_seniority[i] + " "}[Domain] [{function_words[i]}/etc]",'
+        f'"role":"{("" if not json_seniority[i] else json_seniority[i] + " ")}{domain_hints[i] if i < len(domain_hints) else "[JD tech]"} [{function_words[i]}]",'
         f'"dateRange":"{companies[i]["start"]} - {companies[i]["end"]}",'
-        f'"bullets":["Achievement + tech + metric","Achievement","Achievement","Achievement"],'
-        f'"tech":"Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6 | Tech7"}}'
+        f'"bullets":["Achievement + named JD tech + unique metric","Achievement + tech","Achievement + metric","Achievement + outcome"],'
+        f'"tech":"NamedTech1 | NamedTech2 | NamedTech3 | NamedTech4 | NamedTech5 | NamedTech6 | NamedTech7"}}'
         for i in range(num_cos)
     )
 
@@ -1437,8 +1469,15 @@ Outputting the job title OR the candidate's existing profile title verbatim is a
 R3 SENIORITY + ROLE TITLES (critical):
 Each company MUST have a UNIQUE role title. BOTH seniority AND function word MUST differ:
 {r3_block}
-Function word pool (each pick exactly one, no repeats): Engineer, Developer, Specialist, Architect, Consultant, Analyst, Programmer, Designer
-HARD RULE: No function word may be used at more than one company.
+STEP A — Domain word per company: extract the top named technologies from the JD and assign a DIFFERENT one to each company.
+  Example for a WordPress/Webflow JD: Co1=WordPress, Co2=Webflow, Co3=JavaScript (or ElementorPHP, SEO, etc.)
+  Example for a React/Node/TypeScript JD: Co1=React, Co2=Node.js, Co3=TypeScript
+  BANNED domain words (use real tech names instead): Web, Software, Backend, Frontend, Full-Stack, DevOps, IT, Digital, Tech
+STEP B — Function word per company: pick ONE from the expanded pool, NO repeats.
+  Full pool: Engineer, Developer, Specialist, Analyst, Programmer, Consultant, Designer, Architect, Technologist, Builder, Integrator, Practitioner
+  If the job title itself uses a function word, that word is BANNED for Co1.
+HARD RULE: Every company role title must be visually distinct — different domain word AND different function word.
+HARD RULE: No domain word and no function word may be reused at more than one company.
 
 R4 BULLETS: 4 per company, 20-30 words each. Every bullet: >=1 JD technology + specific named system + unique metric.
 TECH ENFORCEMENT: Use ONLY technologies extracted from the JD. Never add technologies not in the JD.
