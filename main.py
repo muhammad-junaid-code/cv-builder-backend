@@ -296,7 +296,8 @@ class CVRequest(BaseModel):
 # ==============================================================================
 import os
 
-AUTH_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "auth_keys.json")
+_DATA_DIR = "/data" if os.path.isdir("/data") else os.path.dirname(os.path.abspath(__file__))
+AUTH_FILE  = os.path.join(_DATA_DIR, "auth_keys.json")
 
 def _load_auth_keys() -> dict:
     """Load auth keys from disk. Returns {token: {label, created_at, expires_at, active}}.
