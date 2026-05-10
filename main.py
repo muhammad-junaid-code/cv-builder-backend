@@ -111,21 +111,24 @@ def _calc_total_years(years_exp: str = "") -> str:
     return _years_label(total_months)
 
 
-def _build_dynamic_companies(years_exp: str) -> list:
+def _build_dynamic_companies(years_exp: str, num_companies: int = 0) -> list:
     """
-    Return 1, 2, or 3 company date ranges based on years_exp:
-      1 year  -> 1 company  (all experience at one place)
-      2 years -> 2 companies (split equally, ~12 months each)
-      3+ years -> 3 companies (split into equal thirds)
-    Works backwards from today. Remainder months go to the most recent company.
+    Return N company date ranges (N = num_companies if >0, else inferred from years_exp).
+    Experience is divided equally across all companies, working backwards from today.
+    Remainder months go to the most recent company.
+    Rules:
+      - If num_companies given by profile, always honour it (cap at 3 for AI bullet slots).
+      - Otherwise infer: <=1.4yr->1, <=2.4yr->2, 3+yr->3.
     """
     if not years_exp:
-        return CANDIDATE_COMPANIES[:3]
+        n_fallback = num_companies if num_companies > 0 else 3
+        return CANDIDATE_COMPANIES[:n_fallback]
 
     try:
         n = float(years_exp.strip().replace("+", ""))
     except ValueError:
-        return CANDIDATE_COMPANIES[:3]
+        n_fallback = num_companies if num_companies > 0 else 3
+        return CANDIDATE_COMPANIES[:n_fallback]
 
     total_months = int(round(n * 12))
     today        = date.today()
@@ -133,54 +136,79 @@ def _build_dynamic_companies(years_exp: str) -> list:
     def fmt(d: date) -> str:
         return f"{_month_name(d.month)} {d.year}"
 
-    # -- 1 year -> 1 company ------------------------------------------------
-    if n <= 1.4:
-        co1_start = _subtract_months(today, total_months)
-        return [
-            {"name": CANDIDATE_COMPANIES[0]["name"], "start": fmt(co1_start), "end": "Present"},
-        ]
+    # Determine number of companies
+    if num_companies > 0:
+        num_cos = num_companies
+    elif n <= 1.4:
+        num_cos = 1
+    elif n <= 2.4:
+        num_cos = 2
+    else:
+        num_cos = 3
 
-    # -- 2 years -> 2 companies ---------------------------------------------
-    if n <= 2.4:
-        each     = total_months // 2
-        remainder = total_months - each * 2
-        co1_start = _subtract_months(today, each + remainder)
-        co2_end   = co1_start
-        co2_start = _subtract_months(co2_end, each)
-        return [
-            {"name": CANDIDATE_COMPANIES[0]["name"], "start": fmt(co1_start), "end": "Present"},
-            {"name": CANDIDATE_COMPANIES[1]["name"], "start": fmt(co2_start), "end": fmt(co2_end)},
-        ]
+    # Divide experience equally, remainder to most recent
+    each      = total_months // num_cos if num_cos > 0 else total_months
+    remainder = total_months - each * num_cos
 
-    # -- 3+ years -> 3 companies --------------------------------------------
-    each      = total_months // 3
-    remainder = total_months - each * 3
-    co1_start = _subtract_months(today, each + remainder)
-    co2_end   = co1_start
-    co2_start = _subtract_months(co2_end, each)
-    co3_end   = co2_start
-    co3_start = _subtract_months(co3_end, each)
-    return [
-        {"name": CANDIDATE_COMPANIES[0]["name"], "start": fmt(co1_start), "end": "Present"},
-        {"name": CANDIDATE_COMPANIES[1]["name"], "start": fmt(co2_start), "end": fmt(co2_end)},
-        {"name": CANDIDATE_COMPANIES[2]["name"], "start": fmt(co3_start), "end": fmt(co3_end)},
-    ]
+    result = []
+    cursor = today
+    for i in range(num_cos):
+        span    = each + (remainder if i == 0 else 0)
+        co_start = _subtract_months(cursor, span)
+        co_end   = "Present" if i == 0 else fmt(cursor)
+        name     = CANDIDATE_COMPANIES[i]["name"] if i < len(CANDIDATE_COMPANIES) else f"Company {i+1}"
+        result.append({"name": name, "start": fmt(co_start), "end": co_end})
+        cursor = co_start
+
+    return result
 
 
-def _build_education_year(years_exp: str) -> dict:
+def _build_education_year(years_exp: str, profile_edu: list = None) -> dict:
     """
-    Degree end year = today.year - (years_exp - 1).
-    Degree start year = end year - 4  (standard 4-year BSc).
-    If no years_exp given, keep static 2017-2021.
+    Priority:
+      1. Profile edu entry with both from+to  → use as-is (static)
+      2. Profile edu entry with only one date → fill the gap automatically
+      3. years_exp provided                   → calculate: end = today - (exp-1), start = end-4
+      4. No info                              → keep static 2017-2021
+
+    Formula: graduation year = current_year - (years_exp - 1)
+    e.g. 5 years exp → graduated current_year - 4  → studied current_year-8 to current_year-4
     """
+    today = date.today()
+
+    # 1 & 2: profile edu entries
+    if profile_edu:
+        e = profile_edu[0]  # use first edu entry for auto-fill reference
+        p_from = str(e.get("from", "") or "").strip()
+        p_to   = str(e.get("to",   "") or "").strip()
+        if p_from and p_to:
+            return {"start": p_from, "end": p_to}   # fully static from profile
+        if p_from or p_to:
+            # One date provided — fill the other using years_exp or 4-year default
+            if p_to and not p_from:
+                try:
+                    end_yr = int(p_to[:4])
+                    return {"start": str(end_yr - 4), "end": p_to}
+                except (ValueError, TypeError):
+                    pass
+            if p_from and not p_to:
+                try:
+                    start_yr = int(p_from[:4])
+                    return {"start": p_from, "end": str(start_yr + 4)}
+                except (ValueError, TypeError):
+                    pass
+
+    # 3: calculate from years_exp
     if years_exp:
         try:
             n = int(float(years_exp.strip().replace("+", "")))
-            end_year   = date.today().year - max(n - 1, 0)
+            end_year   = today.year - max(n - 1, 0)
             start_year = end_year - 4
             return {"start": str(start_year), "end": str(end_year)}
         except ValueError:
             pass
+
+    # 4: fallback static
     return {"start": "2017", "end": "2021"}
 
 
@@ -256,6 +284,7 @@ class CVRequest(BaseModel):
     gemini_keys:      Optional[List[str]] = []
     ollama_model:     Optional[str]       = "qwen2.5:7b"
     profile:          str                 = ""
+    profile_data:     Optional[dict]      = None   # full structured profile from extension
     static_data:      Optional[dict]      = None
     company_name:     Optional[str]       = ""
     company_context:  Optional[str]       = ""
@@ -882,8 +911,35 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
     #profile     = (req.profile.strip()[:150] if req.profile else "Full-stack developer, 3+ years")
     years_exp   = (req.years_exp or "").strip()
     total_years = _calc_total_years(years_exp)   # dynamic - uses frontend input if given
-    companies   = _build_dynamic_companies(years_exp)
-    edu         = _build_education_year(years_exp)
+
+    # Profile-driven company count and dates
+    _profile_work = []
+    _profile_edu  = []
+    if req.profile_data and isinstance(req.profile_data, dict):
+        _profile_work = req.profile_data.get("work") or []
+        _profile_edu  = req.profile_data.get("edu")  or []
+
+    _num_profile_cos = min(len(_profile_work), 3)  # cap at 3 for AI bullet generation
+
+    if _profile_work:
+        # Build company slots from profile data; auto-fill missing dates via years_exp split
+        _dynamic_fallback = _build_dynamic_companies(years_exp, num_companies=_num_profile_cos)
+        companies = []
+        for _i, _w in enumerate(_profile_work[:3]):
+            _frm  = str(_w.get("from") or "").strip()
+            _to   = str(_w.get("to")   or "").strip()
+            _ds   = _frm  if _frm  else (_dynamic_fallback[_i]["start"] if _i < len(_dynamic_fallback) else "")
+            _de   = _to   if _to   else ("Present" if _i == 0 else (_dynamic_fallback[_i]["end"] if _i < len(_dynamic_fallback) else ""))
+            _name = str(_w.get("company") or "").strip()
+            if not _name and _i < len(CANDIDATE_COMPANIES):
+                _name = CANDIDATE_COMPANIES[_i]["name"]
+            elif not _name:
+                _name = f"Company {_i + 1}"
+            companies.append({"name": _name, "start": _ds, "end": _de})
+    else:
+        companies = _build_dynamic_companies(years_exp)
+
+    edu = _build_education_year(years_exp, profile_edu=_profile_edu)
     company_name    = (req.company_name    or "").strip()
     company_context = (req.company_context or "").strip()[:2000]
 
@@ -6932,10 +6988,17 @@ def _sanitize_skills(raw_skills: list, cv: dict = None) -> list:
     return result if result else raw_skills
 
 
-def build_cv_pdf(cv: dict) -> bytes:
-    """Build a 100% text-based PDF from CV JSON dict. Returns raw PDF bytes."""
-    
+def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
+    """Build a 100% text-based PDF from CV JSON + dynamic profileData. Returns raw PDF bytes."""
+
     from reportlab.platypus import KeepTogether
+
+    # ── Resolve profile fields — prefer dynamic profileData, fall back to STATIC ──
+    _pd        = profile_data or {}
+    p_name     = (_pd.get("name")  or "").strip() or STATIC_CANDIDATE["name"]
+    p_links    = _pd.get("links")  or []   # [{icon, label, value}]
+    p_work     = _pd.get("work")   or []   # [{company, role, from, to, bullets}]
+    p_edu      = _pd.get("edu")    or []   # [{institution, degree, from, to, note}]
 
     buf = io.BytesIO()
 
@@ -7020,40 +7083,60 @@ def build_cv_pdf(cv: dict) -> bytes:
 
             # -- HEADER ------------------------------------------------------------------
     total_years = _safe(cv.get("totalYears", ""))
-    cv_title = _safe(cv.get("title", ""))
+    cv_title    = _safe(cv.get("title", ""))
 
-    story.append(Paragraph(STATIC_CANDIDATE["name"], S["name"]))
+    # Name — dynamic from profile
+    story.append(Paragraph(p_name.upper(), S["name"]))
     if cv_title:
         if total_years:
             try:
-                years_num = float(total_years.replace('+', '').strip())
-                if years_num == int(years_num):
-                    years_display = " | " + str(int(years_num)) + "+ Years Experience"
-                else:
-                    years_display = " | " + str(total_years) + " Years Experience"
-            except:
-                years_display = " | " + str(total_years) + " Years Experience"
+                years_num     = float(total_years.replace("+", "").strip())
+                years_display = " | " + str(int(years_num)) + "+ Years Experience" \
+                    if years_num == int(years_num) else " | " + total_years + " Years Experience"
+            except Exception:
+                years_display = " | " + total_years + " Years Experience"
         else:
             years_display = ""
         story.append(Paragraph(cv_title.upper() + years_display, S["role"]))
 
     story.append(BOLD_HR())
 
-    # Contact row
-    sc = STATIC_CANDIDATE
-    line1_parts = [
-        sc["address"],
-        _link(sc["email"],  _CONTACT_LINKS["email"]),
-        _link(sc["phone"],  _CONTACT_LINKS["phone"]),
-    ]
-    line2_parts = [
-        _link(sc["github"],    _CONTACT_LINKS["github"]),
-        _link(sc["portfolio"], _CONTACT_LINKS["portfolio"]),
-        _link(sc["linkedin"],  _CONTACT_LINKS["linkedin"]),
-    ]
+    # ── Contact strip — dynamic from profile links, fallback to STATIC ───────
     SEP = '  <font color="#aaaaaa">|</font>  '
-    story.append(Paragraph(SEP.join(line1_parts), S["contact"]))
-    story.append(Paragraph(SEP.join(line2_parts), S["contact"]))
+
+    def _make_link(val):
+        v = (val or "").strip()
+        if not v:
+            return v
+        if v.startswith("http://") or v.startswith("https://"):
+            return _link(v, v)
+        if re.match(r"^[\w.+-]+@[\w-]+\.[a-z]{2,}$", v, re.IGNORECASE):
+            return _link(v, "mailto:" + v)
+        if re.match(r"^[+\d\s\-()]{7,}$", v):
+            return _link(v, "tel:" + re.sub(r"[\s\-()]", "", v))
+        if re.search(r"\.(com|io|net|org|app|pk|co|dev|ai)(/|$)", v, re.IGNORECASE):
+            url = v if re.match(r"^https?://", v, re.IGNORECASE) else "https://" + v
+            return _link(v, url)
+        return v
+
+    if p_links:
+        contact_items = [_make_link(l.get("value", "")) for l in p_links]
+        contact_items = [c for c in contact_items if c]
+        mid = (len(contact_items) + 1) // 2
+        story.append(Paragraph(SEP.join(contact_items[:mid]),  S["contact"]))
+        if contact_items[mid:]:
+            story.append(Paragraph(SEP.join(contact_items[mid:]), S["contact"]))
+    else:
+        sc = STATIC_CANDIDATE
+        line1 = [sc["address"],
+                 _link(sc["email"], _CONTACT_LINKS["email"]),
+                 _link(sc["phone"], _CONTACT_LINKS["phone"])]
+        line2 = [_link(sc["github"],    _CONTACT_LINKS["github"]),
+                 _link(sc["portfolio"], _CONTACT_LINKS["portfolio"]),
+                 _link(sc["linkedin"],  _CONTACT_LINKS["linkedin"])]
+        story.append(Paragraph(SEP.join(line1), S["contact"]))
+        story.append(Paragraph(SEP.join(line2), S["contact"]))
+
     story.append(HR())
     story.append(Spacer(1, 2 * mm))
 
@@ -7065,51 +7148,117 @@ def build_cv_pdf(cv: dict) -> bytes:
             f"{total_years} years",
             summary_text, count=1
         )
-
     if summary_text:
         story.append(Paragraph("PROFESSIONAL SUMMARY", S["sec_title"]))
         story.append(Paragraph(summary_text, S["bullet"]))
         story.append(Spacer(1, 3 * mm))
 
     # -- EXPERIENCE --
-    companies = cv.get("companies") or []
-    if companies:
+    # Profile p_work entries are authoritative for company/role/dates.
+    # AI cv["companies"] array provides JD-tailored bullets and tech tags.
+    # Date auto-fill: if profile dates missing, split years_exp equally across companies.
+    # 4+ profile companies: show first 3 in full; collapse rest into "Other Experience".
+
+    def _date_range_str(frm, to):
+        frm = (frm or "").strip()
+        to  = (to  or "").strip()
+        if frm and to:
+            return f"{frm} \u2013 {to}"
+        if frm:
+            return f"{frm} \u2013 Present"
+        return to if to else ""
+
+    def _render_exp_entry(company_name, role, date_range, bullets, tech_val):
+        row = [[Paragraph(company_name.upper(), S["company"]),
+                Paragraph(date_range, ps("dr", fontName="Helvetica", fontSize=10, leading=12,
+                                          textColor=colors.HexColor("#666666"),
+                                          alignment=TA_RIGHT))]]
+        t = Table(row, colWidths=[TW * 0.65, TW * 0.35])
+        t.setStyle(TableStyle([
+            ("VALIGN",       (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING",  (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING",   (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING",(0, 0), (-1, -1), 2),
+        ]))
+        story.append(t)
+        if role:
+            story.append(Paragraph(_safe(role), S["role_title"]))
+        for b in (bullets or []):
+            story.append(Paragraph(f"\u2022  {_safe(b)}", S["bullet"]))
+        if tech_val:
+            story.append(Paragraph(f"<b>Technologies:</b> {tech_val}", S["tech_line"]))
+        story.append(Spacer(1, 4 * mm))
+
+    ai_companies = cv.get("companies") or []
+
+    if p_work:
+        shown_work = p_work[:3]
+        _n_shown   = len(shown_work)
+
+        # Auto-date fallback: split total_years equally across shown companies
+        try:
+            _yrs_float = float(total_years.replace("+", "").strip())
+        except Exception:
+            _yrs_float = 0.0
+        _auto_dates = _build_dynamic_companies(total_years, num_companies=_n_shown) \
+                      if _yrs_float > 0 else []
+
         story.append(Paragraph("WORK EXPERIENCE", S["sec_title"]))
-        for i, c in enumerate(companies):
-            date_range = _safe(c.get("dateRange", ""))
-            if not date_range and i < len(STATIC_CANDIDATE["dates"]):
-                date_range = STATIC_CANDIDATE["dates"][i]
 
-            company_name = _safe(c.get("company", ""))
-            if not company_name and i < len(STATIC_CANDIDATE["companies"]):
-                company_name = STATIC_CANDIDATE["companies"][i]
+        for i, w in enumerate(shown_work):
+            ai = ai_companies[i] if i < len(ai_companies) else {}
+            company_name = _safe(w.get("company")) or _safe(ai.get("company")) or f"Company {i+1}"
+            role         = _safe(w.get("role"))    or _safe(ai.get("role"))    or ""
 
-            # Company name + date in same row
-            row = [[Paragraph(company_name, S["company"]),
-                    Paragraph(date_range, ps("dr", fontName="Helvetica", fontSize=10, leading=12,
-                                              textColor=colors.HexColor("#666666"),
-                                              alignment=TA_RIGHT))]]
-            t = Table(row, colWidths=[TW * 0.65, TW * 0.35])
-            t.setStyle(TableStyle([
-                ("VALIGN",       (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING",  (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                ("TOPPADDING",   (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING",(0, 0), (-1, -1), 2),
-            ]))
-            story.append(t)
-            
-            if c.get("role"):
-                story.append(Paragraph(_safe(c["role"]), S["role_title"]))
+            p_from = _safe(w.get("from", ""))
+            p_to   = _safe(w.get("to",   ""))
+            if p_from or p_to:
+                date_range = _date_range_str(p_from, p_to)
+            elif i < len(_auto_dates):
+                date_range = _date_range_str(_auto_dates[i]["start"], _auto_dates[i]["end"])
+            else:
+                date_range = ""
 
-            for b in (c.get("bullets") or []):
-                story.append(Paragraph(f"\u2022  {_safe(b)}", S["bullet"]))
+            raw_bullets = ai.get("bullets") or []
+            if not raw_bullets and w.get("bullets"):
+                raw_bullets = [b.strip() for b in w["bullets"].split("\n") if b.strip()]
+            tech_val = _safe(ai.get("tech") or ai.get("technologies") or "")
+            _render_exp_entry(company_name, role, date_range, raw_bullets, tech_val)
 
-            tech_val = _safe(c.get("tech") or c.get("technologies") or "")
-            if tech_val:
-                story.append(Paragraph(f"<b>Technologies:</b> {tech_val}", S["tech_line"]))
-            
-            story.append(Spacer(1, 4 * mm))  # Space between companies
+        # Companies 4+: collapse into a single "Other Experience" block
+        if len(p_work) > 3:
+            extra_work = p_work[3:]
+            _e_froms = [_safe(w.get("from")) for w in extra_work if w.get("from")]
+            _e_tos   = [_safe(w.get("to"))   for w in extra_work if w.get("to")]
+            _span_s  = _e_froms[-1] if _e_froms else ""
+            _span_e  = _e_tos[0]   if _e_tos   else "Present"
+            other_date = _date_range_str(_span_s, _span_e)
+            other_names = ", ".join(
+                _safe(w.get("company") or w.get("role") or "")
+                for w in extra_work if (w.get("company") or w.get("role"))
+            )
+            other_role = f"Roles at: {other_names}" if other_names else "Various Roles"
+            extra_ai_bullets = []
+            for j in range(3, len(ai_companies)):
+                extra_ai_bullets.extend(ai_companies[j].get("bullets") or [])
+            _render_exp_entry("Other Experience", other_role, other_date,
+                              extra_ai_bullets[:4], "")
+
+    else:
+        # No profile work: pure AI companies + STATIC date fallback
+        if ai_companies:
+            story.append(Paragraph("WORK EXPERIENCE", S["sec_title"]))
+            for i, c in enumerate(ai_companies):
+                dr  = _safe(c.get("dateRange", ""))
+                if not dr and i < len(STATIC_CANDIDATE["dates"]):
+                    dr = STATIC_CANDIDATE["dates"][i]
+                cn = _safe(c.get("company", ""))
+                if not cn and i < len(STATIC_CANDIDATE["companies"]):
+                    cn = STATIC_CANDIDATE["companies"][i]
+                _render_exp_entry(cn, _safe(c.get("role", "")), dr,
+                                  c.get("bullets") or [],
+                                  _safe(c.get("tech") or c.get("technologies") or ""))
 
     # -- TECHNICAL SKILLS --
     skills_raw = cv.get("skills") or []
@@ -7207,45 +7356,123 @@ def build_cv_pdf(cv: dict) -> bytes:
         story.append(Spacer(1, 2 * mm))
 
     # -- EDUCATION --
-    edu_data = cv.get("education", {})
-    grad_year = _safe(edu_data.get("years", STATIC_CANDIDATE["grad_year"])) if isinstance(edu_data, dict) else STATIC_CANDIDATE["grad_year"]
-    university = _safe(edu_data.get("university", STATIC_CANDIDATE["university"])) if isinstance(edu_data, dict) else STATIC_CANDIDATE["university"]
-    degree = _safe(edu_data.get("degree", STATIC_CANDIDATE["degree"])) if isinstance(edu_data, dict) else STATIC_CANDIDATE["degree"]
-    gpa = _safe(edu_data.get("cgpa", STATIC_CANDIDATE["gpa"])) if isinstance(edu_data, dict) else STATIC_CANDIDATE["gpa"]
-    achievement = _safe(edu_data.get("achievement", STATIC_CANDIDATE["achievement"])) if isinstance(edu_data, dict) else STATIC_CANDIDATE["achievement"]
-    if gpa and not gpa.upper().startswith("CGPA"):
-        gpa = f"CGPA: {gpa}"
-
+    # Priority: profile p_edu entries (dates static if provided, else auto-calculated)
+    #           → AI cv.education → STATIC_CANDIDATE
     story.append(Paragraph("EDUCATION", S["sec_title"]))
-    edu_row = [[Paragraph(university, S["edu_uni"]),
-                Paragraph(grad_year, ps("gy", fontName="Helvetica", fontSize=10, leading=12,
-                                        textColor=colors.HexColor("#666666"), alignment=TA_RIGHT))]]
-    t = Table(edu_row, colWidths=[TW * 0.72, TW * 0.28])
-    t.setStyle(TableStyle([
-        ("VALIGN",       (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING",  (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("TOPPADDING",   (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 2),
-    ]))
-    story.append(t)
-    story.append(Paragraph(f"{degree}  |  {gpa}", S["edu_deg"]))
-    story.append(Paragraph(f"\U0001f3c5 {achievement}", S["edu_medal"]))
 
+    def _render_edu_entry(institution, degree_str, grad_yr, gpa_str, achievement_str, note_str):
+        edu_row = [[Paragraph(institution.upper(), S["edu_uni"]),
+                    Paragraph(grad_yr, ps("gy", fontName="Helvetica", fontSize=10, leading=12,
+                                          textColor=colors.HexColor("#666666"), alignment=TA_RIGHT))]]
+        t = Table(edu_row, colWidths=[TW * 0.72, TW * 0.28])
+        t.setStyle(TableStyle([
+            ("VALIGN",       (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING",  (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING",   (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING",(0, 0), (-1, -1), 2),
+        ]))
+        story.append(t)
+        deg_line = degree_str
+        if gpa_str:
+            deg_line += f"  |  {gpa_str}"
+        if note_str and note_str not in deg_line:
+            deg_line += f"  |  {note_str}"
+        story.append(Paragraph(deg_line, S["edu_deg"]))
+        # Green achievement line — shown for any medal/honour/award text
+        if achievement_str:
+            story.append(Paragraph(f"\U0001f3c5 {achievement_str}", S["edu_medal"]))
+        story.append(Spacer(1, 3 * mm))
+
+    _HONOUR_KEYWORDS = ("gold", "medal", "honour", "honor", "distinction",
+                        "award", "excellence", "merit", "top", "prize",
+                        "first", "dean", "valedictorian", "summa", "magna")
+
+    if p_edu:
+        # Auto-calculate dates from total_years for entries missing both from+to
+        _auto_edu = _build_education_year(total_years, profile_edu=p_edu)
+
+        for e in p_edu:
+            institution = _safe(e.get("institution")) or STATIC_CANDIDATE["university"]
+            degree_str  = _safe(e.get("degree"))      or STATIC_CANDIDATE["degree"]
+            note_str    = _safe(e.get("note", ""))
+
+            p_e_from = _safe(e.get("from", ""))
+            p_e_to   = _safe(e.get("to",   ""))
+            if p_e_from and p_e_to:
+                # Both provided: use as-is (static)
+                grad_yr = f"{p_e_from} \u2013 {p_e_to}"
+            elif p_e_from and not p_e_to:
+                # Only start: add 4 years
+                try:
+                    grad_yr = f"{p_e_from} \u2013 {int(p_e_from[:4]) + 4}"
+                except Exception:
+                    grad_yr = p_e_from
+            elif p_e_to and not p_e_from:
+                # Only end: subtract 4 years
+                try:
+                    grad_yr = f"{int(p_e_to[:4]) - 4} \u2013 {p_e_to}"
+                except Exception:
+                    grad_yr = p_e_to
+            else:
+                # Neither: auto-calculate from years_exp
+                grad_yr = f"{_auto_edu['start']} \u2013 {_auto_edu['end']}"
+
+            # Extract CGPA from note (e.g. "Gold Medal — CGPA 3.97/4.0")
+            gpa_str = ""
+            _gpa_match = re.search(r"CGPA\s*:?\s*([\d.]+\s*/\s*[\d.]+)", note_str, re.IGNORECASE)
+            if _gpa_match:
+                gpa_str  = f"CGPA: {_gpa_match.group(1)}"
+                note_str = re.sub(r"[—\-\u2013]?\s*CGPA\s*:?\s*[\d.]+\s*/\s*[\d.]+", "",
+                                  note_str, flags=re.IGNORECASE).strip().strip("— \t")
+
+            # Detect achievement keywords → show as green medal line
+            achievement_str = ""
+            if any(kw in note_str.lower() for kw in _HONOUR_KEYWORDS):
+                # Expand short/abbreviated inputs to a full readable phrase
+                _note_lower = note_str.strip().lower()
+                if _note_lower in ("gold medal", "gold medalist", "gold", "gold medallist"):
+                    achievement_str = "Gold Medalist for Academic Excellence"
+                elif _note_lower in ("silver medal", "silver medalist", "silver medallist"):
+                    achievement_str = "Silver Medalist for Academic Excellence"
+                else:
+                    achievement_str = note_str
+                note_str = ""   # don't also print in degree line
+
+            _render_edu_entry(institution, degree_str, grad_yr, gpa_str, achievement_str, note_str)
+
+    else:
+        # Fallback: AI education + STATIC_CANDIDATE, with auto-calculated dates
+        edu_data    = cv.get("education", {})
+        _auto_edu   = _build_education_year(total_years)
+        _auto_range = f"{_auto_edu['start']} \u2013 {_auto_edu['end']}"
+        grad_year   = (_safe(edu_data.get("years")) or _auto_range) if isinstance(edu_data, dict) else _auto_range
+        university  = (_safe(edu_data.get("university")) or STATIC_CANDIDATE["university"]) \
+                      if isinstance(edu_data, dict) else STATIC_CANDIDATE["university"]
+        degree      = (_safe(edu_data.get("degree")) or STATIC_CANDIDATE["degree"]) \
+                      if isinstance(edu_data, dict) else STATIC_CANDIDATE["degree"]
+        gpa         = (_safe(edu_data.get("cgpa")) or STATIC_CANDIDATE["gpa"]) \
+                      if isinstance(edu_data, dict) else STATIC_CANDIDATE["gpa"]
+        achievement = (_safe(edu_data.get("achievement")) or STATIC_CANDIDATE["achievement"]) \
+                      if isinstance(edu_data, dict) else STATIC_CANDIDATE["achievement"]
+        if gpa and not gpa.upper().startswith("CGPA"):
+            gpa = f"CGPA: {gpa}"
+        _render_edu_entry(university, degree, grad_year, gpa, achievement, "")
     doc.build(story)
     buf.seek(0)
     return buf.read()
 
 class PDFRequest(BaseModel):
-    cv:       dict
-    filename: str = "Muhammad_Junaid_CV.pdf"
+    cv:          dict
+    filename:    str             = "CV.pdf"
+    profileData: Optional[dict] = None
 
 
 @app.post("/generate-pdf")
 async def generate_pdf(req: PDFRequest):
-    """Accept CV JSON, return a true text-based PDF file."""
+    """Accept CV JSON + profileData, return a true text-based PDF file."""
     try:
-        pdf_bytes = build_cv_pdf(req.cv)
+        pdf_bytes = build_cv_pdf(req.cv, profile_data=req.profileData)
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
