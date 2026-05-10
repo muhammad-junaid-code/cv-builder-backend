@@ -980,6 +980,8 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "    Requirements, Architecture, Infrastructure, Environment, System, Server, Network, Platform,\n"
         "    Application, Solution, Service, Module, Component, Interface, Integration\n"
         "  - Partial product names: 'NET' alone is BANNED - always write the full name: 'ASP.NET Core'\n"
+        "  - AI assistant / IDE tools are NEVER skill items: Claude Code, Cursor, Copilot, GitHub Copilot, Anthropic, ChatGPT, OpenAI\n"
+        "    These are productivity tools, not technical skills a recruiter evaluates.\n"
         "  - Any word that is NOT the name of a real software tool, platform, API, framework, language, or service\n"
         "RULE: If a word could appear in a sentence as a common English verb or noun, it is NOT a technology. Reject it.\n"
         "RULE: Technologies MUST be real named products: e.g. 'SQL Server', 'ASP.NET Core', 'Entity Framework', 'React', 'PostgreSQL'\n"
@@ -1047,6 +1049,13 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "Function word pool (no repeats across companies): Engineer, Developer, Specialist, Analyst, Programmer. "
         "NEVER use Architect, Consultant, or Designer unless explicitly present in the JD.\n"
         f"NEVER use a generic title without the JD's specific tech domain appended.\n"
+        "BANNED domain words: 'Full-Stack', 'Fullstack', 'Full Stack' — these are too generic. "
+        "Use the JD's primary technology or focus area as the domain word instead "
+        "(e.g. 'React', 'Node.js', 'Backend', 'Frontend', 'Python', 'TypeScript', 'API'). "
+        "If the JD is a full-stack role, pick the PRIMARY framework (frontend or backend) as the domain word.\n"
+        "UNIQUENESS RULE: ALL role titles MUST look visually different — different domain word AND different function word. "
+        "CORRECT: 'Senior React Engineer' / 'Node.js Developer' / 'Junior API Specialist'. "
+        "WRONG (too similar): 'Senior Backend Engineer' / 'Backend Developer' / 'Junior Backend Analyst'.\n"
         + _seniority_rule +
 
         "=== SUMMARY ===\n"
@@ -1921,7 +1930,7 @@ def _sanitize_skills_list(skills: list) -> list:
         cat = row[:colon].strip()
         items_raw = row[colon + 1:].strip()
         # Split on comma (skills are always comma-separated inside each category)
-        items = [t.strip() for t in items_raw.split(",") if t.strip()]
+        items = [t.strip() for t in re.split(r"[,|;?·•]", items_raw) if t.strip()]
         real_items = []
         for t in items:
             if not _is_real_tech(t):
@@ -6137,6 +6146,9 @@ def _sanitize_skills(raw_skills: list, cv: dict = None) -> list:
         "web development", "web", "hands", "good", "ability", "strong", "dev",
         "remote", "setup", "mindset", "detail", "attention", "focus", "solid",
         "working", "independent", "effectively", "efficiently",
+        # AI tools / IDEs that are not technical skills
+        "claude code", "cursor", "copilot", "github copilot", "anthropic",
+        "chatgpt", "openai",
         # Networking / infra nouns that are not software products
         "bind dns", "vpc", "vlan", "subnet", "load balancer",
     }
@@ -6152,7 +6164,7 @@ def _sanitize_skills(raw_skills: list, cv: dict = None) -> list:
         cat_name = entry[:colon].strip()
         items_raw = entry[colon + 1:].strip()
         # Split on comma, pipe, or semicolon
-        items = [i.strip() for i in re.split(r"[,|;]", items_raw) if i.strip()]
+        items = [i.strip() for i in re.split(r"[,|;\?·•]", items_raw) if i.strip()]
         # Strip banned generic terms
         items = [
             it for it in items
@@ -6691,8 +6703,8 @@ def build_cv_pdf(cv: dict) -> bytes:
                 cat   = ""
                 items_str = entry.strip()
 
-            item_list  = [i.strip() for i in re.split(r"[,|;]", items_str) if i.strip()]
-            items_text = "  ?  ".join(item_list)
+            item_list  = [i.strip() for i in re.split(r"[,|;?·•]", items_str) if i.strip()]
+            items_text = "  ·  ".join(item_list)
 
             rows.append([
                 Paragraph(cat, cat_style),
