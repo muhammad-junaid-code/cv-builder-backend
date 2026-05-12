@@ -7120,8 +7120,8 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         pagesize=A4,
         leftMargin=ML, rightMargin=MR,
         topMargin=MT, bottomMargin=MB,
-        title=f"{p_name} CV - {_safe(cv.get('title',''))}",
-        author=p_name,
+        title=f"Muhammad Junaid CV - {_safe(cv.get('title',''))}",
+        author="Muhammad Junaid",
         subject=_safe(cv.get("title", "")),
         keywords=_safe(cv.get("keywords", "")),
     )
@@ -7137,9 +7137,9 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
 
     S = {
         "name":        ps("name",   fontName="Helvetica-Bold", fontSize=18, leading=24,
-                           textColor=colors.HexColor("#111111"), spaceAfter=3),
+                           textColor=colors.HexColor("#111111"), spaceAfter=3, alignment=1),
         "role":        ps("role",   fontName="Helvetica", fontSize=8, leading=12,
-                           textColor=colors.HexColor("#444444"), spaceAfter=1),
+                           textColor=colors.HexColor("#444444"), spaceAfter=1, alignment=1),
         "contact":     ps("contact",fontName="Helvetica", fontSize=8, leading=11,
                            textColor=colors.HexColor("#0057A8"), spaceAfter=1),
         "contact_plain": ps("cp",   fontName="Helvetica", fontSize=8, leading=11,
@@ -7226,24 +7226,14 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
             return _link(v, url)
         return v
 
-    # Centered style used for all contact lines
-    contact_center = ps("contact_c", fontName="Helvetica", fontSize=8, leading=11,
-                        textColor=colors.HexColor("#0057A8"), spaceAfter=1,
-                        alignment=1)   # TA_CENTER
-
     if p_links:
         contact_items = [_make_link(l.get("value", "")) for l in p_links]
         contact_items = [c for c in contact_items if c]
-        if contact_items:
-            # Always try one line first; only split to 2 lines when >4 items
-            if len(contact_items) <= 4:
-                story.append(Paragraph(SEP.join(contact_items), contact_center))
-            else:
-                mid = math.ceil(len(contact_items) / 2)
-                story.append(Paragraph(SEP.join(contact_items[:mid]), contact_center))
-                story.append(Paragraph(SEP.join(contact_items[mid:]), contact_center))
-    elif not profile_data:
-        # No profile passed at all → show built-in static candidate details
+        mid = (len(contact_items) + 1) // 2
+        story.append(Paragraph(SEP.join(contact_items[:mid]),  S["contact"]))
+        if contact_items[mid:]:
+            story.append(Paragraph(SEP.join(contact_items[mid:]), S["contact"]))
+    else:
         sc = STATIC_CANDIDATE
         line1 = [sc["address"],
                  _link(sc["email"], _CONTACT_LINKS["email"]),
@@ -7251,9 +7241,8 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         line2 = [_link(sc["github"],    _CONTACT_LINKS["github"]),
                  _link(sc["portfolio"], _CONTACT_LINKS["portfolio"]),
                  _link(sc["linkedin"],  _CONTACT_LINKS["linkedin"])]
-        story.append(Paragraph(SEP.join(line1), contact_center))
-        story.append(Paragraph(SEP.join(line2), contact_center))
-    # else: real profile but no links → render nothing (don't show wrong person's details)
+        story.append(Paragraph(SEP.join(line1), S["contact"]))
+        story.append(Paragraph(SEP.join(line2), S["contact"]))
 
     story.append(HR())
     story.append(Spacer(1, 2 * mm))
