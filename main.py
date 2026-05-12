@@ -7307,14 +7307,22 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     ai_companies = cv.get("companies") or []
 
     if p_work:
-        shown_work = p_work[:3]
-        _n_shown   = len(shown_work)
-
-        # Auto-date fallback: split total_years equally across shown companies
+        # Cap companies shown based on years experience:
+        # ≤1 yr → 1 company, ≤2 yrs → 2 companies, >2 yrs → 3 companies
         try:
             _yrs_float = float(total_years.replace("+", "").strip())
         except Exception:
             _yrs_float = 0.0
+        if _yrs_float <= 1.0:
+            _max_cos = 1
+        elif _yrs_float <= 2.0:
+            _max_cos = 2
+        else:
+            _max_cos = 3
+        shown_work = p_work[:_max_cos]
+        _n_shown   = len(shown_work)
+
+        # Auto-date fallback: split total_years equally across shown companies
         _auto_dates = _build_dynamic_companies(total_years, num_companies=_n_shown) \
                       if _yrs_float > 0 else []
 
