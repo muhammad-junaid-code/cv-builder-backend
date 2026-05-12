@@ -7120,8 +7120,8 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         pagesize=A4,
         leftMargin=ML, rightMargin=MR,
         topMargin=MT, bottomMargin=MB,
-        title=f"Muhammad Junaid CV - {_safe(cv.get('title',''))}",
-        author="Muhammad Junaid",
+        title=f"{p_name} CV - {_safe(cv.get('title',''))}",
+        author=p_name,
         subject=_safe(cv.get("title", "")),
         keywords=_safe(cv.get("keywords", "")),
     )
@@ -7226,25 +7226,14 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
             return _link(v, url)
         return v
 
-    # Centered contact style for all lines
-    contact_center = ps("contact_c", fontName="Helvetica", fontSize=8, leading=11,
-                        textColor=colors.HexColor("#0057A8"), spaceAfter=1,
-                        alignment=1)   # TA_CENTER
-
     if p_links:
         contact_items = [_make_link(l.get("value", "")) for l in p_links]
         contact_items = [c for c in contact_items if c]
-        if contact_items:
-            # ≤3 items → always one line; 4+ → split evenly with ceil so
-            # line 1 gets the larger share and nothing orphans left-aligned.
-            if len(contact_items) <= 3:
-                story.append(Paragraph(SEP.join(contact_items), contact_center))
-            else:
-                mid = math.ceil(len(contact_items) / 2)
-                story.append(Paragraph(SEP.join(contact_items[:mid]), contact_center))
-                story.append(Paragraph(SEP.join(contact_items[mid:]), contact_center))
-    elif not profile_data:
-        # No profile passed at all → show built-in static candidate details
+        mid = (len(contact_items) + 1) // 2
+        story.append(Paragraph(SEP.join(contact_items[:mid]),  S["contact"]))
+        if contact_items[mid:]:
+            story.append(Paragraph(SEP.join(contact_items[mid:]), S["contact"]))
+    else:
         sc = STATIC_CANDIDATE
         line1 = [sc["address"],
                  _link(sc["email"], _CONTACT_LINKS["email"]),
@@ -7252,10 +7241,8 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         line2 = [_link(sc["github"],    _CONTACT_LINKS["github"]),
                  _link(sc["portfolio"], _CONTACT_LINKS["portfolio"]),
                  _link(sc["linkedin"],  _CONTACT_LINKS["linkedin"])]
-        story.append(Paragraph(SEP.join(line1), contact_center))
-        story.append(Paragraph(SEP.join(line2), contact_center))
-    # else: real profile provided but links empty → render nothing,
-    # never show a different person's contact details.
+        story.append(Paragraph(SEP.join(line1), S["contact"]))
+        story.append(Paragraph(SEP.join(line2), S["contact"]))
 
     story.append(HR())
     story.append(Spacer(1, 2 * mm))
