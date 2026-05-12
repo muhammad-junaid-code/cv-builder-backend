@@ -2080,6 +2080,8 @@ def fix_companies(cv: dict) -> dict:
 
         # Strip seniority words AND "Intern/Internship" from role
         role = co.get("role", "").strip()
+        # Remove any leaked AI internal labels like "Co1", "Co2", "Co3" from the role title
+        role = re.sub(r"(?i)\bCo\d+\b\s*", "", role).strip()
         _strip_pat = r"(?i)\b(lead|principal|staff|senior|mid[\s\-]?level|junior|associate|graduate|entry[\s\-]?level|intern(?:ship)?)(/\w+)?\b\s*"
         domain = re.sub(_strip_pat, "", role).strip()
         domain = re.sub(r"\s+", " ", domain).strip()
@@ -7289,6 +7291,8 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         ]))
         story.append(t)
         if role:
+            # Strip any leaked AI-internal labels (Co1, Co2, Co3) before rendering
+            role = re.sub(r"(?i)\bCo\d+\b\s*", "", role).strip()
             story.append(Paragraph(_safe(role), S["role_title"]))
         for b in (bullets or []):
             story.append(Paragraph(f"\u2022  {_safe(b)}", S["bullet"]))
