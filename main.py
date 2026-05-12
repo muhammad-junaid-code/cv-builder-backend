@@ -7119,8 +7119,8 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         pagesize=A4,
         leftMargin=ML, rightMargin=MR,
         topMargin=MT, bottomMargin=MB,
-        title=f"Muhammad Junaid CV - {_safe(cv.get('title',''))}",
-        author="Muhammad Junaid",
+        title=f"{p_name} CV - {_safe(cv.get('title',''))}",
+        author=p_name,
         subject=_safe(cv.get("title", "")),
         keywords=_safe(cv.get("keywords", "")),
     )
@@ -7232,9 +7232,12 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     if p_links:
         contact_items = [_make_link(l.get("value", "")) for l in p_links]
         contact_items = [c for c in contact_items if c]
-        mid = (len(contact_items) + 1) // 2
-        story.append(Paragraph(SEP.join(contact_items[:mid]),  S["contact"]))
-        if contact_items[mid:]:
+        # Try one line first; if more than 4 items split into two centered lines
+        if len(contact_items) <= 4:
+            story.append(Paragraph(SEP.join(contact_items), S["contact"]))
+        else:
+            mid = (len(contact_items) + 1) // 2
+            story.append(Paragraph(SEP.join(contact_items[:mid]),  S["contact"]))
             story.append(Paragraph(SEP.join(contact_items[mid:]), S["contact"]))
     else:
         sc = STATIC_CANDIDATE
@@ -7318,8 +7321,12 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
 
         for i, w in enumerate(shown_work):
             ai = ai_companies[i] if i < len(ai_companies) else {}
-            company_name = _safe(w.get("company")) or _safe(ai.get("company")) or f"Company {i+1}"
+            company_name = _safe(w.get("company")) or _safe(ai.get("company")) or ""
             role         = _safe(w.get("role"))    or _safe(ai.get("role"))    or ""
+
+            # Strip AI-generated ordinal placeholders like "Co1", "Co2", "Junior Co1" etc.
+            role = re.sub(r'\bCo\d+\b', '', role).strip()
+            role = re.sub(r'\s{2,}', ' ', role).strip()
 
             p_from = _safe(w.get("from", ""))
             p_to   = _safe(w.get("to",   ""))
