@@ -299,35 +299,35 @@ import os
 _DATA_DIR = "/data" if os.path.isdir("/data") else os.path.dirname(os.path.abspath(__file__))
 AUTH_FILE  = os.path.join(_DATA_DIR, "auth_keys.json")
 
+STATIC_ACCESS_KEY = "CVAI-A927-42F8-1E31"
+
 def _load_auth_keys() -> dict:
-    """Load auth keys from disk. Returns {token: {label, created_at, expires_at, active}}.
-    On first run (no file), auto-generates a default key so the extension works immediately.
-    """
-    if not os.path.exists(AUTH_FILE):
-        raw = secrets.token_hex(8).upper()
-        default_token = f"CVAI-{raw[0:4]}-{raw[4:8]}-{raw[8:12]}"
-        keys = {
-            default_token: {
-                "label": "Default Key (auto-generated)",
-                "created_at": datetime.utcnow().isoformat(),
-                "expires_at": None,
-                "active": True,
-                "last_used": None,
-            }
+    """Load auth keys from disk. Always ensures the static hardcoded key is present."""
+    if os.path.exists(AUTH_FILE):
+        try:
+            with open(AUTH_FILE, "r") as f:
+                keys = json.load(f)
+        except Exception:
+            keys = {}
+    else:
+        keys = {}
+
+    # Always guarantee the static key exists and is active
+    if STATIC_ACCESS_KEY not in keys:
+        keys[STATIC_ACCESS_KEY] = {
+            "label":      "Static Key",
+            "created_at": datetime.utcnow().isoformat(),
+            "expires_at": None,
+            "active":     True,
+            "last_used":  None,
         }
         _save_auth_keys(keys)
         print(f"\n{'='*60}")
-        print(f"  CV Builder AI - First Run Setup")
-        print(f"  Auto-generated access key: {default_token}")
-        print(f"  Paste this key in the extension login screen.")
-        print(f"  Generate more keys via the Admin panel in login.html")
+        print(f"  CV Builder AI — Static Access Key")
+        print(f"  Key: {STATIC_ACCESS_KEY}")
         print(f"{'='*60}\n")
-        return keys
-    try:
-        with open(AUTH_FILE, "r") as f:
-            return json.load(f)
-    except Exception:
-        return {}
+
+    return keys
 
 def _save_auth_keys(keys: dict):
     """Persist auth keys to disk."""
