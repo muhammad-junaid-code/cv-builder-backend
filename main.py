@@ -949,7 +949,7 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
     except ValueError:
         _yrs_float = 3.0
 
-    if _yrs_float <= 1.0:
+    if _yrs_float <= 1.4:
         _seniority_rule = (
             f"SENIORITY RULE - {total_years} year experience: "
             "Co1 MUST use 'Junior'. Domain = primary NAMED TECHNOLOGY from JD "
@@ -958,8 +958,9 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         _seniority_ban = (
             "- Missing 'Junior' on Co1\n"
             "- Generic domain (DevOps/Web/Software/Backend/Frontend) in role title\n"
+            "- Using 'Intern' or 'Internship' in any role title\n"
         )
-    elif _yrs_float <= 2.0:
+    elif _yrs_float <= 2.4:
         _seniority_rule = (
             f"SENIORITY RULE - {total_years} years experience: "
             "Co1 NO prefix. Domain = PRIMARY named tech from JD (e.g. 'WordPress Developer'). "
@@ -1277,7 +1278,7 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         for i in range(num_cos)
     )
 
-    function_words = ["Engineer", "Developer", "Specialist"]
+    function_words = ["Engineer", "Developer", "Specialist"]  # never "Intern"
     json_companies = ",".join(
         f'{{"company":"{companies[i]["name"]}",'
         f'"role":"{"" if not json_seniority[i] else json_seniority[i] + " "}[Domain] [{function_words[i]}/etc]",'
@@ -2050,26 +2051,16 @@ def fix_companies(cv: dict) -> dict:
     except Exception:
         real_years = 3.0
 
-    # Seniority tiers based on years AND number of companies:
+    # Seniority tiers - strictly based on number of companies present:
     # 1 company  (<=1 yr)  -> Junior only
-    # 2 companies (<=2 yr) -> Co1: plain (no prefix), Co2: Junior
-    # 3 companies (>2 yr)  -> Co1: Senior, Co2: plain (no prefix), Co3: Junior
+    # 2 companies (<=2 yr)  -> Co1: plain (no prefix), Co2: Junior
+    # 3 companies (3+ yr)  -> Co1: Senior, Co2: plain (no prefix), Co3: Junior
     num_cos = len(companies)
-    try:
-        _rv = float(real_years_str.replace("+", "").strip())
-    except Exception:
-        _rv = real_years
     if num_cos == 1:
-        # 1 company: Junior if <=1 yr, Senior if >2 yr
-        if _rv <= 1.0:
-            tier_labels = ["Junior"]
-        else:
-            tier_labels = ["Senior"]
+        tier_labels = ["Junior"]
     elif num_cos == 2:
-        # 2 companies: Co1 plain, Co2 Junior
         tier_labels = ["", "Junior"]
     else:
-        # 3+ companies: Co1 Senior, Co2 plain, Co3 Junior
         tier_labels = ["Senior", "", "Junior"]
 
     # Only use Architect if the JD explicitly calls for it
@@ -2087,22 +2078,16 @@ def fix_companies(cv: dict) -> dict:
             co["dateRange"] = f"{real['start']} - {real['end']}"
         co.setdefault("company", real["name"])
 
-        # Strip any existing seniority prefix from role
+        # Strip seniority words AND "Intern/Internship" from role
         role = co.get("role", "").strip()
-        # Strip ALL seniority words including "Lead/Principal" slash combos
-        domain = re.sub(
-            r"(?i)\b(lead|principal|staff|senior|mid[\s\-]?level|junior|associate|graduate|entry[\s\-]?level)(/\w+)?\b\s*",
-            "", role
-        ).strip()
+        _strip_pat = r"(?i)\b(lead|principal|staff|senior|mid[\s\-]?level|junior|associate|graduate|entry[\s\-]?level|intern(?:ship)?)(/\w+)?\b\s*"
+        domain = re.sub(_strip_pat, "", role).strip()
         domain = re.sub(r"\s+", " ", domain).strip()
 
         # Fall back to title-derived domain if empty or generic
         if not domain or re.match(r"(?i)^(role|engineer|developer|specialist)$", domain):
             raw_title = (cv.get("title") or "Software Engineer").split("|")[0].strip()
-            domain = re.sub(
-                r"(?i)\b(lead|principal|staff|senior|mid[\s\-]?level|junior|associate)(/\w+)?\b\s*",
-                "", raw_title
-            ).strip()
+            domain = re.sub(_strip_pat, "", raw_title).strip()
             domain = re.sub(r"\s+", " ", domain).strip() or "Software Engineer"
 
         # Remove "Architect" from domain unless JD explicitly asks for it
@@ -5110,7 +5095,7 @@ _BAD_TITLE_ADJECTIVES = {
 }
 _FUNC_WORDS  = {"engineer","developer","specialist","analyst","programmer",
                 "consultant","designer","technologist","builder","integrator"}
-_SENIOR_WORDS = {"senior","junior","associate","graduate","lead","principal","staff"}
+_SENIOR_WORDS = {"senior","junior","associate","graduate","lead","principal","staff","intern","internship"}
 _FUNC_LIST   = ["Engineer","Developer","Specialist","Analyst","Programmer"]
 
 
@@ -5172,6 +5157,10 @@ def _enforce_role_titles(cv: dict, job_title: str) -> dict:
 
     for i, co in enumerate(companies[:3]):
         role = (co.get("role") or "").strip()
+        # Always strip "Intern/Internship" from role titles
+        role = re.sub(r"(?i)\b(intern(?:ship)?)\b\s*", "", role).strip()
+        role = re.sub(r"\s+", " ", role).strip()
+        co["role"] = role
         if not role or _role_domain_is_banned(role):
             tech = tech_pool[i % len(tech_pool)] if tech_pool else primary
             fn   = _FUNC_LIST[i % len(_FUNC_LIST)]
@@ -7130,8 +7119,8 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         pagesize=A4,
         leftMargin=ML, rightMargin=MR,
         topMargin=MT, bottomMargin=MB,
-        title=f"{p_name} CV - {_safe(cv.get('title',''))}",
-        author=p_name,
+        title=f"Muhammad Junaid CV - {_safe(cv.get('title',''))}",
+        author="Muhammad Junaid",
         subject=_safe(cv.get("title", "")),
         keywords=_safe(cv.get("keywords", "")),
     )
@@ -7147,9 +7136,9 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
 
     S = {
         "name":        ps("name",   fontName="Helvetica-Bold", fontSize=18, leading=24,
-                           textColor=colors.HexColor("#111111"), spaceAfter=3, alignment=1),
+                           textColor=colors.HexColor("#111111"), spaceAfter=3),
         "role":        ps("role",   fontName="Helvetica", fontSize=8, leading=12,
-                           textColor=colors.HexColor("#444444"), spaceAfter=1, alignment=1),
+                           textColor=colors.HexColor("#444444"), spaceAfter=1),
         "contact":     ps("contact",fontName="Helvetica", fontSize=8, leading=11,
                            textColor=colors.HexColor("#0057A8"), spaceAfter=1),
         "contact_plain": ps("cp",   fontName="Helvetica", fontSize=8, leading=11,
@@ -7236,21 +7225,14 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
             return _link(v, url)
         return v
 
-    contact_center = ps("contact_c", fontName="Helvetica", fontSize=8, leading=11,
-                        textColor=colors.HexColor("#0057A8"), spaceAfter=1,
-                        alignment=1)
-
     if p_links:
         contact_items = [_make_link(l.get("value", "")) for l in p_links]
         contact_items = [c for c in contact_items if c]
-        if contact_items:
-            if len(contact_items) <= 4:
-                story.append(Paragraph(SEP.join(contact_items), contact_center))
-            else:
-                mid = math.ceil(len(contact_items) / 2)
-                story.append(Paragraph(SEP.join(contact_items[:mid]), contact_center))
-                story.append(Paragraph(SEP.join(contact_items[mid:]), contact_center))
-    elif not profile_data:
+        mid = (len(contact_items) + 1) // 2
+        story.append(Paragraph(SEP.join(contact_items[:mid]),  S["contact"]))
+        if contact_items[mid:]:
+            story.append(Paragraph(SEP.join(contact_items[mid:]), S["contact"]))
+    else:
         sc = STATIC_CANDIDATE
         line1 = [sc["address"],
                  _link(sc["email"], _CONTACT_LINKS["email"]),
@@ -7258,8 +7240,8 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         line2 = [_link(sc["github"],    _CONTACT_LINKS["github"]),
                  _link(sc["portfolio"], _CONTACT_LINKS["portfolio"]),
                  _link(sc["linkedin"],  _CONTACT_LINKS["linkedin"])]
-        story.append(Paragraph(SEP.join(line1), contact_center))
-        story.append(Paragraph(SEP.join(line2), contact_center))
+        story.append(Paragraph(SEP.join(line1), S["contact"]))
+        story.append(Paragraph(SEP.join(line2), S["contact"]))
 
     story.append(HR())
     story.append(Spacer(1, 2 * mm))
@@ -7317,21 +7299,14 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     ai_companies = cv.get("companies") or []
 
     if p_work:
-        # Cap companies by years: <=1 yr → 1, <=2 yrs → 2, >2 yrs → 3
+        shown_work = p_work[:3]
+        _n_shown   = len(shown_work)
+
+        # Auto-date fallback: split total_years equally across shown companies
         try:
             _yrs_float = float(total_years.replace("+", "").strip())
         except Exception:
             _yrs_float = 0.0
-        if _yrs_float <= 1.0:
-            _max_cos = 1
-        elif _yrs_float <= 2.0:
-            _max_cos = 2
-        else:
-            _max_cos = 3
-        shown_work = p_work[:_max_cos]
-        _n_shown   = len(shown_work)
-
-        # Auto-date fallback: split total_years equally across shown companies
         _auto_dates = _build_dynamic_companies(total_years, num_companies=_n_shown) \
                       if _yrs_float > 0 else []
 
