@@ -21,7 +21,7 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 )
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 from reportlab.lib import colors
 
 app = FastAPI(title="CV Builder AI", version="9.0")
@@ -7136,13 +7136,17 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
 
     S = {
         "name":        ps("name",   fontName="Helvetica-Bold", fontSize=18, leading=24,
-                           textColor=colors.HexColor("#111111"), spaceAfter=3),
+                           textColor=colors.HexColor("#111111"), spaceAfter=3,
+                           alignment=TA_CENTER),
         "role":        ps("role",   fontName="Helvetica", fontSize=8, leading=12,
-                           textColor=colors.HexColor("#444444"), spaceAfter=1),
+                           textColor=colors.HexColor("#444444"), spaceAfter=1,
+                           alignment=TA_CENTER),
         "contact":     ps("contact",fontName="Helvetica", fontSize=8, leading=11,
-                           textColor=colors.HexColor("#0057A8"), spaceAfter=1),
+                           textColor=colors.HexColor("#0057A8"), spaceAfter=1,
+                           alignment=TA_CENTER),
         "contact_plain": ps("cp",   fontName="Helvetica", fontSize=8, leading=11,
-                           textColor=colors.HexColor("#555555"), spaceAfter=1),
+                           textColor=colors.HexColor("#555555"), spaceAfter=1,
+                           alignment=TA_CENTER),
         "sec_title":   ps("sec",    fontName="Helvetica-Bold", fontSize=11, leading=14,
                            textColor=colors.HexColor("#222222"), spaceBefore=4, spaceAfter=2),
         "company":     ps("co",     fontName="Helvetica-Bold", fontSize=11, leading=14,
