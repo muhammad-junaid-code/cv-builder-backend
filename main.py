@@ -21,7 +21,7 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 )
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT
 from reportlab.lib import colors
 
 app = FastAPI(title="CV Builder AI", version="9.0")
@@ -7119,8 +7119,8 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         pagesize=A4,
         leftMargin=ML, rightMargin=MR,
         topMargin=MT, bottomMargin=MB,
-        title=f"{p_name} CV - {_safe(cv.get('title',''))}",
-        author=p_name,
+        title=f"Muhammad Junaid CV - {_safe(cv.get('title',''))}",
+        author="Muhammad Junaid",
         subject=_safe(cv.get("title", "")),
         keywords=_safe(cv.get("keywords", "")),
     )
@@ -7136,17 +7136,13 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
 
     S = {
         "name":        ps("name",   fontName="Helvetica-Bold", fontSize=18, leading=24,
-                           textColor=colors.HexColor("#111111"), spaceAfter=3,
-                           alignment=TA_CENTER),
+                           textColor=colors.HexColor("#111111"), spaceAfter=3),
         "role":        ps("role",   fontName="Helvetica", fontSize=8, leading=12,
-                           textColor=colors.HexColor("#444444"), spaceAfter=1,
-                           alignment=TA_CENTER),
+                           textColor=colors.HexColor("#444444"), spaceAfter=1),
         "contact":     ps("contact",fontName="Helvetica", fontSize=8, leading=11,
-                           textColor=colors.HexColor("#0057A8"), spaceAfter=1,
-                           alignment=TA_CENTER),
+                           textColor=colors.HexColor("#0057A8"), spaceAfter=1),
         "contact_plain": ps("cp",   fontName="Helvetica", fontSize=8, leading=11,
-                           textColor=colors.HexColor("#555555"), spaceAfter=1,
-                           alignment=TA_CENTER),
+                           textColor=colors.HexColor("#555555"), spaceAfter=1),
         "sec_title":   ps("sec",    fontName="Helvetica-Bold", fontSize=11, leading=14,
                            textColor=colors.HexColor("#222222"), spaceBefore=4, spaceAfter=2),
         "company":     ps("co",     fontName="Helvetica-Bold", fontSize=11, leading=14,
@@ -7198,6 +7194,17 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     # Name — dynamic from profile
     story.append(Paragraph(p_name.upper(), S["name"]))
     if cv_title:
+        # Cap tech list to max 3 technologies
+        # Title format: "ROLE TITLE | Tech1, Tech2, Tech3, Tech4..."
+        title_parts = cv_title.split("|")
+        role_part   = title_parts[0].strip()
+        if len(title_parts) > 1:
+            techs     = [t.strip() for t in title_parts[1].split(",") if t.strip()]
+            tech_part = ", ".join(techs[:3])
+            cv_title  = role_part + " | " + tech_part
+        else:
+            cv_title  = role_part
+
         if total_years:
             try:
                 years_num     = float(total_years.replace("+", "").strip())
@@ -7232,12 +7239,9 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     if p_links:
         contact_items = [_make_link(l.get("value", "")) for l in p_links]
         contact_items = [c for c in contact_items if c]
-        # Try one line first; if more than 4 items split into two centered lines
-        if len(contact_items) <= 4:
-            story.append(Paragraph(SEP.join(contact_items), S["contact"]))
-        else:
-            mid = (len(contact_items) + 1) // 2
-            story.append(Paragraph(SEP.join(contact_items[:mid]),  S["contact"]))
+        mid = (len(contact_items) + 1) // 2
+        story.append(Paragraph(SEP.join(contact_items[:mid]),  S["contact"]))
+        if contact_items[mid:]:
             story.append(Paragraph(SEP.join(contact_items[mid:]), S["contact"]))
     else:
         sc = STATIC_CANDIDATE
@@ -7321,12 +7325,8 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
 
         for i, w in enumerate(shown_work):
             ai = ai_companies[i] if i < len(ai_companies) else {}
-            company_name = _safe(w.get("company")) or _safe(ai.get("company")) or ""
+            company_name = _safe(w.get("company")) or _safe(ai.get("company")) or f"Company {i+1}"
             role         = _safe(w.get("role"))    or _safe(ai.get("role"))    or ""
-
-            # Strip AI-generated ordinal placeholders like "Co1", "Co2", "Junior Co1" etc.
-            role = re.sub(r'\bCo\d+\b', '', role).strip()
-            role = re.sub(r'\s{2,}', ' ', role).strip()
 
             p_from = _safe(w.get("from", ""))
             p_to   = _safe(w.get("to",   ""))
