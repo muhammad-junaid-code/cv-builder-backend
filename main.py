@@ -949,7 +949,7 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
     except ValueError:
         _yrs_float = 3.0
 
-    if _yrs_float <= 1.4:
+    if _yrs_float <= 1.0:
         _seniority_rule = (
             f"SENIORITY RULE - {total_years} year experience: "
             "Co1 MUST use 'Junior'. Domain = primary NAMED TECHNOLOGY from JD "
@@ -959,7 +959,7 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
             "- Missing 'Junior' on Co1\n"
             "- Generic domain (DevOps/Web/Software/Backend/Frontend) in role title\n"
         )
-    elif _yrs_float <= 2.4:
+    elif _yrs_float <= 2.0:
         _seniority_rule = (
             f"SENIORITY RULE - {total_years} years experience: "
             "Co1 NO prefix. Domain = PRIMARY named tech from JD (e.g. 'WordPress Developer'). "
@@ -2050,16 +2050,26 @@ def fix_companies(cv: dict) -> dict:
     except Exception:
         real_years = 3.0
 
-    # Seniority tiers - strictly based on number of companies present:
+    # Seniority tiers based on years AND number of companies:
     # 1 company  (<=1 yr)  -> Junior only
-    # 2 companies (<=2 yr)  -> Co1: plain (no prefix), Co2: Junior
-    # 3 companies (3+ yr)  -> Co1: Senior, Co2: plain (no prefix), Co3: Junior
+    # 2 companies (<=2 yr) -> Co1: plain (no prefix), Co2: Junior
+    # 3 companies (>2 yr)  -> Co1: Senior, Co2: plain (no prefix), Co3: Junior
     num_cos = len(companies)
+    try:
+        _rv = float(real_years_str.replace("+", "").strip())
+    except Exception:
+        _rv = real_years
     if num_cos == 1:
-        tier_labels = ["Junior"]
+        # 1 company: Junior if <=1 yr, Senior if >2 yr
+        if _rv <= 1.0:
+            tier_labels = ["Junior"]
+        else:
+            tier_labels = ["Senior"]
     elif num_cos == 2:
+        # 2 companies: Co1 plain, Co2 Junior
         tier_labels = ["", "Junior"]
     else:
+        # 3+ companies: Co1 Senior, Co2 plain, Co3 Junior
         tier_labels = ["Senior", "", "Junior"]
 
     # Only use Architect if the JD explicitly calls for it
@@ -7228,7 +7238,7 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
 
     contact_center = ps("contact_c", fontName="Helvetica", fontSize=8, leading=11,
                         textColor=colors.HexColor("#0057A8"), spaceAfter=1,
-                        alignment=1)   # TA_CENTER
+                        alignment=1)
 
     if p_links:
         contact_items = [_make_link(l.get("value", "")) for l in p_links]
@@ -7307,8 +7317,7 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     ai_companies = cv.get("companies") or []
 
     if p_work:
-        # Cap companies shown based on years experience:
-        # ≤1 yr → 1 company, ≤2 yrs → 2 companies, >2 yrs → 3 companies
+        # Cap companies by years: <=1 yr → 1, <=2 yrs → 2, >2 yrs → 3
         try:
             _yrs_float = float(total_years.replace("+", "").strip())
         except Exception:
