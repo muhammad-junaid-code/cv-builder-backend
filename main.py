@@ -1377,18 +1377,27 @@ REMINDER: Do NOT copy {company_name}'s exact product or service - use parallel d
             "  (e.g. if the company does energy marketplaces -> try telecom, insurance, or SaaS subscription; if the company does healthcare booking -> try legal, education, or hospitality)\n"
             "STEP 3 - Identify a SECOND ADJACENT DOMAIN for project 4:\n"
             "  Pick yet another adjacent sector or a scaled/enterprise variant of the same pattern.\n"
-            "STEP 4 - Name each project with an ORIGINAL ENTERPRISE-PRODUCT-STYLE coined name:\n"
-            "  The name must sound like a real internal enterprise product — NOT a hackathon demo.\n"
-            "  The name must NOT contain: the company name, their product name, their commodity/sector keyword, or any direct synonym of their business.\n"
-            "  Format: [OriginalProductName] - [What it does using JD technologies]\n"
-            "  Strong examples: 'ClaimsPulse - Insurance Claims Validation Engine', 'VendorLink - Supplier Onboarding Portal', 'RouteOps - Fleet Dispatch Management Console'\n"
+            "STEP 4 - Name each project with a FULL MULTI-WORD DESCRIPTIVE system name:\n"
+            "  *** SINGLE-WORD or TWO-WORD blended names are an INSTANT HARD FAILURE ***\n"
+            "  Names like 'ClaimsPulse', 'VendorLink', 'RouteOps', 'InvoiceFlow' ALONE are BANNED.\n"
+            "  The name BEFORE the dash MUST be 3-6 words describing the business function clearly.\n"
+            "  The name must NOT contain: the company name, their product name, or any synonym of their business.\n"
+            "  REQUIRED format: '[Multi-word Descriptive System Name] - [What it does specifically]'\n"
+            "  Strong examples:\n"
+            "    'Insurance Claims Validation and Status Tracking Portal - Risk Assessment Dashboard'\n"
+            "    'Supplier Onboarding and Purchase Order Workflow System - Multi-Stage Approval Portal'\n"
+            "    'Fleet Route Optimisation and Live Dispatch Console - Real-Time Driver Assignment System'\n"
+            "    'Digital Loan Application Processing and Status Portal - Branch-Level Credit Workflow'\n"
             "STEP 5 - Use ONLY technologies from the JD for all tech references in project names, overviews, and bullets.\n\n"
             "PROJECT 1 & 2 (JD-driven) rules:\n"
             "Identify 2 distinct core system types implied by the JD tech stack and role responsibilities.\n"
-            "Name each as an original enterprise-product-style coined name using only JD technologies.\n"
+            "Name each with a full multi-word descriptive name (3-6 words before the dash) using only JD technologies.\n"
             "ALL 4 projects must feel like they belong to the same company's technology ecosystem — consistent domain, coherent scope.\n\n"
             "ALL 4 projects MUST have:\n"
-            "- name: [CoinedProductName] - [Specific what it does] [JD-Tech1, JD-Tech2]\n"
+            "- name: '[Multi-word Descriptive System Name] - [What it does specifically]'  (NO single-word names)\n"
+            "- systemType: '[JD-Derived System Class Label]' — a 2-5 word classification of what KIND of system this is\n"
+            "  (e.g. 'Workflow Automation System', 'Billing & Invoice Management', 'Fleet & Logistics Management')\n"
+            "  MUST be unique across all 4 projects. Derive from the JD domain and project function — NEVER generic.\n"
             "- overview: 3-4 sentences covering PROBLEM (operational pain) -> SOLUTION (named JD techs) -> FUNCTIONALITY (concrete features) -> BUSINESS IMPACT (believable metric)\n"
             "- bullets: exactly 3 strings each describing a DIFFERENT specific feature or challenge:\n"
             "    bullet 1: specific component/feature built + key JD technology used (20-30 words, enterprise-realistic)\n"
@@ -1408,9 +1417,21 @@ REMINDER: Do NOT copy {company_name}'s exact product or service - use parallel d
             "  If the JD is for a fintech: all 4 projects should be finance-aligned (billing, payments, compliance, risk).\n"
             "  If the JD is for healthcare: all 4 projects should be healthcare-aligned (records, scheduling, lab, pharmacy).\n"
             "  NEVER mix projects from unrelated domains — all 4 must feel like they could exist at the same company.\n\n"
-            "Name each as an original enterprise-product-style coined name using only technologies from the JD - NEVER use generic names.\n"
+            "*** PROJECT NAMING — SINGLE-WORD NAMES ARE AN INSTANT HARD FAILURE ***\n"
+            "Names like 'EcoCycle', 'HealthHub', 'SmartFarm', 'InvoiceFlow', 'ShiftSync' alone are BANNED.\n"
+            "REQUIRED: Every project name MUST be 3-6 descriptive words BEFORE the dash, plus specifics AFTER the dash.\n"
+            "REQUIRED format: '[Multi-word Descriptive System Name] - [What it does specifically]'\n"
+            "STRONG examples:\n"
+            "  'Supplier Onboarding and Purchase Order Workflow System - Multi-Stage Approval Portal'\n"
+            "  'Employee Leave and Attendance Management Platform - HR Approval and Reporting Hub'\n"
+            "  'Automated Invoice Processing and Payment Tracking Portal - Finance Approval Workflow'\n"
+            "  'Internal Support Ticket and Issue Resolution Tracking Platform - SLA Compliance Console'\n"
+            "  'Fleet Route Optimisation and Live Dispatch Console - Real-Time Driver Assignment System'\n\n"
             "Each project MUST have:\n"
-            "- name: [CoinedProductName] - [Specific what it does] [JD-Tech1, JD-Tech2]\n"
+            "- name: '[Multi-word Descriptive System Name] - [What it does specifically]'\n"
+            "- systemType: '[JD-Derived System Class Label]' — a 2-5 word classification of what KIND of system this is\n"
+            "  (e.g. 'Workflow Automation System', 'Billing & Invoice Management', 'Fleet & Logistics Management')\n"
+            "  MUST be unique across all 4 projects. Derive from the JD domain and project function — NEVER generic.\n"
             "- overview: 3-4 sentences covering PROBLEM (operational pain) -> SOLUTION (named JD techs) -> FUNCTIONALITY (concrete features) -> BUSINESS IMPACT (believable metric)\n"
             "- bullets: exactly 3 strings each describing a DIFFERENT specific feature/challenge:\n"
             "    bullet 1: specific component/feature built + key JD technology (20-30 words, enterprise-realistic)\n"
@@ -1563,6 +1584,50 @@ R7 PROJECTS: Produce EXACTLY 4 projects split as follows:
   PROJECT 4 - Company-sector: Based on broader public knowledge of what this company's sector/industry is known for.
   If no company name or URL was provided, replace projects 3 and 4 with two additional domain-specific JD projects covering DIFFERENT system types.
 
+PROJECT SYSTEM TYPE LABEL (mandatory for every project):
+  Every project MUST include a "systemType" field — a short 2-5 word label classifying what KIND of system it is.
+  This label is displayed prominently before the project name on the CV, giving recruiters instant context.
+
+  HOW TO DERIVE systemType (CRITICAL — derive from JD domain and project functionality, NEVER hardcode):
+    Read the project's purpose and the JD's industry/domain, then pick the most accurate classification.
+
+  TECHNICAL DOMAIN EXAMPLES (derive the right one for this specific JD):
+    Workflow Automation System     — internal approval chains, multi-step processes, routing engines
+    API Integration Platform       — connecting third-party services, data exchange, middleware
+    Reporting & Analytics Dashboard — data visualisation, metrics, BI-style internal dashboards
+    Data Pipeline & ETL System     — data ingestion, transformation, loading, batch processing
+    ERP Module / Business System   — resource planning, inventory, finance, operations management
+    CRM & Customer Management      — lead tracking, client records, relationship management
+    HR & Payroll Management System — leave, attendance, payroll, employee lifecycle
+    Document Management System     — file storage, version control, approval, archiving
+    Inventory & Supply Chain System — warehouse, stock levels, procurement, shipment tracking
+    Billing & Invoice Management   — invoicing, payment tracking, reconciliation, finance workflows
+    Fleet & Logistics Management   — routes, dispatch, driver tracking, delivery management
+    Appointment & Scheduling System — bookings, calendars, availability, reminders
+    Claims & Case Management System — insurance claims, legal cases, issue tracking, SLA
+    Compliance & Audit Platform    — regulatory tracking, audit logs, risk assessment, controls
+    Content Management System (CMS) — web content, publishing, editorial workflows
+    E-Commerce & Order Management  — product catalogues, orders, checkout, fulfilment
+    DevOps & CI/CD Platform        — build automation, deployment pipelines, infrastructure as code
+    Real-Time Monitoring Dashboard  — live metrics, alerts, SLA tracking, operational visibility
+    Multi-Tenant SaaS Platform     — subscription management, tenant isolation, billing integration
+    Identity & Access Management   — authentication, authorisation, SSO, role management
+    Data Warehouse & BI System     — analytical storage, aggregation, OLAP, business intelligence
+    Patient & Clinical Management  — medical records, clinical workflows, lab results, prescriptions
+    Learning Management System (LMS) — course delivery, assessments, learner progress tracking
+    Property & Asset Management    — facility management, maintenance requests, asset registers
+
+  ABSOLUTE RULES for systemType:
+    - Derive from BOTH the project's actual function AND the JD's domain/industry
+    - NEVER use the same systemType label for two projects — all 4 must be different
+    - NEVER use generic labels: 'Web Application', 'Mobile App', 'Software System', 'Platform'
+    - NEVER hardcode a fixed label — each JD produces different system type labels
+    - The label must tell a recruiter the CLASS of system at a glance
+    - For non-technical roles: use domain labels like 'Digital Marketing Campaign System',
+      'SEO Audit & Reporting Platform', 'Content Strategy & Editorial Workflow'
+    - For DevOps roles: use 'CI/CD Automation Pipeline', 'Infrastructure Monitoring Platform', etc.
+    - The systemType vocabulary should feel industry-professional, not academic or generic
+
 PROJECT TECH TAGS (CRITICAL - ABSOLUTE RULES):
   Each project MUST have EXACTLY 5-7 techTags. Fewer than 5 is a HARD FAILURE.
   ALL tags MUST be real named software tools/frameworks/platforms from the JD ecosystem.
@@ -1574,37 +1639,42 @@ PROJECT TECH TAGS (CRITICAL - ABSOLUTE RULES):
   INVALID examples: 'Cloud', 'Development', 'Good', 'REST', 'Data', 'APIs'
 
 PROJECT NAMING RULES (CRITICAL - enforce before writing anything else):
-  Every project name MUST be a coined, original SaaS-style product name reflecting a real-world enterprise problem.
-  The name must sound like an internal enterprise product that solves a real operational problem — NOT a demo app.
-  
-  BANNED project name patterns (INSTANT FAILURE):
-    X Technology-first names: 'Azure App', 'Angular Application', 'React Dashboard', 'Python Pipeline'
-    X Standalone generic suffixes: 'Web Platform', 'Mobile App', 'ERP System', 'Web Application', 'Management System', 'CRM Dashboard'
-    X Any real company name inside the project name
-    X Any name that could apply to any company or domain (too vague)
-    X Academic-sounding names: 'Online Shopping Portal', 'Hospital Management System', 'Library System'
-  
-  REQUIRED format: '[CoinedProductName] - [Problem-domain description] [Tech1, Tech2]'
-  
-  STRONG enterprise project name examples (derive yours from the JD domain):
-    - 'InvoiceFlow - Automated Multi-Currency Invoice Approval Engine'
-    - 'ShiftSync - Real-Time Staff Scheduling and Availability Management Hub'  
-    - 'ClaimsPulse - Insurance Claims Validation and Risk Scoring Platform'
-    - 'VendorLink - Supplier Onboarding and Purchase Order Workflow System'
-    - 'RoutePilot - Fleet Route Optimisation and Live Dispatch Console'
-    - 'LoanTrack - Digital Loan Application Processing and Status Portal'
-    - 'AssetSentry - Warehouse Inventory Tracking and Shipment Hub'
-    - 'TenantDesk - Property Maintenance Request and Resolution Portal'
-    - 'MediLink - Clinical Appointment Scheduling and Patient Record System'
-    - 'CourierOps - Last-Mile Delivery Management and Route Optimisation Console'
-  
-  COMPANY DOMAIN ALIGNMENT (CRITICAL):
+
+  *** SINGLE-WORD PROJECT NAMES ARE AN INSTANT HARD FAILURE ***
+  Names like 'EcoCycle', 'HealthHub', 'SmartFarm', 'InvoiceFlow', 'ShiftSync', 'ClaimsPulse', 'VendorLink'
+  on their own (without a dash and full description) are BANNED. A one-word or two-word blended name alone
+  is NEVER acceptable as a project name under any circumstances.
+
+  REQUIRED format (MANDATORY — no exceptions):
+  '[Multi-word Descriptive System Name] - [What it does and for whom]'
+
+  The name BEFORE the dash MUST be 3-6 words that describe the system's business function clearly.
+  The description AFTER the dash MUST add further operational specificity (2-6 words).
+
+  STRONG enterprise project name examples (derive yours from the JD domain and company industry):
+    - 'Supplier Onboarding and Purchase Order Workflow System - Multi-Stage Approval Portal'
+    - 'Employee Leave and Attendance Management Platform - HR Approval and Reporting Hub'
+    - 'Insurance Claims Validation and Status Tracking Portal - Risk Assessment Dashboard'
+    - 'Fleet Route Optimisation and Live Dispatch Console - Real-Time Driver Assignment System'
+    - 'Digital Loan Application Processing and Status Portal - Branch-Level Credit Workflow'
+    - 'Warehouse Inventory Tracking and Shipment Hub - Multi-Location Stock Reconciliation'
+    - 'Property Maintenance Request and Resolution Portal - Tenant Issue Tracking System'
+    - 'Clinical Appointment Scheduling and Patient Record System - Multi-Department Queue Manager'
+    - 'Internal Support Ticket and Issue Resolution Tracking Platform - SLA Compliance Console'
+    - 'Courier Route Planning and Last-Mile Delivery Monitoring Dashboard - Dispatch Optimisation Tool'
+    - 'Automated Invoice Processing and Payment Tracking Portal - Finance Approval Workflow'
+    - 'Real-Time Staff Scheduling and Shift Management System - Availability and Coverage Console'
+    - 'Government Document Verification and Identity Validation Portal - Compliance Audit Hub'
+    - 'Multi-Branch Inventory Control and Procurement Request System - Purchase Order Tracker'
+    - 'Customer Complaint Management and Resolution Escalation Platform - SLA Monitoring Dashboard'
+
+  DOMAIN ALIGNMENT (CRITICAL):
   All 4 projects MUST be strictly aligned with the company's actual business domain (if provided).
-  If the company does logistics: projects should be about supply chain, fleet, tracking, dispatch.
-  If the company does fintech: projects should be about payments, lending, compliance, billing.
-  If the company does healthcare: projects should be about patient records, appointments, lab reporting.
-  NEVER mix unrelated domains (e.g. don't put a healthcare project in a logistics company CV).
-  When no company is provided: derive domain from JD role keywords and industry signals.
+  If the company does logistics: all projects relate to fleet, dispatch, tracking, warehousing, routes.
+  If the company does fintech: all projects relate to payments, lending, compliance, billing, reconciliation.
+  If the company does healthcare: all projects relate to records, appointments, lab results, pharmacy, scheduling.
+  NEVER mix domains across the 4 projects — they must all feel like they belong to the same company's system portfolio.
+  When no company is provided: derive domain from the JD role keywords, responsibilities, and industry signals.
 
 PROJECT UNIQUENESS + RELEVANCE RULES (STRICT):
   All 4 projects MUST differ in: Purpose, Domain, and Functionality - no reworded duplicates.
@@ -1680,16 +1750,19 @@ FINAL ATS + RECRUITER READABILITY CHECKLIST (apply before output):
   ✓ Summary reads naturally — no buzzwords, no AI-generated phrasing
   ✓ All 12 experience bullets use different verbs and different sentence structures
   ✓ At least 3 bullets reflect realistic day-to-day work (maintenance, debugging, collaboration)
-  ✓ All project names sound like real enterprise internal products — not academic demos
+  ✓ All project names are 3-6 word descriptive names — NO single-word or blended-word names
+  ✓ All 4 projects have a unique systemType label derived from the JD (no two labels the same, none generic)
   ✓ All 4 project overviews tell a complete operational story starting from the business problem
   ✓ No metric format repeated across projects or bullets
+  ✓ No ML/AI/predictive analytics injected unless JD explicitly requires it
+  ✓ No fake percentages (99% uptime, 92% accuracy) — use realistic operational numbers
   ✓ Skills are cleanly separated — no tool appears in two categories
   ✓ Tech tags per company contain only real named tools from JD ecosystem
   ✓ Career progression feels realistic — seniority matches years of experience naturally
   ✓ Technologies used in bullets align with the tech tags shown for that company
 
 JSON shape (totalYears="{total_years}", degree years={edu_start}-{edu_end}, EXACTLY {num_cos} companies):
-{{"totalYears":"{total_years}","title":"Related Role Title - Tech1, Tech2, Tech3","summary":"[4 sentences, 70-80+ words, human-written tone, starting with {total_years} years of experience, NO buzzwords]","companies":[{json_companies}],"skills":["BackendDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11","DatabaseDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11","FrontendDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11","CloudPlatform: NamedService1, NamedService2, NamedService3, NamedService4, NamedService5, NamedService6, NamedService7, NamedService8, NamedService9, NamedService10, NamedService11","TestingDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11"],"education":{{"university":"QURTUBA UNIVERSITY OF SCIENCE AND INFORMATION TECHNOLOGY","degree":"Bachelor of Science in Computer Science (BSCS)","cgpa":"3.97/4.0","years":"{edu_start} - {edu_end}","achievement":"Gold Medalist for Academic Excellence"}},"projects":[{{"name":"CoinedEnterpriseName - Specific operational description [Tech1, Tech2]","overview":"[OPERATIONAL PROBLEM: who is affected and how.] [SOLUTION with 2 named JD techs and architecture choice.] [FUNCTIONALITY: concrete user-facing features.] [BUSINESS IMPACT: unique believable metric.]","bullets":["Enterprise-realistic component built using JD-tech - what operational problem it solved (20-30 words)","Technical challenge encountered + how solved + unique concrete metric (20-30 words)","Business outcome with unique believable number (20-30 words)"]}},{{"name":"CoinedEnterpriseName - Specific operational description [Tech1, Tech2]","overview":"[PROBLEM.] [SOLUTION with 2 JD techs.] [FUNCTIONALITY.] [BUSINESS IMPACT unique metric.]","bullets":["realistic enterprise feature+tech (20-30w)","technical challenge+UNIQUE metric (20-30w)","business outcome+UNIQUE number (20-30w)"]}},{{"name":"CoinedEnterpriseName - Specific operational description [Tech1, Tech2]","overview":"[PROBLEM.] [SOLUTION with 2 JD techs.] [FUNCTIONALITY.] [BUSINESS IMPACT unique metric.]","bullets":["realistic feature+tech (20-30w)","challenge+UNIQUE metric (20-30w)","outcome+UNIQUE number (20-30w)"]}},{{"name":"CoinedEnterpriseName - Specific operational description [Tech1, Tech2]","overview":"[PROBLEM.] [SOLUTION with 2 JD techs.] [FUNCTIONALITY.] [BUSINESS IMPACT unique metric.]","bullets":["realistic feature+tech (20-30w)","challenge+UNIQUE metric (20-30w)","outcome+UNIQUE number (20-30w)"]}}],"competencies":"TechPractice1 * DomainExpertise1 * EngineeringProcess1 * ImpactArea1 * TechPractice2 * DomainExpertise2 * EngineeringProcess2 * ImpactArea2 * TechPractice3 * DomainExpertise3","relatedTech":[{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}}],"keywords":"kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18","technologies":{{"mustHave":["tool1","tool2","tool3","tool4","tool5","tool6","tool7"],"niceToHave":["tool1","tool2","tool3","tool4","tool5","tool6"],"additional":["tool1","tool2","tool3","tool4","tool5","tool6"]}},"architectures":[{{"name":"Pattern Name 1","description":"How you applied this pattern with concrete tech and outcome metric."}},{{"name":"Pattern Name 2","description":"How you applied this pattern with concrete tech and outcome metric."}},{{"name":"Pattern Name 3","description":"How you applied this pattern with concrete tech and outcome metric."}}]}}\""""
+{{"totalYears":"{total_years}","title":"Related Role Title - Tech1, Tech2, Tech3","summary":"[4 sentences, 70-80+ words, human-written tone, starting with {total_years} years of experience, NO buzzwords]","companies":[{json_companies}],"skills":["BackendDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11","DatabaseDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11","FrontendDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11","CloudPlatform: NamedService1, NamedService2, NamedService3, NamedService4, NamedService5, NamedService6, NamedService7, NamedService8, NamedService9, NamedService10, NamedService11","TestingDomain: NamedTool1, NamedTool2, NamedTool3, NamedTool4, NamedTool5, NamedTool6, NamedTool7, NamedTool8, NamedTool9, NamedTool10, NamedTool11"],"education":{{"university":"QURTUBA UNIVERSITY OF SCIENCE AND INFORMATION TECHNOLOGY","degree":"Bachelor of Science in Computer Science (BSCS)","cgpa":"3.97/4.0","years":"{edu_start} - {edu_end}","achievement":"Gold Medalist for Academic Excellence"}},"projects":[{{"name":"Multi-Word Descriptive System Name - What It Does Specifically","systemType":"JD-Derived System Class Label (e.g. Workflow Automation System)","overview":"[OPERATIONAL PROBLEM: who is affected and how.] [SOLUTION with 2 named JD techs and architecture choice.] [FUNCTIONALITY: concrete user-facing features.] [BUSINESS IMPACT: unique believable metric.]","bullets":["Enterprise-realistic component built using JD-tech - what operational problem it solved (20-30 words)","Technical challenge encountered + how solved + unique concrete metric (20-30 words)","Business outcome with unique believable number (20-30 words)"]}},{{"name":"Multi-Word Descriptive System Name - What It Does Specifically","systemType":"DIFFERENT JD-Derived System Class Label","overview":"[PROBLEM.] [SOLUTION with 2 JD techs.] [FUNCTIONALITY.] [BUSINESS IMPACT unique metric.]","bullets":["realistic enterprise feature+tech (20-30w)","technical challenge+UNIQUE metric (20-30w)","business outcome+UNIQUE number (20-30w)"]}},{{"name":"Multi-Word Descriptive System Name - What It Does Specifically","systemType":"DIFFERENT JD-Derived System Class Label","overview":"[PROBLEM.] [SOLUTION with 2 JD techs.] [FUNCTIONALITY.] [BUSINESS IMPACT unique metric.]","bullets":["realistic feature+tech (20-30w)","challenge+UNIQUE metric (20-30w)","outcome+UNIQUE number (20-30w)"]}},{{"name":"Multi-Word Descriptive System Name - What It Does Specifically","systemType":"DIFFERENT JD-Derived System Class Label","overview":"[PROBLEM.] [SOLUTION with 2 JD techs.] [FUNCTIONALITY.] [BUSINESS IMPACT unique metric.]","bullets":["realistic feature+tech (20-30w)","challenge+UNIQUE metric (20-30w)","outcome+UNIQUE number (20-30w)"]}}],"competencies":"TechPractice1 * DomainExpertise1 * EngineeringProcess1 * ImpactArea1 * TechPractice2 * DomainExpertise2 * EngineeringProcess2 * ImpactArea2 * TechPractice3 * DomainExpertise3","relatedTech":[{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}},{{"category":"Domain","items":["i1","i2","i3","i4","i5","i6"]}}],"keywords":"kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18","technologies":{{"mustHave":["tool1","tool2","tool3","tool4","tool5","tool6","tool7"],"niceToHave":["tool1","tool2","tool3","tool4","tool5","tool6"],"additional":["tool1","tool2","tool3","tool4","tool5","tool6"]}},"architectures":[{{"name":"Pattern Name 1","description":"How you applied this pattern with concrete tech and outcome metric."}},{{"name":"Pattern Name 2","description":"How you applied this pattern with concrete tech and outcome metric."}},{{"name":"Pattern Name 3","description":"How you applied this pattern with concrete tech and outcome metric."}}]}}\""""
     return system, user
 
 
@@ -1882,12 +1955,16 @@ def sanitise_cv(cv: dict) -> dict:
                 # Flag it but still include - the prompt should prevent this
                 proj_name = proj_name  # Keep as-is; log warning could go here
 
+            # Extract systemType (dynamically generated by AI from JD)
+            system_type = _to_str(p.get("systemType") or p.get("system_type") or p.get("type") or "")
+
             clean_projects.append({
-                "name":     proj_name,
-                "overview": overview,
-                "bullets":  proj_bullets,
-                "desc":     overview,
-                "techTags": tech_tags[:7] if tech_tags else [],
+                "name":       proj_name,
+                "systemType": system_type,
+                "overview":   overview,
+                "bullets":    proj_bullets,
+                "desc":       overview,
+                "techTags":   tech_tags[:7] if tech_tags else [],
             })
         elif isinstance(p, str):
             clean_projects.append({"name": p, "overview": "", "bullets": [], "desc": ""})
@@ -2293,6 +2370,35 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
                 bullet = re.sub(pattern, replacement, bullet, flags=re.IGNORECASE)
             cleaned_bullets.append(bullet)
         co["bullets"] = cleaned_bullets
+
+    # 2c. PROJECT NAME VALIDATOR: catch and expand single-word / two-word blended project names
+    # e.g. "EcoCycle - ..." -> keep description but flag; "EcoCycle" alone -> expand
+    _SINGLE_WORD_NAME_PATTERN = re.compile(
+        r'^([A-Z][a-z]+[A-Z][a-zA-Z]*)\s*[-–]\s*(.+)$'  # CamelCase word before dash
+    )
+    _GENERIC_SUFFIXES = re.compile(
+        r'\b(Platform|System|App|Application|Dashboard|Portal|Hub|Suite|Tool|Engine|Manager)\s*$',
+        re.IGNORECASE
+    )
+    for proj in cv.get("projects", []):
+        raw_name = proj.get("name", "")
+        # Strip bracketed tech tags from name for analysis
+        clean_name = re.sub(r'\[.*?\]', '', raw_name).strip()
+        # Check if the part before the dash is a single CamelCase/blended word
+        m = _SINGLE_WORD_NAME_PATTERN.match(clean_name)
+        if m:
+            blended_word = m.group(1)   # e.g. "EcoCycle"
+            description  = m.group(2)  # e.g. "Environmental Data Platform"
+            # Split the blended word into readable words: EcoCycle -> Eco Cycle
+            expanded = re.sub(r'([a-z])([A-Z])', r'\1 \2', blended_word)
+            # Reconstruct as descriptive name: "Eco Cycle Environmental Data Platform - ..."
+            # Use the description as the primary name component
+            desc_words = description.strip().rstrip('.')
+            proj["name"] = f"{desc_words}"
+            # If original had tech tags, keep them
+            tag_match = re.search(r'\[.*?\]', raw_name)
+            if tag_match:
+                proj["name"] += f" {tag_match.group(0)}"
 
     # 3. Fix competencies separator + detect and replace placeholders
     comp = cv.get("competencies", "")
@@ -7299,6 +7405,9 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
                            leftIndent=12, textColor=colors.HexColor("#666666"), spaceAfter=3),
         "skill_items": ps("sitm",   fontName="Helvetica", fontSize=9, leading=12,
                            textColor=colors.HexColor("#333333"), spaceAfter=1),
+        "proj_type":   ps("pt",     fontName="Helvetica-Bold", fontSize=8, leading=11,
+                           textColor=colors.HexColor("#1d6fa4"),
+                           spaceBefore=2, spaceAfter=1),
         "proj_name":   ps("pn",     fontName="Helvetica-Bold", fontSize=10.5, leading=14,
                            textColor=colors.HexColor("#111111"), spaceAfter=1),
         "proj_body":   ps("pb",     fontName="Helvetica", fontSize=9.5, leading=13,
@@ -7581,6 +7690,11 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         for p in projects:
             raw_name = _safe(p.get("name", ""))
             clean_name = _strip_brackets(raw_name)
+
+            # Render system type label (e.g. "[ Workflow Automation System ]") before the name
+            system_type = _safe(p.get("systemType", ""))
+            if system_type:
+                story.append(Paragraph(f"[ {system_type} ]", S["proj_type"]))
 
             story.append(Paragraph(clean_name, S["proj_name"]))
 
