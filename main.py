@@ -1112,46 +1112,38 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "HARD RULE: The cloud category MUST contain exactly 11-13 items - expand with the platform's\n"
         "  CI/CD pipelines, IaC tools, monitoring/alerting, secrets management, and serverless services.\n\n"
 
-        "=== STEP 2: SKILLS SECTION — FULLY DYNAMIC (read every word carefully) ===\n"
-        "The skills section MUST be derived 100%% from this specific JD. No preset structure.\n\n"
-
-        "HOW TO BUILD THE SKILLS SECTION:\n"
-        "  Step 2-A: From your STEP 1 extraction (CORE + PREFERRED + ECOSYSTEM), list every real technology.\n"
-        "  Step 2-B: Group them into natural technical domains that actually exist in THIS JD.\n"
-        "    - The number of groups, their names, and which tools go in each are decided by you based on the JD.\n"
-        "    - Group tools together that are used together in this specific role's workflow.\n"
-        "    - Name each group after the actual technology domain in the JD — never use generic labels.\n"
-        "  Step 2-C: Every item in every group MUST be a real named tool from the JD ecosystem.\n"
-        "    - Zero items invented from training data.\n"
-        "    - Zero items repeated across groups.\n"
-        "    - At least 10 items per group — expand with direct ecosystem companions of JD tools if needed.\n"
-        "  Step 2-D: Output EXACTLY 5 skill category rows.\n\n"
-
-        "WHAT COUNTS AS A VALID SKILL ITEM:\n"
-        "  VALID: Any real named software product, framework, language, library, platform, or service\n"
-        "    that appears in this JD or is a direct standard companion to a tool in this JD.\n"
-        "  BANNED (instant failure if any appear as skill items):\n"
-        "    - Action verbs: Write, Implement, Configure, Deploy, Test, Debug, Design, Build, Monitor, Manage\n"
-        "    - Generic English nouns: Requirements, Architecture, Infrastructure, Environment, System,\n"
-        "      Server, Network, Platform, Application, Solution, Service, Module, Component\n"
-        "    - Soft skills: Communication, Teamwork, Leadership, Collaboration, Problem-Solving\n"
-        "    - Adjectives: Strong, Excellent, Proficient, Experienced, Good\n"
-        "    - Abbreviated or partial product names — always write the full official product name\n"
-        "  RULE: Every item must be a real named product you could find on its official documentation site.\n"
-        "  RULE: If a word could appear naturally in an English sentence as a verb or noun, reject it.\n\n"
-
-        "ZERO CROSS-CONTAMINATION:\n"
-        "  Every technology appears in EXACTLY ONE category — never duplicated across categories.\n"
-        "  If a tool is relevant to multiple domains, place it in the domain this JD emphasises most.\n\n"
+        "=== STEP 2: SKILLS PLANNING (MANDATORY - execute before writing any skill) ===\n"
+        "Before writing the 'skills' array, build an internal allocation table:\n"
+        "  1. List every technology extracted in STEP 1 (CORE + PREFERRED + ECOSYSTEM).\n"
+        "  2. Assign EACH technology to EXACTLY ONE of the 5 buckets below based on its primary purpose:\n"
+        "       BUCKET A - Frontend/UI: frameworks, component libs, CSS, state managers, build tools, browser APIs\n"
+        "       BUCKET B - Backend/Server-Side: server languages, backend frameworks, APIs, auth, message brokers\n"
+        "       BUCKET C - Databases & Storage: RDBMS, NoSQL, caches, ORMs, migration tools, search engines\n"
+        "       BUCKET D - Cloud & DevOps: cloud services, containers, IaC, CI/CD, monitoring, registries\n"
+        "       BUCKET E - Testing, Security & Tooling: test frameworks, scanners, linters, version control, package managers\n"
+        "  3. CHECK: Does any technology appear in more than one bucket? -> MOVE IT to only the most appropriate bucket.\n"
+        "  4. CHECK: Does any bucket have fewer than 10 technologies? -> Expand with ecosystem tools from that same domain.\n"
+        "  5. ONLY AFTER completing this allocation table, write the 'skills' JSON array.\n"
+        "  HARD RULE: Docker and Kubernetes ONLY go in BUCKET D (Cloud & DevOps) - NEVER in Backend or Frontend.\n"
+        "  HARD RULE: Git, GitHub, npm, pip ONLY go in BUCKET E (Tooling) - NEVER in Backend or Frontend.\n"
+        "  HARD RULE: C#, .NET, ASP.NET Core, Node.js, Python ONLY go in BUCKET B (Backend) - NEVER in Database or Cloud.\n"
+        "  HARD RULE: SQL Server, PostgreSQL, MySQL, MongoDB, Redis ONLY go in BUCKET C (Database) - NEVER in Backend or Cloud.\n"
+        "  HARD RULE: React, Angular, Vue, TypeScript (when frontend), Tailwind ONLY go in BUCKET A (Frontend) - NEVER in Backend or DB.\n"
+        "  STACK CONSISTENCY RULE (CRITICAL): Every item in every bucket MUST belong to the SAME technology stack as the JD. "
+        "If the JD is a .NET/C# role, do NOT add Node.js, Django, FastAPI, Spring Boot, or any non-.NET backend tool anywhere. "
+        "If the JD is a Node.js role, do NOT add ASP.NET Core, Django, Spring Boot, or Laravel. "
+        "If the JD is a Python role, do NOT add .NET, Spring, or Laravel tools. "
+        "EVERY item across ALL 5 buckets must be a tool a developer working in THIS specific JD stack would actually use. "
+        "Mixing tools from different unrelated stacks (e.g. Node.js in a .NET CV) is an INSTANT FAILURE.\n\n"
 
         "=== COMPANY TECH TAGS ===\n"
-        "Each company MUST have a 'tech' field with exactly 6-8 pipe-separated technologies from the JD.\n"
+        "Each company MUST have a 'tech' field with exactly 6-8 pipe-separated technologies from the extracted list.\n"
         "Fewer than 6 tech tags is a HARD FAILURE.\n\n"
 
         f"=== ROLE TITLES ===\n"
         f"Produce EXACTLY {len(companies)} role titles using NAMED TECHNOLOGIES from the JD.\n"
         "FORMAT: '[Seniority] [Named JD Tech] [Function Word]'\n"
-        "Derive the named technology directly from the JD — use the actual tool names, not generic categories.\n"
+        "CORRECT (WordPress JD): 'Senior WordPress Engineer' / 'Webflow Developer' / 'Junior JavaScript Specialist'\n"
         "BANNED domain words — NEVER use these: DevOps, Web, Software, Backend, Frontend, Full-Stack, IT, Tech, Digital\n"
         "Each company: different named-tech domain AND different function word.\n"
         "Function pool (no repeats): Engineer, Developer, Specialist, Analyst, Programmer, Consultant, Designer, Technologist\n"
@@ -1166,9 +1158,62 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "Use ONLY technologies found in the JD - never add technologies from outside the JD.\n\n"
 
         "=== SKILLS ===\n"
-        "Exactly 5 categories. Each category: at least 10 items. ZERO items repeated across ANY category.\n"
-        "Category names derived entirely from this JD's actual technical domains.\n"
-        "All items from JD CORE + PREFERRED + ECOSYSTEM only — nothing invented.\n\n"
+        "Exactly 5 categories. Each category: at least 10 items (aim for 10-12). ZERO items repeated across ANY category.\n"
+        "Every technology across ALL 5 categories MUST be completely unique - no item may appear in more than one category.\n"
+        "Derive category names from the JD's actual technical domains - not generic labels.\n"
+        "All items from JD CORE + PREFERRED + ECOSYSTEM only.\n\n"
+
+        "=== MANDATORY 5 CATEGORY STRUCTURE (STRICT DOMAIN SEPARATION) ===\n"
+        "ALWAYS produce EXACTLY these 5 category types, named specifically to the JD's tech domain:\n\n"
+
+        "CATEGORY 1 - FRONTEND / UI (name it based on JD, e.g. 'Frontend Development', 'React & UI Engineering', 'Angular & Web UI'):\n"
+        "  ONLY: UI frameworks, component libraries, state managers, CSS tools, build tools, browser APIs, frontend testing utilities.\n"
+        "  Examples: React, Angular, Vue.js, Next.js, TypeScript, Tailwind CSS, SCSS, Webpack, Vite, Redux, RxJS, Jest, Cypress, Storybook.\n"
+        "  BANNED from this category: ANY backend framework, database, server, cloud service, DevOps tool, or language used server-side.\n\n"
+
+        "CATEGORY 2 - BACKEND / SERVER-SIDE (name it based on JD, e.g. 'Backend Development', 'Node.js & API Engineering', 'ASP.NET Core & C#'):\n"
+        "  ONLY: Server-side languages, backend frameworks, API tools, authentication libraries, message brokers, background job runners.\n"
+        "  Examples: Node.js, Express.js, ASP.NET Core, Django, FastAPI, Laravel, Spring Boot, GraphQL, REST APIs, JWT, RabbitMQ, Celery.\n"
+        "  BANNED from this category: ANY database engine, cloud service, frontend library, or DevOps/CI tool.\n\n"
+
+        "CATEGORY 3 - DATABASES & DATA STORAGE (name it based on JD, e.g. 'Databases & Data Layer', 'SQL & NoSQL Storage', 'Data Engineering Tools'):\n"
+        "  ONLY: Relational databases, NoSQL stores, caches, ORMs, migration tools, query builders, search engines, data warehouses.\n"
+        "  Examples: PostgreSQL, MySQL, SQL Server, MongoDB, Redis, Elasticsearch, Entity Framework, Prisma, Flyway, Liquibase, ClickHouse, BigQuery.\n"
+        "  BANNED from this category: ANY backend framework, frontend library, cloud service, CI/CD tool, or language runtime.\n\n"
+
+        "CATEGORY 4 - CLOUD & DEVOPS / INFRASTRUCTURE (name it based on JD, e.g. 'AWS Infrastructure', 'Azure Cloud Services', 'GCP & DevOps'):\n"
+        "  ONLY: Cloud platform services, CI/CD pipelines, container tools, IaC tools, monitoring/logging, secrets management, registries.\n"
+        "  Examples: AWS EC2, S3, Lambda, Docker, Kubernetes, Terraform, GitHub Actions, Jenkins, Prometheus, Grafana, Azure DevOps, GCP Cloud Run.\n"
+        "  BANNED from this category: ANY database engine, backend framework, frontend library, or language-level tool.\n"
+        "  Derive the cloud platform from the JD - NEVER hardcode AWS/Azure/GCP unless the JD implies it via STEP 1.5.\n\n"
+
+        "CATEGORY 5 - TESTING, SECURITY & TOOLING (name it based on JD, e.g. 'Testing & QA Tools', 'Security & Developer Tooling', 'Dev Tools & Quality Assurance'):\n"
+        "  ONLY: Testing frameworks, security scanners, code quality tools, version control, package managers, linters, performance profilers.\n"
+        "  Examples: Jest, Mocha, Pytest, xUnit, Selenium, OWASP ZAP, SonarQube, Git, GitHub, npm, pip, ESLint, Prettier, Postman, Swagger.\n"
+        "  BANNED from this category: Cloud services, databases, backend frameworks, or frontend UI libraries.\n\n"
+
+        "DOMAIN SEPARATION ENFORCEMENT (CRITICAL - HARD RULES):\n"
+        "  X No database engine (PostgreSQL, MySQL, Redis, MongoDB, etc.) in Frontend, Backend, Cloud, or Testing categories.\n"
+        "  X No backend framework (Express, Django, Laravel, Spring, etc.) in Frontend, Database, Cloud, or Testing categories.\n"
+        "  X No frontend library (React, Angular, Vue, Tailwind, etc.) in Backend, Database, Cloud, or Testing categories.\n"
+        "  X No cloud service (EC2, S3, Lambda, Azure Blob, GKE, etc.) in Frontend, Backend, Database, or Testing categories.\n"
+        "  X No CI/CD or DevOps tool (Docker, Kubernetes, GitHub Actions, etc.) in Frontend, Backend, Database, or Testing categories.\n"
+        "  RULE: Each technology belongs in exactly ONE category - the one that matches its primary purpose.\n"
+        "  RULE: If a tool is used in multiple layers (e.g. TypeScript used in both frontend and backend), assign it ONCE to the layer the JD emphasises.\n\n"
+
+        "CRITICAL - WHAT COUNTS AS A VALID SKILL ITEM:\n"
+        "  VALID: Real named software tools, frameworks, languages, libraries, platforms, services, APIs.\n"
+        "    Examples: SQL Server, PostgreSQL, Redis, Entity Framework, ASP.NET Core, React, Docker, Git\n"
+        "  BANNED - INSTANT FAILURE if any of these appear as a skill item:\n"
+        "    X Action verbs or gerunds: Write, Troubleshoot, Implement, Configure, Deploy, Test, Debug,\n"
+        "      Design, Architect, Operate, Monitor, Manage, Develop, Build, Create, Scale, Optimize\n"
+        "    X Generic English nouns: Requirements, Architecture, Infrastructure, Environment, System,\n"
+        "      Server, Network, Platform, Application, Solution, Service, Module, Component\n"
+        "    X Soft skills or HR words: Communication, Teamwork, Leadership, Collaboration, Problem-Solving\n"
+        "    X Adjectives or adverbs: Strong, Excellent, Proficient, Experienced, Knowledgeable\n"
+        "  RULE: Every single item in every skill category MUST be a real named product you could Google.\n"
+        "  RULE: If a word could appear in a sentence as a common English verb or noun, REJECT IT.\n"
+        "  RULE: 'NET' alone is BANNED - always write the full product name: 'ASP.NET Core', '.NET 8', etc.\n\n"
 
         "=== TECHNOLOGIES OBJECT ===\n"
         "mustHave: 10-14 items from JD CORE + top ecosystem companions.\n"
@@ -1577,20 +1622,53 @@ S4: "Committed to [methodology], delivering [business outcome] through [practice
 ABSOLUTE RULE: Do NOT use buzzwords — no 'synergy', 'leverage', 'paradigm', 'AI-powered', 'ecosystem', 'next-generation'.
 ABSOLUTE RULE: Use ONLY technologies extracted from the JD. Count words - under 70 is a FAILURE.
 
-R6 SKILLS — FULLY DYNAMIC (derive everything from the JD):
+R6 SKILLS - FOLLOW THESE STEPS IN ORDER:
 
-  Step 1: From your STEP 1 technology extraction, list every real named tool.
-  Step 2: Group them into 5 natural technical domains that reflect how this specific role actually works.
-    - Group names come from the JD's own technology areas — not from generic labels.
-    - Which tools go in which group is decided by you based on what makes sense for this role.
-    - Do NOT use preset bucket names. Do NOT apply rules from other CVs. Each JD produces unique groups.
-  Step 3: Each group must have at least 10 real named tools. Expand with direct ecosystem companions if needed.
-  Step 4: Zero items repeated across any group.
-  Step 5: Output as "Group Name: tool1, tool2, tool3, ..." — exactly 5 rows.
+STEP R6-A: BUILD ALLOCATION TABLE (do this mentally before writing any JSON)
+  Take every technology from your STEP 1 extraction. Assign each to ONE bucket only:
+    BUCKET A (Frontend/UI)        -> UI frameworks, CSS tools, state managers, build tools, browser APIs
+    BUCKET B (Backend)            -> Server languages, backend frameworks, REST/GraphQL APIs, auth libs, message queues
+    BUCKET C (Databases/Storage)  -> RDBMS, NoSQL, caches, ORMs, migration tools, search engines, data warehouses
+    BUCKET D (Cloud & DevOps)     -> Cloud services, Docker, Kubernetes, CI/CD, IaC, monitoring, container registries
+    BUCKET E (Testing & Tooling)  -> Test frameworks, security scanners, linters, Git, version control, package managers
 
-  ONLY RULE: Every item must be a real named tool from the JD ecosystem.
-  BANNED as skill items: verbs (Configure, Deploy, Monitor), generic nouns (System, Platform, Service, Infrastructure),
-    soft skills (Leadership, Teamwork), adjectives (Strong, Good), or anything not a real named product.
+  ABSOLUTE PLACEMENT RULES - these override everything else:
+    Docker, Kubernetes                    -> BUCKET D only. NEVER in A, B, C, or E.
+    Git, GitHub, npm, pip, yarn           -> BUCKET E only. NEVER in A, B, C, or D.
+    C#, .NET 8, ASP.NET Core, Node.js     -> BUCKET B only. NEVER in C or D.
+    SQL Server, PostgreSQL, MySQL, Redis  -> BUCKET C only. NEVER in B or D.
+    React, Angular, Vue, Tailwind CSS     -> BUCKET A only. NEVER in B, C, or D.
+    AWS/Azure/GCP services                -> BUCKET D only. NEVER in B, C, or A.
+
+  STACK CONSISTENCY RULE (CRITICAL - overrides all defaults):
+  BEFORE adding any item to any bucket, ask: 'Would a developer working in this JD's primary stack actually use this tool?'
+  If the JD is .NET/C#: Node.js, Express, Django, FastAPI, Spring Boot, Laravel, Flask are BANNED from ALL buckets.
+  If the JD is Node.js: ASP.NET Core, Django, Spring Boot, Laravel, C# are BANNED from ALL buckets.
+  If the JD is Python: ASP.NET Core, Node.js, Spring Boot, Laravel are BANNED from ALL buckets.
+  If the JD is Java/Spring: ASP.NET Core, Node.js, Django, Laravel are BANNED from ALL buckets.
+  If the JD is PHP/Laravel: ASP.NET Core, Node.js, Django, Spring Boot are BANNED from ALL buckets.
+  EVERY item in EVERY bucket must belong to the same ecosystem as the JD's primary stack.
+
+STEP R6-B: DEDUPLICATION CHECK
+  Scan your allocation table. If any technology appears in more than one bucket -> remove it from all but its most appropriate bucket.
+  The same string MUST NOT appear in two different skill categories. This includes partial matches (e.g. ".NET" and "ASP.NET Core" are different - keep both, but each in BUCKET B only).
+
+STEP R6-C: COUNT CHECK
+  Each bucket must have at least 10 technologies. If any bucket has fewer than 10 -> add closely adjacent tools from the same domain until it reaches 10.
+  TESTING BUCKET RULE - if Cat 5 has fewer than 10 items, fill it with: xUnit, NUnit, MSTest, Mocha, Pytest,
+    Selenium, Playwright, Postman, SonarQube, OWASP ZAP, Snyk, ESLint, Prettier, Swagger UI, Sentry.
+    Git/GitHub/npm belong here ONLY if there is still space after filling with real test/security tools.
+
+STEP R6-D: WRITE THE JSON
+  Only now output the 'skills' array with exactly 5 objects.
+  Format: "CategoryName: item1, item2, item3, item4, item5, item6, item7"
+  Name each category specifically from the JD domain - e.g. "ASP.NET Core & C# Backend", "SQL Server & Data Layer", "AWS Infrastructure & CI/CD", "Angular & Web UI", "xUnit & Developer Tooling".
+  NEVER use a generic name like "Backend Skills", "Database", "Tools", "Cloud".
+
+VALID ITEMS ONLY - each item must be a real named software product:
+  OK VALID: ASP.NET Core, Entity Framework Core, SQL Server, Redis, Docker, xUnit, Swagger, GitHub Actions, Angular, TypeScript
+  X BANNED (instant failure): Microservices, Web APIs, CI/CD, Relational Databases, Git Flow, Clean Architecture, REST, Agile, Scrum,
+    any verb (Deploy, Configure, Build, Test), any generic noun (Server, System, Platform, Infrastructure, Architecture, Environment)
 
 
 R7 PROJECTS: Produce EXACTLY 4 projects split as follows:
@@ -3203,18 +3281,345 @@ def fix_skills_dedup(cv: dict) -> dict:
 
 
 
-# -- Skills post-processing: trust the AI completely ---------------------------
-# The AI decides every category name, every technology, and their placement.
-# Post-processing ONLY removes provably fake English words (verbs, HR nouns, etc.)
-# It never moves items between categories, never reclassifies, never adds anything.
+# -- Domain-enforcement maps ----------------------------------------------------
+# Each tuple: (substring_to_match_in_tech_name_lowercase, canonical_bucket)
+# Buckets: "frontend" | "backend" | "database" | "cloud" | "testing"
+_DOMAIN_RULES: list = [
+    # -- DATABASE (must come before backend to catch ORM names first) ----------
+    ("sql server",      "database"), ("postgresql",   "database"), ("postgres",     "database"),
+    ("mysql",           "database"), ("sqlite",       "database"), ("mongodb",      "database"),
+    ("redis",           "database"), ("elasticsearch","database"), ("cassandra",    "database"),
+    ("dynamodb",        "database"), ("cosmos db",    "database"), ("cosmosdb",     "database"),
+    ("oracle db",       "database"), ("mariadb",      "database"), ("neo4j",        "database"),
+    ("influxdb",        "database"), ("clickhouse",   "database"), ("bigquery",     "database"),
+    ("firestore",       "database"), ("supabase",     "database"), ("planetscale",  "database"),
+    ("entity framework","database"), ("dapper",       "database"), ("prisma",       "database"),
+    ("typeorm",         "database"), ("sequelize",    "database"), ("hibernate",    "database"),
+    ("flyway",          "database"), ("liquibase",    "database"), ("pgadmin",      "database"),
+    ("dbeaver",         "database"), ("sqlalchemy",   "database"), ("knex",         "database"),
+    ("mongoose",        "database"), ("nhibernate",   "database"),
 
-def _enforce_skill_domains(cv: dict, techs: dict = None, job_title: str = "") -> dict:
+    # -- CLOUD / DEVOPS --------------------------------------------------------
+    ("azure devops",    "cloud"),    ("azure app service","cloud"),("azure functions","cloud"),
+    ("azure sql",       "cloud"),    ("azure blob",   "cloud"),   ("azure key vault","cloud"),
+    ("azure monitor",   "cloud"),    ("azure ad",     "cloud"),   ("azure container","cloud"),
+    ("azure cdn",       "cloud"),    ("azure service bus","cloud"),("azure event hub","cloud"),
+    ("aws ec2",         "cloud"),    ("aws s3",       "cloud"),   ("aws lambda",   "cloud"),
+    ("aws rds",         "cloud"),    ("aws ecs",      "cloud"),   ("aws eks",      "cloud"),
+    ("aws cloudfront",  "cloud"),    ("aws iam",      "cloud"),   ("aws cloudwatch","cloud"),
+    ("aws codepipeline","cloud"),    ("aws ecr",      "cloud"),   ("aws lightsail","cloud"),
+    ("gcp",             "cloud"),    ("google cloud", "cloud"),   ("cloud run",    "cloud"),
+    ("cloud storage",   "cloud"),    ("pub/sub",      "cloud"),   ("vertex ai",    "cloud"),
+    ("cloud build",     "cloud"),    ("artifact registry","cloud"),
+    ("heroku",          "cloud"),    ("vercel",       "cloud"),   ("netlify",      "cloud"),
+    ("digitalocean",    "cloud"),    ("cloudflare",   "cloud"),   ("linode",       "cloud"),
+    ("docker",          "cloud"),    ("kubernetes",   "cloud"),   ("k8s",          "cloud"),
+    ("helm",            "cloud"),    ("terraform",    "cloud"),   ("ansible",      "cloud"),
+    ("pulumi",          "cloud"),    ("vagrant",      "cloud"),   ("packer",       "cloud"),
+    ("jenkins",         "cloud"),    ("github actions","cloud"),  ("gitlab ci",    "cloud"),
+    ("circleci",        "cloud"),    ("travis ci",    "cloud"),   ("teamcity",     "cloud"),
+    ("argocd",          "cloud"),    ("spinnaker",    "cloud"),   ("flux",         "cloud"),
+    ("prometheus",      "cloud"),    ("grafana",      "cloud"),   ("datadog",      "cloud"),
+    ("new relic",       "cloud"),    ("splunk",       "cloud"),   ("elk stack",    "cloud"),
+    ("vault",           "cloud"),    ("consul",       "cloud"),   ("istio",        "cloud"),
+    ("nginx",           "cloud"),    ("apache httpd", "cloud"),   ("haproxy",      "cloud"),
+
+    # -- TESTING / QA / TOOLING ------------------------------------------------
+    ("jest",            "testing"),  ("mocha",        "testing"), ("chai",         "testing"),
+    ("xunit",           "testing"),  ("nunit",        "testing"), ("mstest",       "testing"),
+    ("pytest",          "testing"),  ("junit",        "testing"), ("testng",       "testing"),
+    ("selenium",        "testing"),  ("playwright",   "testing"), ("cypress",      "testing"),
+    ("puppeteer",       "testing"),  ("webdriver",    "testing"), ("appium",       "testing"),
+    ("postman",         "testing"),  ("swagger",      "testing"), ("openapi",      "testing"),
+    ("sonarqube",       "testing"),  ("sonar",        "testing"), ("eslint",       "testing"),
+    ("prettier",        "testing"),  ("stylelint",    "testing"), ("coverlet",     "testing"),
+    ("stryker",         "testing"),  ("specflow",     "testing"), ("bdd",          "testing"),
+    ("git",             "testing"),  ("github",       "testing"), ("gitlab",       "testing"),
+    ("bitbucket",       "testing"),  ("jira",         "testing"), ("confluence",   "testing"),
+    ("npm",             "testing"),  ("yarn",         "testing"), ("pnpm",         "testing"),
+    ("pip",             "testing"),  ("nuget",        "testing"), ("maven",        "testing"),
+    ("gradle",          "testing"),  ("make",         "testing"), ("cargo",        "testing"),
+
+    # -- FRONTEND / UI ---------------------------------------------------------
+    ("angular",         "frontend"), ("react",        "frontend"), ("vue",         "frontend"),
+    ("svelte",          "frontend"), ("next.js",      "frontend"), ("nuxt",        "frontend"),
+    ("remix",           "frontend"), ("gatsby",       "frontend"), ("astro",       "frontend"),
+    ("html",            "frontend"), ("css",          "frontend"), ("scss",        "frontend"),
+    ("sass",            "frontend"), ("less",         "frontend"), ("tailwind",    "frontend"),
+    ("bootstrap",       "frontend"), ("material ui",  "frontend"), ("chakra",      "frontend"),
+    ("ant design",      "frontend"), ("shadcn",       "frontend"), ("radix",       "frontend"),
+    ("typescript",      "frontend"), ("javascript",   "frontend"), ("jquery",      "frontend"),
+    ("rxjs",            "frontend"), ("redux",        "frontend"), ("zustand",     "frontend"),
+    ("mobx",            "frontend"), ("ngrx",         "frontend"), ("pinia",       "frontend"),
+    ("webpack",         "frontend"), ("vite",         "frontend"), ("parcel",      "frontend"),
+    ("rollup",          "frontend"), ("esbuild",      "frontend"), ("babel",       "frontend"),
+    ("storybook",       "frontend"), ("figma",        "frontend"), ("framer",      "frontend"),
+    ("d3.js",           "frontend"), ("three.js",     "frontend"), ("chart.js",    "frontend"),
+    ("highcharts",      "frontend"), ("leaflet",      "frontend"), ("mapbox",      "frontend"),
+    ("ionic",           "frontend"), ("nativescript",  "frontend"),
+
+    # -- BACKEND / SERVER-SIDE -------------------------------------------------
+    ("asp.net",         "backend"),  ("asp.net core", "backend"),  (".net",        "backend"),
+    ("c#",              "backend"),  ("f#",           "backend"),   ("vb.net",     "backend"),
+    ("node.js",         "backend"),  ("nodejs",       "backend"),   ("express",    "backend"),
+    ("fastify",         "backend"),  ("nestjs",       "backend"),   ("koa",        "backend"),
+    ("hapi",            "backend"),  ("adonis",       "backend"),
+    ("django",          "backend"),  ("flask",        "backend"),   ("fastapi",    "backend"),
+    ("tornado",         "backend"),  ("starlette",    "backend"),
+    ("spring boot",     "backend"),  ("spring",       "backend"),   ("quarkus",    "backend"),
+    ("micronaut",       "backend"),  ("jakarta",      "backend"),
+    ("laravel",         "backend"),  ("symfony",      "backend"),   ("codeigniter","backend"),
+    ("ruby on rails",   "backend"),  ("rails",        "backend"),   ("sinatra",    "backend"),
+    ("golang",          "backend"),  ("go ",          "backend"),   ("gin",        "backend"),
+    ("echo",            "backend"),  ("fiber",        "backend"),
+    ("rust",            "backend"),  ("actix",        "backend"),   ("axum",       "backend"),
+    ("graphql",         "backend"),  ("rest api",     "backend"),   ("grpc",       "backend"),
+    ("signalr",         "backend"),  ("websocket",    "backend"),   ("rabbitmq",   "backend"),
+    ("kafka",           "backend"),  ("celery",       "backend"),   ("sidekiq",    "backend"),
+    ("hangfire",        "backend"),  ("quartz",       "backend"),
+    ("jwt",             "backend"),  ("oauth",        "backend"),   ("openid",     "backend"),
+    ("identity server", "backend"),  ("keycloak",     "backend"),   ("auth0",      "backend"),
+    ("python",          "backend"),  ("java",         "backend"),   ("php",        "backend"),
+    ("scala",           "backend"),  ("kotlin",       "backend"),   ("elixir",     "backend"),
+]
+
+
+def _classify_tech(tech: str) -> str:
+    """Return the domain bucket for a technology name (lowercase match)."""
+    tl = tech.lower().strip()
+    for pattern, bucket in _DOMAIN_RULES:
+        if pattern in tl:
+            return bucket
+    # Heuristic fallbacks for unknown techs
+    if tl.endswith(("js", ".js", "ts", ".ts")):
+        return "frontend"
+    if tl.endswith(("db", " db", "sql", "base")):
+        return "database"
+    return "backend"   # safe default - better backend than wrong category
+
+
+def _jd_allowed_stacks(techs: dict, job_title: str) -> set:
     """
-    Passthrough enforcer — preserves the AI's skill layout exactly as generated.
-    Only strips items that are provably not real technology names (caught by
-    _is_real_tech and _sanitize_skills_list which are called in final_polish).
-    No re-bucketing, no cross-category moves, no stack filtering.
+    Return the set of backend/frontend language ecosystems that are ACTUALLY in the JD.
+    Used to remove completely off-stack technologies from skills.
+    E.g. a .NET JD should not list Node.js/Express unless the JD explicitly mentions them.
     """
+    all_techs_lower = set()
+    for arr in ("core", "preferred", "ecosystem"):
+        for t in techs.get(arr, []):
+            all_techs_lower.add(t.lower())
+
+    title_lower = job_title.lower() if job_title else ""
+
+    # Map of ecosystem root -> detection keywords
+    STACKS = {
+        "dotnet":   (".net", "c#", "asp.net", "blazor", "maui", "xamarin"),
+        "node":     ("node.js", "nodejs", "express", "nestjs", "fastify"),
+        "python":   ("python", "django", "flask", "fastapi", "celery"),
+        "java":     ("java", "spring", "quarkus", "micronaut", "jakarta"),
+        "php":      ("php", "laravel", "symfony", "codeigniter", "wordpress"),
+        "go":       ("golang", "gin framework", "echo framework", "fiber framework"),
+        "ruby":     ("ruby", "rails", "sinatra"),
+        "angular":  ("angular", "ngrx", "rxjs"),
+        "react":    ("react", "redux", "next.js", "gatsby", "remix"),
+        "vue":      ("vue", "nuxt", "pinia", "vuex"),
+    }
+
+    present = set()
+    for stack, keywords in STACKS.items():
+        for kw in keywords:
+            if any(kw in tl for tl in all_techs_lower) or kw in title_lower:
+                present.add(stack)
+                break
+
+    return present
+
+
+# Technologies that are cross-stack neutral (never stripped regardless of JD stack)
+_NEUTRAL_TECHS = {
+    "git", "github", "gitlab", "bitbucket", "jira", "confluence", "slack",
+    "docker", "kubernetes", "terraform", "ansible", "helm", "nginx",
+    "rest api", "graphql", "grpc", "openapi", "swagger", "postman",
+    "redis", "rabbitmq", "kafka", "elasticsearch",
+    "aws", "azure", "gcp", "google cloud", "heroku", "vercel", "netlify",
+    "sonarqube", "eslint", "prettier",
+    "typescript", "javascript",  # used in many stacks
+    "html", "css", "scss",  # always relevant
+}
+
+
+def _is_neutral(tech: str) -> bool:
+    tl = tech.lower().strip()
+    return any(n in tl for n in _NEUTRAL_TECHS)
+
+
+def _enforce_skill_domains(cv: dict, techs: dict, job_title: str = "") -> dict:
+    """
+    Post-processing domain enforcer for the 'skills' section.
+
+    Two problems solved:
+    1. MISPLACED ITEMS - a tech like Docker listed under 'Backend & Frameworks'
+       is moved to the correct cloud/devops category.
+    2. OFF-STACK ITEMS - techs from an entirely different language ecosystem
+       (e.g. Node.js in a .NET CV, or Django in an Angular CV) are removed
+       unless the JD explicitly extracted them.
+
+    Algorithm:
+      a) Parse the 5 skill category rows into (heading, [items]) pairs.
+      b) Classify every item into its canonical bucket.
+      c) If an item's bucket doesn't match the row's inferred bucket, move it
+         to the matching row (or a "pending" list if no row matches yet).
+      d) Remove items whose ecosystem is not present in the JD extracted techs.
+      e) Redistribute any displaced items so each row keeps >=5 items.
+    """
+    skills = cv.get("skills", [])
+    if not skills or len(skills) < 2:
+        return cv
+
+    # -- Step 1: parse rows ----------------------------------------------------
+    parsed: list[tuple[str, list[str], str]] = []  # (heading, items, inferred_bucket)
+    BUCKET_HINTS = {
+        "frontend": "frontend", "ui":       "frontend", "angular":  "frontend",
+        "react":    "frontend", "vue":      "frontend",
+        "backend":  "backend",  "server":   "backend",  "api":      "backend",
+        "c#":       "backend",  ".net":     "backend",  "asp":      "backend",
+        "node":     "backend",  "python":   "backend",  "java":     "backend",
+        "database": "database", "db":       "database", "storage":  "database",
+        "sql":      "database", "nosql":    "database", "data":     "database",
+        "cloud":    "cloud",    "devops":   "cloud",    "infra":    "cloud",
+        "azure":    "cloud",    "aws":      "cloud",    "gcp":      "cloud",
+        "ci/cd":    "cloud",    "deploy":   "cloud",    "pipeline": "cloud",
+        "test":     "testing",  "qa":       "testing",  "quality":  "testing",
+        "tool":     "testing",  "security": "testing",  "lint":     "testing",
+    }
+
+    for row in skills:
+        if not row:
+            continue
+        colon = row.find(":")
+        if colon <= 0:
+            parsed.append((row.strip(), [], "backend"))
+            continue
+        heading = row[:colon].strip()
+        items_str = row[colon+1:].strip()
+        items = [t.strip() for t in items_str.split(",") if t.strip()]
+
+        # Infer bucket from heading keywords
+        hl = heading.lower()
+        inferred = "backend"  # default
+        for hint, bucket in BUCKET_HINTS.items():
+            if hint in hl:
+                inferred = bucket
+                break
+        parsed.append((heading, items, inferred))
+
+    if not parsed:
+        return cv
+
+    # -- Step 2: determine which stacks are present in the JD ------------------
+    allowed_stacks = _jd_allowed_stacks(techs, job_title)
+
+    # Map stack -> bucket (which bucket that stack's items belong to)
+    STACK_BUCKET = {
+        "dotnet": "backend", "node": "backend", "python": "backend",
+        "java":   "backend", "php":  "backend", "go":     "backend",
+        "ruby":   "backend",
+        "angular":"frontend","react":"frontend", "vue":    "frontend",
+    }
+
+    # Reverse: which stacks are OFF-limits (not in JD and not neutral)
+    def _is_allowed_tech(tech: str) -> bool:
+        """Return True if this tech should be kept (in JD stack or neutral)."""
+        if _is_neutral(tech):
+            return True
+        tl = tech.lower().strip()
+        # Check if the tech belongs to an allowed stack
+        for stack, bucket in STACK_BUCKET.items():
+            if stack in allowed_stacks:
+                continue  # this stack is allowed
+            # This stack is NOT in the JD - check if tech belongs to it
+            STACK_MARKERS = {
+                "dotnet": (".net", "c#", "asp.net", "blazor", "maui", "signalr",
+                           "entity framework", "dapper", "nhibernate", "xunit",
+                           "nunit", "mstest", "hangfire", "identity server"),
+                "node":   ("node.js", "nodejs", "express", "nestjs", "fastify",
+                           "koa", "hapi", "adonis"),
+                "python": ("python", "django", "flask", "fastapi", "tornado",
+                           "celery", "pytest", "pip", "sqlalchemy"),
+                "java":   ("java", "spring", "quarkus", "micronaut", "jakarta",
+                           "maven", "gradle", "junit"),
+                "php":    ("php", "laravel", "symfony", "codeigniter", "composer"),
+                "go":     ("golang", "gin framework", "echo framework", "fiber framework"),
+                "ruby":   ("ruby on rails", "rails", "sinatra", "rspec", "rubygems"),
+                "angular":("ngrx",),   # Angular-specific (angular itself is always frontend)
+                "react":  ("redux", "react-query", "gatsby", "remix"),
+                "vue":    ("pinia", "vuex", "nuxt"),
+            }
+            markers = STACK_MARKERS.get(stack, ())
+            if any(m in tl for m in markers):
+                return False  # belongs to an off-stack ecosystem
+        return True
+
+    # -- Step 3: build bucket -> row index map ----------------------------------
+    # The 5 rows should map to the 5 canonical buckets.
+    # If two rows infer the same bucket, use the first one for that bucket.
+    bucket_row: dict[str, int] = {}
+    for idx, (heading, items, inferred) in enumerate(parsed):
+        if inferred not in bucket_row:
+            bucket_row[inferred] = idx
+
+    # -- Step 4: re-bucket every item ------------------------------------------
+    # Build clean_items per row
+    clean: list[list[str]] = [[] for _ in parsed]
+    displaced: list[tuple[str, str]] = []  # (tech, correct_bucket)
+
+    for row_idx, (heading, items, inferred) in enumerate(parsed):
+        for item in items:
+            if not _is_allowed_tech(item):
+                continue  # drop off-stack tech entirely
+            correct_bucket = _classify_tech(item)
+            target_idx = bucket_row.get(correct_bucket)
+
+            if target_idx is None:
+                # No row for this bucket - keep in current row (avoids data loss)
+                clean[row_idx].append(item)
+            elif target_idx == row_idx:
+                clean[row_idx].append(item)
+            else:
+                # Move to correct row
+                clean[target_idx].append(item)
+
+    # -- Step 5: dedup within each row -----------------------------------------
+    for i in range(len(clean)):
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for t in clean[i]:
+            if t.lower() not in seen:
+                seen.add(t.lower())
+                deduped.append(t)
+        clean[i] = deduped
+
+    # -- Step 6: ensure every row has >=5 items (pull from original if needed) --
+    for row_idx, (heading, orig_items, inferred) in enumerate(parsed):
+        if len(clean[row_idx]) < 5:
+            existing = {t.lower() for t in clean[row_idx]}
+            for t in orig_items:
+                if len(clean[row_idx]) >= 10:
+                    break
+                if t.lower() not in existing and _is_allowed_tech(t):
+                    clean[row_idx].append(t)
+                    existing.add(t.lower())
+
+    # -- Step 7: rebuild skill rows --------------------------------------------
+    result: list[str] = []
+    for idx, (heading, _, _) in enumerate(parsed):
+        items = clean[idx]
+        if items:
+            result.append(f"{heading}: {', '.join(items)}")
+
+    if len(result) >= 3:   # only replace if we produced something sensible
+        cv["skills"] = result
+
     return cv
 
 
@@ -3399,14 +3804,12 @@ def build_stage1_prompt(req: CVRequest) -> tuple:
         "ABSOLUTE: Technologies not in the JD are BANNED - do not add anything from your training knowledge.\n"
         "ABSOLUTE: Output changes completely for every different JD - nothing is ever hardcoded.\n\n"
 
-        "=== SKILLS (5 categories, 10-13 items each) ===\n"
-        "Group the extracted technologies into 5 natural technical domains that reflect how THIS specific role works.\n"
-        "The category names, which tools go where, and the grouping logic are all decided by you based on the JD.\n"
-        "No preset category names. No fixed bucket structure. Each JD produces a completely different skills section.\n"
-        "Assign each technology to exactly ONE category — zero repeated items across categories.\n"
-        "Name each category after the actual technology area it represents in this JD.\n"
-        "MINIMUM 10 items per category. MAXIMUM 13. Fewer than 10 is a HARD FAILURE.\n"
-        "Every item must be a real named tool — no verbs, no generic nouns, no soft skills.\n\n"
+        "=== SKILLS (6 categories, 11-13 items each) ===\n"
+        "Identify 6 distinct technical domains from the JD (e.g. backend, frontend, cloud, database, devops, testing).\n"
+        "For each domain, list 11-13 technologies from your CORE + PREFERRED + ECOSYSTEM extraction.\n"
+        "Assign each technology to exactly ONE category - zero repeated items across categories.\n"
+        "Category names: derive from the actual JD domains - e.g. '[Language] Backend Development', '[Framework] Frontend', '[Cloud] Infrastructure'.\n"
+        "MINIMUM 11 items per category is a HARD FAILURE. MAXIMUM 13.\n\n"
 
         "=== TECHNOLOGIES OBJECT ===\n"
         "mustHave: 10-14 items - CORE technologies + top ECOSYSTEM companions\n"
