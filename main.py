@@ -7854,9 +7854,13 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
                 _prefix_label = _safe(p.get("systemType", ""))
 
             if _prefix_label:
-                story.append(Paragraph(_prefix_label.upper(), S["proj_type"]))
-
-            story.append(Paragraph(_proj_display, S["proj_name"]))
+                combined = f'{_prefix_label.upper()} : {_proj_display}'
+                combined_style = ps("pch", fontName="Helvetica-Bold", fontSize=10.5,
+                                    leading=16, spaceAfter=2, spaceBefore=4,
+                                    textColor=colors.HexColor("#111111"))
+                story.append(Paragraph(combined, combined_style))
+            else:
+                story.append(Paragraph(_proj_display, S["proj_name"]))
 
             overview = _safe(p.get("overview") or p.get("desc") or "")
             if overview:
@@ -7891,7 +7895,8 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     competencies = _safe(cv.get("competencies", ""))
     if competencies:
         story.append(Paragraph("KEY COMPETENCIES", S["sec_title"]))
-        story.append(Paragraph(competencies, S["competency"]))
+        competencies_display = competencies.replace(" * ", ", ").replace("* ", ", ").replace(" *", ", ")
+        story.append(Paragraph(competencies_display, S["competency"]))
         story.append(Spacer(1, 2 * mm))
 
     # -- EDUCATION --
