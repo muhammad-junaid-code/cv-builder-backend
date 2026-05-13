@@ -4858,7 +4858,7 @@ Generate EXACTLY 4 projects. Each project MUST have 5-7 UNIQUE technologies in t
 Output JSON:
 {{"projects": [
     {{
-        "name": "[CoinedName] - [Specific system description using JD-Tech1, JD-Tech2]",
+        "name": "Descriptive system name (no colons, no prefixes, just what it does)",
         "overview": "[PROBLEM: who suffers and what they lose.] [SOLUTION: architecture using JD-Tech1 and JD-Tech2.] [FUNCTIONALITY: key features.] [BUSINESS IMPACT: unique metric.]",
         "bullets": [
             "[Verb] [specific component] using [JD-Tech1] and [JD-Tech2], enabling [outcome] for [scale].",
