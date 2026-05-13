@@ -2496,6 +2496,154 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
     # 2c. PROJECT NAME VALIDATOR: enforce "PREFIX: Full Name" format
     # Catches blended single-word names like "EcoCycle - ..." and converts them
     # Also ensures the prefix-colon format is present
+
+    def _infer_system_type_prefix(text: str) -> str:
+        """
+        Derive the precise system-type prefix from a project description string.
+        Rules mirror the AI prompt's system-type taxonomy exactly — ordered from
+        most-specific to least-specific so the first match wins.
+        Returns a concrete class label; never a generic fallback.
+        """
+        t = text.lower()
+
+        # --- Data & Integration ---
+        if any(w in t for w in ['etl', 'data ingestion', 'ingestion', 'transformation pipeline',
+                                  'batch load', 'data pipeline', 'data sync']):
+            return "ETL"
+        if any(w in t for w in ['integration', 'middleware', 'webhook', 'third-party api',
+                                  'data sync', 'api gateway', 'connector']):
+            return "Integration System"
+
+        # --- Analytics & Reporting ---
+        if any(w in t for w in ['analytics', 'olap', 'business intelligence', 'bi platform',
+                                  'data visualis', 'data visualiz', 'aggregated metric']):
+            return "Analytics System"
+        if any(w in t for w in ['report', 'kpi', 'dashboard', 'business report',
+                                  'scheduled report', 'export report']):
+            return "Reporting System"
+
+        # --- Finance & Commerce ---
+        if any(w in t for w in ['invoice', 'billing', 'subscription', 'payment', 'reconciliation',
+                                  'charge', 'revenue management', 'fee management']):
+            return "Billing System"
+        if any(w in t for w in ['payroll', 'salary', 'compensation', 'wage']):
+            return "Payroll System"
+
+        # --- Enterprise Resource & Operations ---
+        if any(w in t for w in ['erp', 'enterprise resource', 'procurement', 'purchase order',
+                                  'finance module', 'operations management', 'fulfilment',
+                                  'supply chain', 'vendor management', 'asset management']):
+            return "ERP"
+        if any(w in t for w in ['inventory', 'warehouse', 'stock', 'stockroom', 'goods',
+                                  'shelf', 'bin location']):
+            return "Inventory System"
+
+        # --- Customer & Sales ---
+        if any(w in t for w in ['crm', 'customer relationship', 'client record', 'sales pipeline',
+                                  'lead management', 'opportunity tracking', 'customer management',
+                                  'sales tracking', 'client management', 'account management']):
+            return "CRM"
+
+        # --- Logistics ---
+        if any(w in t for w in ['dispatch', 'fleet', 'driver', 'delivery tracking', 'route',
+                                  'freight', 'courier', 'logistics tracking', 'last mile']):
+            return "Dispatch System"
+
+        # --- Support & Helpdesk ---
+        if any(w in t for w in ['ticket', 'support ticket', 'helpdesk', 'help desk',
+                                  'service desk', 'issue tracking', 'bug tracker']):
+            return "Ticketing System"
+
+        # --- Case / Claims ---
+        if any(w in t for w in ['claim', 'insurance claim', 'case management', 'legal case',
+                                  'adjudication', 'settlement']):
+            return "Claims System"
+
+        # --- Process & Approval ---
+        if any(w in t for w in ['workflow', 'approval', 'approval chain', 'routing', 'process automation',
+                                  'multi-step', 'task routing', 'sign-off', 'signoff']):
+            return "Workflow System"
+
+        # --- Scheduling & Bookings ---
+        if any(w in t for w in ['schedule', 'scheduling', 'appointment', 'booking', 'calendar',
+                                  'reservation', 'slot', 'queue management']):
+            return "Scheduling System"
+
+        # --- Monitoring & Observability ---
+        if any(w in t for w in ['monitor', 'monitoring', 'observability', 'alerting', 'health check',
+                                  'sla tracking', 'uptime', 'alert', 'incident', 'log aggregat',
+                                  'metrics collect', 'apm', 'tracing']):
+            return "Monitoring System"
+
+        # --- Compliance & Risk ---
+        if any(w in t for w in ['compliance', 'audit', 'regulatory', 'risk control', 'gdpr',
+                                  'kyc', 'aml', 'policy enforcement', 'governance']):
+            return "Compliance System"
+
+        # --- Notifications & Messaging ---
+        if any(w in t for w in ['notification', 'alert system', 'email alert', 'sms', 'push notification',
+                                  'event-driven message', 'messaging platform', 'broadcast']):
+            return "Notification System"
+
+        # --- Documents & Content ---
+        if any(w in t for w in ['document', 'file management', 'digital archive', 'version control',
+                                  'file storage', 'document management', 'dms']):
+            return "Document System"
+        if any(w in t for w in ['cms', 'content management', 'content publishing', 'editorial',
+                                  'web content', 'blog platform']):
+            return "CMS"
+
+        # --- Identity & Access ---
+        if any(w in t for w in ['identity', 'authentication', 'authorisation', 'authorization',
+                                  'sso', 'rbac', 'oauth', 'access control', 'user management',
+                                  'login', 'iam', 'permission']):
+            return "Identity System"
+
+        # --- Learning ---
+        if any(w in t for w in ['lms', 'learning management', 'course', 'e-learning', 'elearning',
+                                  'training platform', 'assessment', 'learner', 'quiz']):
+            return "LMS"
+
+        # --- DevOps / CI/CD ---
+        if any(w in t for w in ['ci/cd', 'cicd', 'pipeline deployment', 'build pipeline',
+                                  'devops', 'release management', 'deployment automation',
+                                  'infrastructure as code', 'iac', 'gitops']):
+            return "CI/CD System"
+
+        # --- API / Backend services — now a conscious, accurate choice, not a lazy fallback ---
+        if any(w in t for w in ['api', 'rest api', 'graphql', 'microservice', 'service mesh',
+                                  'backend service', 'server-side', 'endpoint', 'rpc']):
+            return "API Gateway"
+
+        # --- Absolute last resort: derive from the most prominent noun in the text ---
+        # Try to extract the first meaningful noun phrase rather than printing "Backend System"
+        _noun_candidates = [
+            ('hr', 'HR System'), ('human resource', 'HR System'),
+            ('recruit', 'Recruitment System'), ('onboard', 'Onboarding System'),
+            ('asset', 'Asset Management System'), ('project', 'Project Management System'),
+            ('product', 'Product Management System'), ('catalog', 'Product Catalog System'),
+            ('ecommerce', 'E-Commerce Platform'), ('e-commerce', 'E-Commerce Platform'),
+            ('marketplace', 'Marketplace Platform'), ('portal', 'Portal System'),
+            ('mobile', 'Mobile Platform'), ('patient', 'Patient Management System'),
+            ('health', 'Healthcare System'), ('medical', 'Medical Records System'),
+            ('fraud', 'Fraud Detection System'), ('recommend', 'Recommendation Engine'),
+            ('search', 'Search Platform'), ('geo', 'Geospatial System'),
+            ('real-time', 'Real-Time Processing System'), ('event', 'Event Management System'),
+            ('feedback', 'Feedback System'), ('survey', 'Survey Platform'),
+            ('chat', 'Messaging Platform'), ('social', 'Social Platform'),
+        ]
+        for keyword, label in _noun_candidates:
+            if keyword in t:
+                return label
+
+        # Truly unknown — use the most prominent capitalized word from the description
+        # to construct a specific label rather than "Backend System"
+        words = re.findall(r'\b[A-Z][a-z]{3,}\b', text)
+        if words:
+            return f"{words[0]} System"
+
+        return "Application System"
+
     _BLENDED_WORD_DASH = re.compile(
         r'^([A-Z][a-z]+[A-Z][a-zA-Z]*)\s*[-–]\s*(.+)$'  # e.g. "EcoCycle - Environmental Data Platform"
     )
@@ -2513,32 +2661,7 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
         m = _BLENDED_WORD_DASH.match(clean_name)
         if m:
             description = m.group(2).strip().rstrip('.')
-            # Infer a prefix from description keywords
-            desc_lower = description.lower()
-            if any(w in desc_lower for w in ['invoice', 'billing', 'payment']):
-                prefix = "Billing System"
-            elif any(w in desc_lower for w in ['order', 'fulfilment', 'checkout']):
-                prefix = "ERP"
-            elif any(w in desc_lower for w in ['customer', 'client', 'crm', 'complaint']):
-                prefix = "CRM"
-            elif any(w in desc_lower for w in ['data', 'pipeline', 'etl', 'ingestion']):
-                prefix = "ETL"
-            elif any(w in desc_lower for w in ['report', 'dashboard', 'kpi', 'metric']):
-                prefix = "Reporting System"
-            elif any(w in desc_lower for w in ['workflow', 'approval', 'routing']):
-                prefix = "Workflow System"
-            elif any(w in desc_lower for w in ['monitor', 'alert', 'health', 'sla']):
-                prefix = "Monitoring System"
-            elif any(w in desc_lower for w in ['inventory', 'warehouse', 'stock']):
-                prefix = "Inventory System"
-            elif any(w in desc_lower for w in ['schedule', 'appointment', 'booking']):
-                prefix = "Scheduling System"
-            elif any(w in desc_lower for w in ['api', 'service', 'backend', 'endpoint']):
-                prefix = "Backend System"
-            elif any(w in desc_lower for w in ['ticket', 'support', 'helpdesk']):
-                prefix = "Ticketing System"
-            else:
-                prefix = "Backend System"
+            prefix = _infer_system_type_prefix(description)
             proj["name"] = f"{prefix}: {description}"
             tag_match = re.search(r'\[.*?\]', raw_name)
             if tag_match:
