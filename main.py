@@ -4789,7 +4789,126 @@ Output JSON:
 
     return system, user
 
+def build_pipeline5a_projects_natural(req: CVRequest, techs: dict, experience: dict) -> tuple:
+    """Pipeline 5A: Generate 4 projects with NATURAL flowing descriptions - NO S1, S2, S3, S4 labels"""
+    company_name = (req.company_name or "").strip()
+    company_ctx = (req.company_context or "").strip()[:700]
+    all_techs = techs.get("core", []) + techs.get("preferred", []) + techs.get("ecosystem", [])
+    all_techs = list(dict.fromkeys(all_techs))[:30]
+    techs_str = ", ".join(all_techs) if all_techs else "technologies from the job description"
 
+    used_systems = []
+    for co in experience.get("companies", []):
+        for bullet in co.get("bullets", []):
+            if len(bullet) > 20:
+                used_systems.append(bullet[:60])
+    used_str = "\n".join([f"  - {s}" for s in used_systems[:6]]) if used_systems else "  (none)"
+
+    company_intel = ""
+    if company_ctx and company_name:
+        company_intel = f"""
+Target Company: {company_name}
+Company Context: {company_ctx[:500]}
+
+Projects 3 & 4 should relate to this company's domain. Project 3: adjacent sector with same tech pattern. Project 4: inspired by secondary offerings.
+"""
+    elif company_name:
+        company_intel = f"""
+Target Company: {company_name}
+Projects 3 & 4: Use your knowledge of {company_name}'s industry for analogous projects.
+"""
+
+    system = """You are an expert technical writer for CVs. Output ONLY valid JSON. No markdown, no backticks.
+
+CRITICAL RULES FOR PROJECT DESCRIPTIONS:
+- Write NATURAL, flowing sentences - NO labels like "S1:", "PROBLEM:", "SOLUTION:", etc.
+- Each overview MUST tell a complete story: what problem existed -> what you built -> how it worked -> what result achieved
+- Write 3-4 complete, professional sentences that flow naturally
+- Each sentence must be substantive and technical
+
+TECH TAGS (CRITICAL - MINIMUM 5, MAXIMUM 7 per project):
+- Each project MUST have EXACTLY 5-7 technologies in techTags
+- ALL technologies MUST come from the JD's extracted list
+- NEVER repeat the same technology across different projects
+- NEVER use generic placeholders like "Technology1", "Tech2"
+- Format: ["Tech1", "Tech2", "Tech3", "Tech4", "Tech5", "Tech6", "Tech7"]
+
+BULLETS (3 per project):
+- Bullet 1: specific component built + key technology (20-30 words)
+- Bullet 2: hardest challenge + concrete metric (20-30 words)
+- Bullet 3: business outcome + unique number (20-30 words)
+- All 12 bullets across 4 projects must open with DIFFERENT verbs
+
+PROJECT NAMING:
+- Format: "ProductName - What it does [Tech1, Tech2, Tech3]" - show 3 key techs in name
+
+BANNED: S1/S2/S3/S4 labels, "Problem:" "Solution:" labels, generic project names, real company names in projects, repeated verbs across bullets, fewer than 5 tech tags per project."""
+    user = f"""Job Title: {req.job_title}
+Job Description Summary: {req.job_description.strip()[:500]}
+{company_intel}
+
+Allowed Technologies (use ONLY these - you MUST pick 5-7 per project):
+{techs_str}
+
+Systems already in experience (do NOT repeat these system types):
+{used_str}
+
+Generate EXACTLY 4 projects. Each project MUST have 5-7 UNIQUE technologies in techTags.
+
+Output JSON:
+{{"projects": [
+    {{
+        "name": "[CoinedName] - [Specific system description using JD-Tech1, JD-Tech2]",
+        "overview": "[PROBLEM: who suffers and what they lose.] [SOLUTION: architecture using JD-Tech1 and JD-Tech2.] [FUNCTIONALITY: key features.] [BUSINESS IMPACT: unique metric.]",
+        "bullets": [
+            "[Verb] [specific component] using [JD-Tech1] and [JD-Tech2], enabling [outcome] for [scale].",
+            "[Verb] [specific challenge] using [JD-Tech3], achieving [unique concrete metric].",
+            "[Business outcome verb] [measure] from X to Y, saving [unique number] [units] monthly."
+        ],
+        "techTags": ["[JD-Tech1]", "[JD-Tech2]", "[JD-Tech3]", "[JD-Tech4]", "[JD-Tech5]", "[JD-Tech6]", "[JD-Tech7]"]
+    }},
+    {{
+        "name": "[CoinedName] - [Specific system description using JD-Tech1, JD-Tech2]",
+        "overview": "[PROBLEM.] [SOLUTION with JD-Tech1 and JD-Tech2.] [FUNCTIONALITY.] [BUSINESS IMPACT: unique metric.]",
+        "bullets": [
+            "[Verb] [specific component] using [JD-Tech1], enabling [outcome] for [scale].",
+            "[Verb] [specific challenge] with [JD-Tech2], improving [measure] by [unique %].",
+            "[Outcome verb] [measure], reducing [issue] from X to Y for [scale] users."
+        ],
+        "techTags": ["[JD-Tech1]", "[JD-Tech2]", "[JD-Tech3]", "[JD-Tech4]", "[JD-Tech5]", "[JD-Tech6]", "[JD-Tech7]"]
+    }},
+    {{
+        "name": "[CoinedName] - [Specific system description using JD-Tech1, JD-Tech2]",
+        "overview": "[PROBLEM.] [SOLUTION with JD-Tech1 and JD-Tech2.] [FUNCTIONALITY.] [BUSINESS IMPACT: unique metric.]",
+        "bullets": [
+            "[Verb] [specific component] using [JD-Tech1] and [JD-Tech2], serving [scale] with [outcome].",
+            "[Verb] [specific challenge], cutting [measure] from X to Y using [JD-Tech3].",
+            "[Outcome verb] [measure] by [unique %], enabling [business result] for [scale]."
+        ],
+        "techTags": ["[JD-Tech1]", "[JD-Tech2]", "[JD-Tech3]", "[JD-Tech4]", "[JD-Tech5]", "[JD-Tech6]", "[JD-Tech7]"]
+    }},
+    {{
+        "name": "[CoinedName] - [Specific system description using JD-Tech1, JD-Tech2]",
+        "overview": "[PROBLEM.] [SOLUTION with JD-Tech1 and JD-Tech2.] [FUNCTIONALITY.] [BUSINESS IMPACT: unique metric.]",
+        "bullets": [
+            "[Verb] [specific component] using [JD-Tech1], classifying [scale] items on [schedule].",
+            "[Verb] [specific challenge] using [JD-Tech2] and [JD-Tech3], resolving [unique number] issues.",
+            "[Outcome verb] [measure] from X to Y, improving [business indicator] by [unique %]."
+        ],
+        "techTags": ["[JD-Tech1]", "[JD-Tech2]", "[JD-Tech3]", "[JD-Tech4]", "[JD-Tech5]", "[JD-Tech6]", "[JD-Tech7]"]
+    }}
+]}}
+
+IMPORTANT:
+- Each project's techTags MUST have 5-7 technologies (not 3)
+- All technologies must come from the allowed list above
+- No technology can be repeated across different projects
+- Project names can show 3 key technologies in brackets, but techTags must have 5-7
+- Write natural overviews without S1/S2/S3/S4 labels
+- Each overview must be 3-4 sentences
+- All metrics must be unique across all 4 projects"""
+
+    return system, user
 
 def validate_project_techs(projects_result: dict, techs: dict) -> dict:
     """
@@ -5634,365 +5753,6 @@ def run_validation_pipeline(cv: dict, jd: str, job_title: str, techs: dict) -> d
 # MAIN ATOMIC GENERATION - 5 pipelines, never truncated
 # ===================================================================
 
-# main.py - Complete replacement functions
-
-def build_pipeline_system_type(req: CVRequest, project_overview: str, project_name: str) -> tuple:
-    """
-    Build a prompt that asks the AI to generate a SPECIFIC, ACCURATE system type.
-    The AI can invent ANY type that best describes the project.
-    """
-    jd_excerpt = req.job_description.strip()[:800]
-    
-    system = (
-        "You are a software architect and technical writer. "
-        "Your ONLY task is to output a single, specific system type classification. "
-        "Output ONLY the system type name. NO explanations. NO extra words. NO markdown. NO quotes.\n\n"
-        "RULES for system types:\n"
-        "1. Be SPECIFIC: 'ETL Pipeline' is better than 'Data System'\n"
-        "2. Use standard industry terms: 'ERP', 'CRM', 'CMS', 'LMS', 'HRIS', 'POS', 'WMS'\n"
-        "3. Describe the PRIMARY purpose: 'Real-Time Analytics', 'Order Management', 'Inventory Control'\n"
-        "4. Include the delivery model if relevant: 'SaaS Platform', 'B2B Portal', 'B2C Marketplace'\n"
-        "5. Be 2-5 words maximum\n"
-        "6. NEVER use generic words like 'System', 'Platform', 'Application' alone - always specify what KIND\n\n"
-        "Examples of GOOD system types:\n"
-        "  - 'ERP' (for enterprise resource planning)\n"
-        "  - 'ETL Pipeline' (for data integration)\n"
-        "  - 'Real-Time Analytics Dashboard' (for monitoring)\n"
-        "  - 'B2B Procurement Portal' (for business-to-business)\n"
-        "  - 'Claims Processing System' (for insurance/finance)\n"
-        "  - 'Patient Records Management' (for healthcare)\n"
-        "  - 'Fleet Dispatch Platform' (for logistics)\n"
-        "  - 'Course Delivery LMS' (for education)\n"
-        "  - 'Payment Gateway Integration' (for fintech)\n\n"
-        "Examples of BAD system types (REJECT these):\n"
-        "  - 'System' (too vague)\n"
-        "  - 'Application' (too vague)\n"
-        "  - 'Platform' (too vague)\n"
-        "  - 'Created System' (describes action, not type)\n"
-        "  - 'Developed System' (describes action, not type)\n"
-        "  - 'Built Solution' (describes action, not type)\n"
-        "  - 'Software Module' (too generic)\n"
-        "  - 'Web App' (not specific enough)\n"
-        "  - 'Backend Service' (ambiguous)"
-    )
-    
-    user = f"""Job Title: {req.job_title}
-Industry Domain: Infer from the job description below
-
-Job Description Excerpt:
-{jd_excerpt}
-
-Project Name (for context): {project_name}
-
-Project Description:
-{project_overview[:600]}
-
-TASK: Based on this project's PURPOSE and FUNCTIONALITY, what is the MOST SPECIFIC and ACCURATE system type?
-
-Think step by step:
-1. What problem does this system solve?
-2. Who are the users (internal staff, customers, B2B clients, patients)?
-3. What industry is this for (logistics, healthcare, fintech, education, etc.)?
-4. What is the delivery model (SaaS, B2B, B2C, internal enterprise)?
-
-Your answer MUST be 2-5 words that precisely describe what KIND of system this is.
-Do not describe actions (like "Created" or "Developed"). Describe PURPOSE and TYPE.
-
-System Type:"""
-
-    return system, user
-
-
-async def get_system_type_for_project(
-    client, key: str, model: str, url: str, headers: dict, 
-    req: CVRequest, project_overview: str, project_name: str
-) -> str:
-    """
-    Call the AI to generate a specific, dynamic system type for a project.
-    The AI can invent ANY appropriate type - nothing is hardcoded.
-    """
-    if not project_overview or len(project_overview) < 20:
-        # Fallback: derive from project name or use intelligent default
-        words = project_name.split()[:3]
-        if any(word in project_name.lower() for word in ('data', 'pipeline', 'etl', 'ingestion')):
-            return "Data Processing"
-        if any(word in project_name.lower() for word in ('customer', 'client', 'crm', 'sales')):
-            return "CRM"
-        if any(word in project_name.lower() for word in ('inventory', 'stock', 'warehouse', 'logistics')):
-            return "Inventory Management"
-        return "Enterprise Platform"
-    
-    sys_prompt, user_prompt = build_pipeline_system_type(req, project_overview, project_name)
-    
-    try:
-        result_text = await call_llm_atomic(
-            client, key, model, url, sys_prompt, user_prompt, 
-            "SystemTypeClassification", headers, max_tokens=30
-        )
-        
-        # Parse the result
-        if isinstance(result_text, dict):
-            system_type = result_text.get("type") or result_text.get("systemType") or ""
-            if not system_type:
-                for v in result_text.values():
-                    if isinstance(v, str) and v.strip() and len(v.strip()) > 2:
-                        system_type = v
-                        break
-        elif isinstance(result_text, str):
-            system_type = result_text.strip()
-        else:
-            system_type = ""
-        
-        # Clean up the response
-        system_type = system_type.strip(' "\'').strip()
-        
-        # Remove any trailing punctuation
-        system_type = system_type.rstrip('.,!;:')
-        
-        # Basic validation: ensure it's not a banned pattern
-        banned_patterns = [
-            r'(?i)^created\s', r'(?i)^developed\s', r'(?i)^built\s',
-            r'(?i)^made\s', r'(?i)^implemented\s', r'(?i)^designed\s',
-            r'(?i)^system$', r'(?i)^platform$', r'(?i)^application$',
-            r'(?i)^software$', r'(?i)^module$', r'(?i)^component$',
-            r'(?i)^backend\s', r'(?i)^frontend\s', r'(?i)^full[- ]stack'
-        ]
-        
-        for pattern in banned_patterns:
-            if re.match(pattern, system_type, re.IGNORECASE):
-                # Regenerate from the original content
-                return await get_system_type_for_project_fallback(project_overview, project_name)
-        
-        # Make sure it's not empty or too short
-        if len(system_type) < 3:
-            return await get_system_type_for_project_fallback(project_overview, project_name)
-        
-        return system_type
-        
-    except Exception as e:
-        print(f"System type classification failed: {e}")
-        return await get_system_type_for_project_fallback(project_overview, project_name)
-
-
-async def get_system_type_for_project_fallback(project_overview: str, project_name: str) -> str:
-    """Intelligent fallback when AI call fails - still dynamic, not hardcoded."""
-    overview_lower = project_overview.lower()
-    name_lower = project_name.lower()
-    combined = f"{overview_lower} {name_lower}"
-    
-    # Dynamic extraction based on content patterns
-    # These are intelligent rules, not hardcoded types
-    
-    # Pattern matching for industry-specific system types
-    if any(word in combined for word in ('erp', 'enterprise resource', 'procurement', 'purchase order', 'supply chain')):
-        return "ERP"
-    if any(word in combined for word in ('crm', 'customer relationship', 'sales pipeline', 'lead management')):
-        return "CRM"
-    if any(word in combined for word in ('etl', 'extract transform', 'data pipeline', 'ingestion', 'batch process')):
-        return "ETL Pipeline"
-    if any(word in combined for word in ('real-time', 'live', 'streaming', 'instant', 'dashboard', 'monitoring')):
-        return "Real-Time Analytics"
-    if any(word in combined for word in ('b2b', 'business to business', 'enterprise', 'supplier', 'vendor portal')):
-        return "B2B Portal"
-    if any(word in combined for word in ('b2c', 'business to consumer', 'marketplace', 'customer portal')):
-        return "B2C Marketplace"
-    if any(word in combined for word in ('saas', 'software as a service', 'multi-tenant', 'cloud platform')):
-        return "SaaS Platform"
-    if any(word in combined for word in ('workflow', 'approval', 'process automation', 'orchestration')):
-        return "Workflow Engine"
-    if any(word in combined for word in ('inventory', 'stock', 'warehouse', 'logistics', 'fulfillment')):
-        return "Inventory Management"
-    if any(word in combined for word in ('healthcare', 'patient', 'clinical', 'medical', 'hospital', 'clinic')):
-        return "Healthcare System"
-    if any(word in combined for word in ('fintech', 'payment', 'billing', 'invoice', 'transaction', 'financial')):
-        return "Financial System"
-    if any(word in combined for word in ('education', 'lms', 'learning', 'course', 'training', 'student')):
-        return "Learning Management"
-    if any(word in combined for word in ('government', 'public sector', 'civic', 'municipal', 'regulatory')):
-        return "Government System"
-    if any(word in combined for word in ('claims', 'insurance', 'underwriting', 'policy')):
-        return "Claims Processing"
-    if any(word in combined for word in ('fleet', 'dispatch', 'delivery', 'route optimization')):
-        return "Fleet Dispatch"
-    
-    # Extract the first meaningful noun phrase
-    words = overview_lower.split()[:15]
-    for i, word in enumerate(words):
-        if word in ('platform', 'system', 'engine', 'pipeline', 'portal', 'dashboard', 'service', 'manager'):
-            if i > 0:
-                prefix = words[i-1]
-                # Don't use generic prefixes
-                if prefix not in ('the', 'a', 'an', 'this', 'that'):
-                    return f"{prefix.title()} {word.title()}"
-    
-    # Derive from project name
-    name_words = project_name.split()[:3]
-    if len(name_words) >= 2:
-        return f"{name_words[0].title()} {name_words[1].title()}"
-    
-    # Default based on content analysis
-    if 'data' in combined or 'report' in combined or 'analytics' in combined:
-        return "Data Platform"
-    if 'track' in combined or 'manage' in combined or 'monitor' in combined:
-        return "Management System"
-    
-    return "Enterprise Platform"
-
-
-def build_pipeline5a_projects_natural(req: CVRequest, techs: dict, experience: dict) -> tuple:
-    """Pipeline 5A: Generate 4 projects with NATURAL flowing descriptions - NO S1, S2, S3, S4 labels"""
-    company_name = (req.company_name or "").strip()
-    company_ctx = (req.company_context or "").strip()[:700]
-    all_techs = techs.get("core", []) + techs.get("preferred", []) + techs.get("ecosystem", [])
-    all_techs = list(dict.fromkeys(all_techs))[:30]
-    techs_str = ", ".join(all_techs) if all_techs else "technologies from the job description"
-
-    used_systems = []
-    for co in experience.get("companies", []):
-        for bullet in co.get("bullets", []):
-            if len(bullet) > 20:
-                used_systems.append(bullet[:60])
-    used_str = "\n".join([f"  - {s}" for s in used_systems[:6]]) if used_systems else "  (none)"
-
-    company_intel = ""
-    if company_ctx and company_name:
-        company_intel = f"""
-Target Company: {company_name}
-Company Context: {company_ctx[:500]}
-
-Projects 3 & 4 should relate to this company's domain. Project 3: adjacent sector with same tech pattern. Project 4: inspired by secondary offerings.
-"""
-    elif company_name:
-        company_intel = f"""
-Target Company: {company_name}
-Projects 3 & 4: Use your knowledge of {company_name}'s industry for analogous projects.
-"""
-
-    system = """You are an expert technical writer for CVs. Output ONLY valid JSON. No markdown, no backticks.
-
-CRITICAL RULES FOR PROJECT NAMES AND SYSTEM TYPES:
-
-PROJECT NAME FORMAT (MANDATORY):
-"[Specific System Type]: [What it does] [Tech1, Tech2, Tech3]"
-
-The "Specific System Type" MUST be a REAL industry term that describes what KIND of system this is.
-DO NOT use generic words like "System", "Platform", "Application" alone.
-DO NOT use action words like "Created", "Developed", "Built", "Implemented".
-
-GOOD system type examples (be creative - use what fits the project):
-- ERP, CRM, ETL Pipeline, Real-Time Analytics, B2B Portal, B2C Marketplace
-- Inventory Management, Fleet Dispatch, Claims Processing, Patient Records
-- Payment Gateway, Fraud Detection, Recommendation Engine, Search Platform
-- Course Delivery LMS, HRIS, POS System, WMS, CMS, DMS
-- SaaS Platform, API Gateway, Microservices Mesh, Data Lake
-- Government Portal, Public Health Registry, Civic Engagement Platform
-
-BAD examples (REJECT these completely):
-- "System" alone, "Platform" alone, "Application" alone
-- "Created System", "Developed Application", "Built Platform"
-- "Backend Service", "Frontend Module", "Software Component"
-
-HOW TO CHOOSE THE RIGHT SYSTEM TYPE:
-1. Ask: "What PROBLEM does this solve?" → ERP (resource planning)
-2. Ask: "Who uses it?" → B2B (businesses), B2C (consumers), Internal (employees)
-3. Ask: "What INDUSTRY?" → Healthcare System, FinTech Platform, Logistics Engine
-4. Ask: "What's the TECH PATTERN?" → ETL Pipeline, Real-Time Dashboard, API Gateway
-
-The system type MUST be specific, descriptive, and come from the project's actual purpose.
-Every project gets a UNIQUE system type - no two projects share the same type.
-
-TECH TAGS (CRITICAL - MINIMUM 5, MAXIMUM 7 per project):
-- Each project MUST have EXACTLY 5-7 technologies in techTags
-- ALL technologies MUST come from the JD's extracted list
-- NEVER repeat the same technology across different projects
-- NEVER use generic placeholders like "Technology1", "Tech2"
-- Format: ["Tech1", "Tech2", "Tech3", "Tech4", "Tech5", "Tech6", "Tech7"]
-
-BULLETS (3 per project):
-- Bullet 1: specific component built + key technology (20-30 words)
-- Bullet 2: hardest challenge + concrete metric (20-30 words)
-- Bullet 3: business outcome + unique number (20-30 words)
-- All 12 bullets across 4 projects must open with DIFFERENT verbs
-
-OVERVIEW (3-4 sentences, NATURAL FLOWING TEXT - NO LABELS):
-Write a natural, professional description that includes:
-- What problem existed and who was affected
-- What you built and what technologies you used
-- How the system worked and what features it provided
-- What measurable business impact was achieved
-
-BANNED: S1/S2/S3/S4 labels, "Problem:" "Solution:" labels, generic project names, 
-real company names in projects, repeated verbs across bullets, fewer than 5 tech tags per project."""
-
-    user = f"""Job Title: {req.job_title}
-Job Description Summary: {req.job_description.strip()[:500]}
-{company_intel}
-
-Allowed Technologies (use ONLY these - you MUST pick 5-7 per project):
-{techs_str}
-
-Systems already in experience (do NOT repeat these system types):
-{used_str}
-
-Generate EXACTLY 4 projects. Each project MUST have 5-7 UNIQUE technologies in techTags.
-Each project MUST have a UNIQUE, SPECIFIC system type at the beginning of the name.
-
-Output JSON:
-{{"projects": [
-    {{
-        "name": "[SystemType]: [Specific system description using JD-Tech1, JD-Tech2] [Tech1, Tech2, Tech3]",
-        "overview": "[Natural 3-4 sentence description covering problem, solution, functionality, and business impact without using S1/S2/S3/S4 labels.]",
-        "bullets": [
-            "[Verb] [specific component] using [JD-Tech1] and [JD-Tech2], enabling [outcome] for [scale].",
-            "[Verb] [specific challenge] using [JD-Tech3], achieving [unique concrete metric].",
-            "[Business outcome verb] [measure] from X to Y, saving [unique number] [units] monthly."
-        ],
-        "techTags": ["[JD-Tech1]", "[JD-Tech2]", "[JD-Tech3]", "[JD-Tech4]", "[JD-Tech5]", "[JD-Tech6]", "[JD-Tech7]"]
-    }},
-    {{
-        "name": "[SystemType]: [Specific system description using JD-Tech1, JD-Tech2] [Tech1, Tech2, Tech3]",
-        "overview": "[Natural 3-4 sentence story without labels.]",
-        "bullets": [
-            "[Verb] [specific component] using [JD-Tech1], enabling [outcome] for [scale].",
-            "[Verb] [specific challenge] with [JD-Tech2], improving [measure] by [unique %].",
-            "[Outcome verb] [measure], reducing [issue] from X to Y for [scale] users."
-        ],
-        "techTags": ["[JD-Tech1]", "[JD-Tech2]", "[JD-Tech3]", "[JD-Tech4]", "[JD-Tech5]", "[JD-Tech6]", "[JD-Tech7]"]
-    }},
-    {{
-        "name": "[SystemType]: [Specific system description using JD-Tech1, JD-Tech2] [Tech1, Tech2, Tech3]",
-        "overview": "[Natural 3-4 sentence story without labels.]",
-        "bullets": [
-            "[Verb] [specific component] using [JD-Tech1] and [JD-Tech2], serving [scale] with [outcome].",
-            "[Verb] [specific challenge], cutting [measure] from X to Y using [JD-Tech3].",
-            "[Outcome verb] [measure] by [unique %], enabling [business result] for [scale]."
-        ],
-        "techTags": ["[JD-Tech1]", "[JD-Tech2]", "[JD-Tech3]", "[JD-Tech4]", "[JD-Tech5]", "[JD-Tech6]", "[JD-Tech7]"]
-    }},
-    {{
-        "name": "[SystemType]: [Specific system description using JD-Tech1, JD-Tech2] [Tech1, Tech2, Tech3]",
-        "overview": "[Natural 3-4 sentence story without labels.]",
-        "bullets": [
-            "[Verb] [specific component] using [JD-Tech1], classifying [scale] items on [schedule].",
-            "[Verb] [specific challenge] using [JD-Tech2] and [JD-Tech3], resolving [unique number] issues.",
-            "[Outcome verb] [measure] from X to Y, improving [business indicator] by [unique %]."
-        ],
-        "techTags": ["[JD-Tech1]", "[JD-Tech2]", "[JD-Tech3]", "[JD-Tech4]", "[JD-Tech5]", "[JD-Tech6]", "[JD-Tech7]"]
-    }}
-]}}
-
-IMPORTANT:
-- The [SystemType] at the beginning of each name MUST be specific and descriptive (e.g., "ERP:", "ETL Pipeline:", "B2B Portal:", "Healthcare System:")
-- Each project's techTags MUST have 5-7 technologies (not 3)
-- All technologies must come from the allowed list above
-- No technology can be repeated across different projects
-- Write natural overviews without S1/S2/S3/S4 labels
-- Each overview must be 3-4 sentences
-- All metrics must be unique across all 4 projects"""
-
-    return system, user
-
-
 async def generate_cv_atomic(req: CVRequest, client, key: str, model: str, 
                               url: str, headers: dict) -> dict:
     """Generate CV using 3 merged pipelines - fits within Groq free tier (30 RPM, 6k TPM).
@@ -6002,7 +5762,6 @@ async def generate_cv_atomic(req: CVRequest, client, key: str, model: str,
     Call 3 -> projects + related tech                           (~1800 output tokens)
     """
     import asyncio as _asyncio
-    import time as _time
 
     # Delay between calls for Groq free tier (6K TPM limit)
     # DeepSeek-R1 outputs extra <think> reasoning tokens - needs longer delay + shorter JD
@@ -6161,79 +5920,36 @@ Output JSON:
     elif company_name:
         co_intel = f"Target Company: {company_name}\nProjects 3&4: use your knowledge of {company_name}\'s industry for analogous projects."
 
-    # Use the new natural projects pipeline
-    sys3, usr3 = build_pipeline5a_projects_natural(req, techs, {"companies": companies_out})
-    
-    result3 = await call_llm_atomic(client, key, model, url, sys3, usr3, "Call3-ProjectsRelated", headers, max_tokens=2200)
+    sys3 = (
+        "You are an expert CV writer. Output ONLY valid JSON. No markdown, no backticks.\n\n"
+        f"Allowed technologies: {techs_str}\n\n"
+        "TASK A - PROJECTS: exactly 4 projects. Each:\n"
+        "  name: \'CoinedWord - what it does [Tech1, Tech2]\'\n"
+        "  overview: 3-4 natural sentences (problem -> solution -> functionality -> impact). NO S1/S2 labels.\n"
+        "  bullets: 3 strings (20-30 words each, different verb each, unique metric each)\n"
+        "  techTags: 5-6 technologies from allowed list, none repeated across projects\n"
+        "BANNED: generic names like \'Web App\', real company names in projects, repeated verbs/metrics.\n\n"
+        "TASK B - RELATED TECH: exactly 5 category boxes, 5 items each, all from allowed list, zero duplicates."
+    )
+    usr3 = f"""Job Title: {req.job_title}
+{co_intel}
+
+Allowed technologies (pick from these ONLY):
+{techs_str}
+
+Systems already in experience (do NOT repeat):
+{used_str}
+
+Output JSON:
+{{"projects":[{{"name":"CoinedName - what it does [Tech1, Tech2]","overview":"Natural 3-4 sentence story.","bullets":["verb component + tech (20-30w)","verb challenge + unique metric (20-30w)","verb outcome + unique number (20-30w)"],"techTags":["Tech1","Tech2","Tech3","Tech4","Tech5"]}}],"relatedTech":[{{"category":"Domain","items":["t1","t2","t3","t4","t5"]}}]}}"""
+
+    result3 = await call_llm_atomic(client, key, model, url, sys3, usr3, "Call3-ProjectsRelated", headers, max_tokens=1800)
 
     projects_out = result3.get("projects", [])
-    related_out = result3.get("relatedTech", [])
-    
-    # --- DYNAMIC SYSTEM TYPE CORRECTION ---
-    # For each project, ask AI to generate the most specific system type
-    corrected_projects = []
-    for idx, proj in enumerate(projects_out):
-        overview = proj.get("overview", "")
-        original_name = proj.get("name", "")
-        
-        # Ask AI to generate the MOST SPECIFIC system type for THIS project
-        # Nothing is hardcoded - AI determines the type based on the project
-        dynamic_type = await get_system_type_for_project(
-            client, key, model, url, headers, req, overview, original_name
-        )
-        
-        # Clean the description: remove existing prefix if any
-        name_parts = original_name.split(":", 1)
-        if len(name_parts) > 1:
-            description = name_parts[1].strip()
-        else:
-            description = original_name.strip()
-        
-        # Remove tech tags from the description for the name field
-        clean_description = re.sub(r'\s*\[[^\]]*\]\s*$', '', description).strip()
-        
-        # Extract tech tags to preserve them
-        tech_match = re.search(r'\[([^\]]+)\]', original_name)
-        tech_suffix = ""
-        if tech_match:
-            tech_suffix = f" [{tech_match.group(1)}]"
-        else:
-            # Also check for techTags field
-            tech_tags = proj.get("techTags", [])
-            if tech_tags and len(tech_tags) >= 3:
-                tech_suffix = f" [{', '.join(tech_tags[:3])}]"
-        
-        # Create the perfectly formatted name with dynamic system type
-        # Format: "AI-Generated-SystemType: Specific Description [Tech Tags]"
-        new_name = f"{dynamic_type}: {clean_description}{tech_suffix}"
-        
-        proj["name"] = new_name
-        proj["systemType"] = dynamic_type  # Store the AI-generated type
-        proj["generatedSystemType"] = True  # Flag to indicate it was dynamically generated
-        
-        # Ensure techTags are present
-        if not proj.get("techTags") or len(proj.get("techTags", [])) < 5:
-            # Assign from allowed techs
-            proj["techTags"] = all_techs_flat[:7]
-        
-        corrected_projects.append(proj)
-    
-    projects_out = corrected_projects
-    
-    # Validate project tech tags
+    related_out  = result3.get("relatedTech", [])
     projects_out = validate_project_techs({"projects": projects_out}, techs).get("projects", [])
 
-    # Ensure relatedTech has proper structure
-    if not related_out or len(related_out) < 3:
-        related_out = [
-            {"category": "Core Technologies", "items": all_techs_flat[:6]},
-            {"category": "Development Tools", "items": all_techs_flat[6:12] if len(all_techs_flat) > 6 else all_techs_flat[:6]},
-            {"category": "Cloud & DevOps", "items": all_techs_flat[12:18] if len(all_techs_flat) > 12 else all_techs_flat[:6]},
-            {"category": "Databases & Storage", "items": all_techs_flat[18:24] if len(all_techs_flat) > 18 else all_techs_flat[:6]},
-            {"category": "Testing & QA", "items": all_techs_flat[24:30] if len(all_techs_flat) > 24 else all_techs_flat[:6]},
-        ]
-
-    # -- Assemble Final CV -----------------------------------------------------
+    # -- Assemble --------------------------------------------------------------
     cv = {
         "totalYears":   total_years,
         "title":        title_out,
@@ -6262,7 +5978,6 @@ Output JSON:
         "_job_title": req.job_title,
     }
 
-    # Run through all sanitisation and validation pipelines
     cv_sanitised  = sanitise_cv(cv)
     cv_companies  = fix_companies(cv_sanitised)
     cv_skills     = fix_skills(cv_companies)
@@ -6271,17 +5986,10 @@ Output JSON:
     # Guarantee each project has 5-7 real JD-derived tech tags
     cv_projtags   = _repair_project_tech_tags(cv_enforced, techs)
     cv_polished   = final_polish(fix_skills_dedup(fix_projects(cv_projtags)), years_exp=years_exp)
-    
-    # Final validation pipeline with dynamic system types preserved
-    final_cv = run_validation_pipeline(cv_polished, req.job_description, req.job_title, techs)
-    
-    # Ensure systemType fields are preserved (validation shouldn't strip them)
-    for i, proj in enumerate(final_cv.get("projects", [])):
-        if i < len(projects_out):
-            proj["systemType"] = projects_out[i].get("systemType", proj.get("systemType", ""))
-            proj["generatedSystemType"] = projects_out[i].get("generatedSystemType", False)
-    
-    return final_cv
+    return run_validation_pipeline(cv_polished, req.job_description, req.job_title, techs)
+# ===================================================================
+# call_cerebras - robust key rotation with detailed error reporting
+# ===================================================================
 
 async def call_cerebras(req: CVRequest) -> tuple:
     raw_keys = req.cerebras_keys or []
