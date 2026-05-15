@@ -288,6 +288,7 @@ class CVRequest(BaseModel):
     static_data:      Optional[dict]      = None
     company_name:     Optional[str]       = ""
     company_context:  Optional[str]       = ""
+    request_id:       Optional[str]       = ""     # multitenant isolation tag (client-generated UUID)
 
 
 # ==============================================================================
@@ -746,7 +747,11 @@ def _normalize_job_title(title: str) -> str:
     return " ".join(seen)
 
 
-
+# -- JD passed as-is to the AI — no static enrichment needed ------------------
+# All domain detection, technology extraction, and skill categorisation
+# is done by the AI itself based on the job title and job description.
+# This supports every field: software engineering, SEO, marketing, finance,
+# legal, design, product, HR, operations, and any future role type.
 
 
 # -- Prompt builder -------------------------------------------------------------
@@ -761,7 +766,9 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
     # -- CRITICAL: Normalize job title - remove duplicate words --------------
     req = req.copy(update={"job_title": _normalize_job_title(req.job_title.strip())})
 
-    jd          = req.job_description.strip()[:jd_chars]
+    _raw_jd = req.job_description.strip()
+    # JD is passed as-is — the AI performs its own domain detection and tech extraction
+    jd          = _raw_jd[:jd_chars]
     #profile     = (req.profile.strip()[:150] if req.profile else "Full-stack developer, 3+ years")
     years_exp   = (req.years_exp or "").strip()
     total_years = _calc_total_years(years_exp)   # dynamic - uses frontend input if given
@@ -895,213 +902,155 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "  4. Keep it concise, accurate, and strictly aligned with the Job Description.\n"
         "Store this cleaned title internally. Use it as the baseline for all role title and 'title' field derivations.\n\n"
 
-        "=== STEP 1: TECHNOLOGY EXTRACTION (do this before writing anything) ===\n"
-        "Read the entire JD. Extract every named technology into:\n"
-        "  CORE: tools/languages/frameworks in Requirements, Responsibilities, Must Have\n"
+        "=== STEP 1: ITEM EXTRACTION (do this before writing anything) ===\n"
+        "Read the entire JD. Based on the ROLE_TYPE determined in STEP 0:\n\n"
+        "TECHNICAL ROLES — extract into:\n"
+        "  CORE: software tools, languages, frameworks, libraries, cloud services in Requirements / Must Have\n"
         "  PREFERRED: tools in Nice-to-Have, Preferred, Bonus sections\n"
-        "  ECOSYSTEM: for each CORE and PREFERRED tool, add its standard companion tools\n"
-        "    (e.g. if JD names a backend framework -> add its ORM, auth library, test framework, logging library)\n"
-        "    (e.g. if JD names a cloud platform -> add the specific services mentioned + closely related managed services)\n"
-        "    (e.g. if JD names a frontend framework -> add its state manager, router, UI lib, build tool, test util)\n"
-        "    (e.g. if JD names a database -> add its migration tool, admin tool, ORM, query optimiser, connection pooler)\n"
-        "    (e.g. if JD names a DevOps tool -> add its CI/CD companion, registry, orchestration or IaC tool)\n"
-        "    (e.g. if JD names an SEO tool -> add its companion analytics, crawling, rank tracking, and reporting tools)\n"
-        "CRITICAL - THIN JD WARNING:\n"
-        "  Some JDs are written as plain English bullets (e.g. '- Good understanding of REST APIs').\n"
-        "  In these cases, the words 'Good', 'Understanding', 'Hands', 'Ability', 'Strong', 'Web', 'Dev',\n"
-        "  'Setup', 'Mindset', 'Remote', 'Problem-solving' are DESCRIPTION WORDS, NOT technologies.\n"
-        "  NEVER extract plain English adjectives, nouns, or adverbs as technology names.\n"
-        "  ONLY extract real named software tools, frameworks, languages, libraries, platforms, or services.\n"
-        "  If the JD uses plain English without naming specific tools, infer the most appropriate\n"
-        "  technology stack purely from the job title and the role domain described.\n"
-        "  Do NOT use any predefined stacks. Generate skills from context alone.\n"
-        "ABSOLUTE RULE: Every technology written ANYWHERE in the output MUST come from CORE, PREFERRED, or ECOSYSTEM.\n"
-        "ABSOLUTE RULE: Technologies NOT extracted from the JD are BANNED - do not add technologies from your training data.\n"
-        "ABSOLUTE RULE: The output changes completely for every different JD - nothing is hardcoded.\n"
+        "  ECOSYSTEM: for each CORE and PREFERRED item, use your knowledge of that tool's standard companion tools:\n"
+        "    (e.g. a backend framework → its ORM, auth library, test framework, logging library)\n"
+        "    (e.g. a cloud platform → its key services and CI/CD pipeline tools)\n"
+        "    (e.g. a frontend framework → its state manager, router, UI lib, build tool, test util)\n"
+        "    (e.g. a database → its migration tool, admin tool, query optimiser, connection pooler)\n"
+        "    Cross-ecosystem companions are BANNED — companions must be from the same professional domain.\n\n"
+        "NON-TECHNICAL ROLES — extract into:\n"
+        "  CORE: named platforms, named methodologies, named techniques, named tracking/reporting tools in Requirements\n"
+        "  PREFERRED: named items in Nice-to-Have / Preferred sections\n"
+        "  ECOSYSTEM: real companion tools used alongside each core item in that specific professional field\n"
+        "    (e.g. an SEO analytics platform → rank tracking tools, crawling tools, reporting tools)\n"
+        "    (e.g. a CRM platform → its companion email, automation, or analytics integrations)\n"
+        "    (e.g. a content methodology → related content tools, editorial platforms, measurement tools)\n"
+        "    Do NOT add software engineering tools to a non-technical role's ecosystem.\n\n"
+        "EXTRACTION RULES (apply to ALL role types):\n"
+        "  NEVER extract plain English adjectives, nouns, or adverbs as items:\n"
+        "    'Good', 'Understanding', 'Hands-on', 'Ability', 'Strong', 'Web', 'Dev', 'Strategy', 'Planning'\n"
+        "    are DESCRIPTION WORDS, not tools or skills items.\n"
+        "  ONLY extract real named products, platforms, tools, methodologies, or techniques.\n"
+        "  Named methodologies specific to a field ARE valid: e.g. 'E-E-A-T', 'GEO', 'LLM Optimisation',\n"
+        "    'Entity-Based SEO', 'Share of Model', 'Citation Strength', 'Information Density Optimisation'.\n"
+        "ABSOLUTE RULE: Every item written ANYWHERE in the output MUST come from CORE, PREFERRED, or ECOSYSTEM.\n"
+        "ABSOLUTE RULE: Items NOT derived from the JD are BANNED — do not add items from your training data alone.\n"
+        "ABSOLUTE RULE: The output changes completely for every different JD — nothing is hardcoded.\n"
         "\n"
-        "=== ANTI-FAKE-TECH ENFORCEMENT (CRITICAL) ===\n"
-        "BANNED from appearing ANYWHERE in the tech, skills, or technologies fields:\n"
-        "  - Common English words (e.g. 'English', 'Resumes', 'Manager', 'Director', 'Applicants', 'Position', 'Overview', 'Key', 'Responsibilities')\n"
+        "=== ANTI-FAKE-ITEM ENFORCEMENT (CRITICAL) ===\n"
+        "BANNED from appearing ANYWHERE in tech tags, skills, or technologies fields:\n"
+        "  - Common English words (e.g. 'English', 'Resumes', 'Manager', 'Director', 'Applicants', 'Overview')\n"
         "  - Job title words (e.g. 'Senior', 'Junior', 'Lead', 'Role', 'Specialist')\n"
-        "  - Action verbs used as tools - this is the #1 failure mode. NEVER use any of these as skill items:\n"
+        "  - Action verbs used as tools — NEVER use any of these as skill items:\n"
         "    Write, Read, Test, Debug, Troubleshoot, Configure, Deploy, Design, Implement, Develop, Build,\n"
         "    Create, Maintain, Monitor, Scale, Optimize, Architect, Operate, Manage, Execute, Conduct,\n"
         "    Determine, Provide, Support, Ensure, Deliver, Run, Use, Apply, Review, Audit, Document,\n"
         "    Report, Track, Analyze, Integrate, Migrate, Secure, Automate, Orchestrate, Coordinate\n"
-        "  - Generic infrastructure nouns that are NOT product names:\n"
+        "  - Generic nouns that are NOT product or methodology names:\n"
         "    Requirements, Architecture, Infrastructure, Environment, System, Server, Network, Platform,\n"
-        "    Application, Solution, Service, Module, Component, Interface, Integration\n"
-        "  - Partial product names: 'NET' alone is BANNED - always write the full name: 'ASP.NET Core'\n"
-        "  - AI assistant / IDE tools are NEVER skill items: Claude Code, Cursor, Copilot, GitHub Copilot, Anthropic, ChatGPT, OpenAI\n"
-        "    These are productivity tools, not technical skills a recruiter evaluates.\n"
-        "  - Any word that is NOT the name of a real software tool, platform, API, framework, language, or service\n"
-        "RULE: If a word could appear in a sentence as a common English verb or noun, it is NOT a technology. Reject it.\n"
-        "RULE: Technologies MUST be real named products: e.g. 'SQL Server', 'ASP.NET Core', 'Entity Framework', 'React', 'PostgreSQL'\n"
-        "RULE: Every tech tag for every company MUST be a real named tool from the JD domain only.\n\n"
+        "    Application, Solution, Service, Module, Component, Interface, Integration, Strategy (alone)\n"
+        "  - Partial product names: 'NET' alone is BANNED — always write the full name: 'ASP.NET Core'\n"
+        "  - AI assistant / IDE tools are NEVER skill items: Claude, Cursor, Copilot, ChatGPT, OpenAI\n"
+        "    These are productivity aids, not professional skills a recruiter evaluates.\n"
+        "RULE: If a word could appear as a common English verb or generic noun in a sentence, it is NOT a valid item.\n"
+        "RULE: Items MUST be real named products, platforms, tools, methodologies, or named professional techniques.\n"
+        "RULE: Every tech tag for every company MUST be a real named item from the JD domain only.\n\n"
 
-        "=== COMPANY TECH TAG DIVERSITY (CRITICAL — do this AFTER extracting all JD technologies) ===\n"
-        "Each company MUST show a MEANINGFULLY DIFFERENT technology mix from the other companies.\n"
-        "This signals career progression and breadth — not repetitive single-stack experience.\n"
-        "HOW TO ASSIGN TECH TAGS per company:\n"
-        "  Co1 (most recent / senior role): Core JD primary stack + 1-2 cloud/DevOps tools + 1 testing/quality tool\n"
-        "  Co2 (mid-level role): Related secondary stack tools + 1-2 different JD ecosystem tools + different DB/ORM\n"
-        "  Co3 (oldest / junior role): Foundational tools + different framework or library + different tooling angle\n"
+        "=== COMPANY TECH TAG DIVERSITY (CRITICAL — do this AFTER extracting all JD items) ===\n"
+        "Each company MUST show a MEANINGFULLY DIFFERENT item mix from the other companies.\n"
+        "This signals career progression and breadth — not repetitive single-tool experience.\n"
+        "HOW TO ASSIGN TECH TAGS per company (adapt the concept to the role's domain):\n"
+        "  Co1 (most recent / senior role): Core JD primary items + 1-2 advanced platform/strategy items\n"
+        "  Co2 (mid-level role): Related secondary items from the JD ecosystem + different tool angle\n"
+        "  Co3 (oldest / junior role): Foundational items + simpler/earlier versions of the domain tools\n"
         "HARD RULES for company tech diversity:\n"
-        "  - No single technology name should appear in ALL 3 companies' tech tags (it's OK to share 1-2 across any two)\n"
-        "  - Each company must introduce at least 2-3 technologies NOT used by any other company\n"
-        "  - Technologies must reflect realistic career evolution: junior → broader ownership → senior specialisation\n"
+        "  - No single item should appear in ALL 3 companies' tech tags (sharing 1-2 across two is OK)\n"
+        "  - Each company must introduce at least 2-3 items NOT used by any other company\n"
+        "  - Items must reflect realistic career evolution in that professional field\n"
         "  - NEVER give all companies identical or near-identical tech tag lists\n"
-        "  - Co3 (junior) should lean more foundational/simpler tools (e.g. jQuery, MySQL, basic MVC, vanilla JS)\n"
-        "  - Co1 (senior) should include more advanced/enterprise tools (e.g. microservices, cloud-native, advanced ORM)\n"
         "EACH COMPANY'S BULLETS must also mention technologies specific to THAT company's tech tags.\n"
         "  - Do NOT write a Co1 bullet referencing a technology that only appears in Co3's tech tags.\n"
         "  - Technology mentioned in a bullet must be traceable to that company's tech tag list.\n\n"
 
-        "=== STEP 1.5: CLOUD & HOSTING INFERENCE (mandatory - execute right after STEP 1) ===\n"
-        "After extracting JD technologies, determine the most relevant cloud/hosting platform for this role.\n"
-        "CLOUD RULE: If the JD names a cloud provider, include only the specific services mentioned\n"
-        "or directly implied by the role context. If no cloud is mentioned but the role is\n"
-        "cloud-adjacent, infer the most commonly used provider for that stack based on the JD alone.\n"
-        "Do not inject cloud services that are not implied by the JD.\n"
-        "If the role is non-technical or cloud is not relevant, omit cloud entirely.\n"
-        "  - JD names multiple providers -> include ALL of them; merge into one 'Cloud & Hosting' category\n"
-        "  - NEVER default to a fixed provider - always derive from the actual JD content\n"
-        "MANDATORY PLACEMENT of inferred cloud services:\n"
-        "  1. One dedicated skill category named after the platform (e.g. 'Azure Cloud Services',\n"
-        "     'AWS Infrastructure', 'GCP & Cloud DevOps') - never use a generic label like 'Cloud Tools'\n"
-        "  2. At least 2 work-experience bullets referencing deployment, hosting, scaling, or cloud-native ops\n"
-        "  3. Tech tags for at least one company MUST include 1-2 cloud platform services\n"
-        "  4. At least one project's techTags/stack MUST reference the inferred cloud platform\n"
-        "HARD RULE: The cloud category MUST contain exactly 11-13 items - expand with the platform's\n"
-        "  CI/CD pipelines, IaC tools, monitoring/alerting, secrets management, and serverless services.\n\n"
+        "=== STEP 1.5: PLATFORM & DEPLOYMENT INFERENCE (run after STEP 1 — for technical roles only) ===\n"
+        "If ROLE_TYPE is TECHNICAL or HYBRID, determine the deployment/hosting platform from the JD.\n"
+        "If ROLE_TYPE is NON-TECHNICAL (SEO, marketing, HR, finance, etc.), SKIP this step entirely.\n"
+        "INFERENCE RULES — derive entirely from the JD content, nothing hardcoded:\n"
+        "  - JD mentions a cloud platform by name → use that platform and its services\n"
+        "  - JD mentions multiple cloud platforms → use all of them\n"
+        "  - JD mentions a tech stack without naming a cloud → infer the most common cloud for that stack\n"
+        "  - NON-TECHNICAL roles → skip cloud inference; there is no 'cloud category' in the skills\n"
+        "  - NEVER inject cloud services into a non-technical CV (SEO, marketing, content, etc.)\n"
+        "  - NEVER add cloud services if the JD does not imply any deployment context\n\n"
 
-        "=== STEP 2: SKILLS PIPELINE — EXECUTE AS A STRICT ALGORITHM ===\n"
-        "You MUST execute every sub-step below IN ORDER before writing a single skill item.\n"
-        "This is not a guideline — it is a deterministic pipeline. Each step gates the next.\n\n"
+        "=== STEP 2: SKILLS PIPELINE — FULLY AI-DRIVEN, ZERO STATIC ASSUMPTIONS ===\n"
+        "Every aspect of skill categorisation is derived purely from the JD. No hardcoded stacks.\n"
+        "This CV system serves ALL professional fields: software engineering, SEO, GEO, digital marketing,\n"
+        "finance, legal, HR, design, product management, operations, data science, and any other domain.\n"
+        "You MUST adapt your entire output to whatever field the JD describes.\n\n"
 
-        "── SUB-STEP 2.1: DETECT PRIMARY ECOSYSTEM ──────────────────────────────────\n"
-        "Read the Job Title and Job Description. Identify ONE primary ecosystem from this list:\n"
-        "  DOTNET   → signals: C#, .NET, ASP.NET, MVC, Blazor, MAUI, Entity Framework, NuGet\n"
-        "  ANGULAR  → signals: Angular, NgRx, RxJS, TypeScript (with Angular), Angular Material\n"
-        "  REACT    → signals: React, React Native, Redux, Next.js, React Query (without Angular)\n"
-        "  NODE     → signals: Node.js, Express.js, NestJS, npm ecosystem (without React/Angular)\n"
-        "  JAVA     → signals: Java, Spring Boot, Maven, Gradle, Hibernate, JPA\n"
-        "  PHP      → signals: PHP, Laravel, Symfony, Composer, Blade, Eloquent\n"
-        "  PYTHON   → signals: Python, Django, FastAPI, Flask, SQLAlchemy, Pandas\n"
-        "  DEVOPS   → signals: Kubernetes, Terraform, Helm, ArgoCD, Ansible, Jenkins\n"
-        "  DATA     → signals: Spark, Airflow, dbt, BigQuery, Snowflake, Databricks\n"
-        "  MOBILE   → signals: Flutter, Dart, Swift, Kotlin, Xcode, Android Studio\n"
-        "  FULLSTACK→ signals: JD explicitly requires BOTH a frontend AND a backend framework by name\n"
-        "Write your detection result as: DETECTED_ECOSYSTEM = <name>\n"
-        "If multiple ecosystems appear, list them ALL. FULLSTACK applies only when JD names BOTH sides.\n\n"
+        "── SUB-STEP 2.1: CLASSIFY THE ROLE TYPE ────────────────────────────────────\n"
+        "Read the Job Title and Job Description carefully. Classify into ONE of:\n"
+        "  TECHNICAL    → Software engineer, developer, DevOps, data engineer, ML engineer, architect, QA\n"
+        "  NON-TECHNICAL→ SEO specialist, GEO specialist, digital marketer, content manager, HR, finance,\n"
+        "                  legal, operations, brand manager, project manager, product owner, designer\n"
+        "  HYBRID       → Business analyst, technical PM, scrum master, solutions architect, growth hacker\n"
+        "Write internally: ROLE_TYPE = <TECHNICAL | NON-TECHNICAL | HYBRID>\n\n"
+        "This classification gates EVERYTHING that follows — including what counts as a 'tool' or 'skill'.\n"
+        "  TECHNICAL roles: tools are software products, frameworks, cloud services, databases, languages.\n"
+        "  NON-TECHNICAL roles: tools are platforms, analytics tools, campaign tools, CMS systems,\n"
+        "    CRM systems, reporting tools, methodology frameworks, tracking systems, and named techniques\n"
+        "    specific to that field (e.g. 'Entity-Based SEO', 'GEO', 'E-E-A-T', 'LLM Optimisation').\n"
+        "  NEVER impose software engineering tools on a non-technical role.\n"
+        "  NEVER impose marketing/SEO tools on a software engineering role.\n\n"
 
-        "── SUB-STEP 2.2: BUILD THE ALLOWED-TECH WHITELIST ─────────────────────────\n"
-        "Create a WHITELIST of every technology permitted in this CV's skills section.\n"
-        "Sources (in priority order):\n"
-        "  SOURCE-A: Every named technology found in the JD Requirements / Must Have section\n"
-        "  SOURCE-B: Every named technology found in Nice-to-Have / Preferred / Bonus sections\n"
-        "  SOURCE-C: Official ecosystem companions of SOURCE-A and SOURCE-B items ONLY —\n"
-        "            companions must be standard, well-known tools used together in that ecosystem.\n"
-        "            A companion of a .NET tool must itself be a .NET ecosystem tool.\n"
-        "            A companion of an Angular tool must itself be an Angular ecosystem tool.\n"
-        "            Cross-ecosystem companions are BANNED.\n\n"
-        "COMPANION RULE: For every named technology found in the JD, infer its standard ecosystem\n"
-        "companions (ORMs, test frameworks, build tools, auth libraries, state managers, etc.) from\n"
-        "your knowledge of that technology's official ecosystem. Do NOT use a predefined list.\n"
-        "Only add companions that are strongly associated with the specific version or variant\n"
-        "mentioned in the JD. Cross-ecosystem companions are BANNED.\n"
-        "CRITICAL: This companion rule is EXHAUSTIVE. If a companion is not strongly associated\n"
-        "with the source technology's ecosystem, do NOT add it. Particularly:\n"
-        "  .NET / C# role → NEVER add React, Vue.js, Next.js, Node.js, Express.js, Django,\n"
-        "                    Flask, MongoDB, RabbitMQ, gRPC as companions. They are NOT .NET companions.\n"
-        "  Angular role   → NEVER add React, Vue.js, Next.js, Redux as companions.\n"
-        "  React role     → NEVER add Angular, NgRx, RxJS as companions.\n\n"
+        "── SUB-STEP 2.2: EXTRACT ALL NAMED ITEMS FROM THE JD ──────────────────────\n"
+        "Read the ENTIRE JD. Extract every named tool, platform, technique, methodology, or named skill.\n"
+        "TECHNICAL roles: extract software tools, languages, frameworks, libraries, cloud services.\n"
+        "NON-TECHNICAL roles: extract named platforms (SEMrush, HubSpot, GA4, etc.), named methodologies\n"
+        "  (E-E-A-T, GEO, entity-based SEO, share of model, citation strength), named techniques,\n"
+        "  and named tracking or reporting tools.\n"
+        "Separate into:\n"
+        "  CORE: items in Required / Must Have / Responsibilities sections\n"
+        "  PREFERRED: items in Nice-to-Have / Preferred / Bonus sections\n"
+        "  ECOSYSTEM: for each CORE and PREFERRED item, add its closest real companion tools from\n"
+        "    the same professional ecosystem. Use your real-world knowledge of what tools are used\n"
+        "    together in this exact field. Do NOT cross-pollinate ecosystems.\n"
+        "ABSOLUTE RULE: Every item in CORE, PREFERRED, and ECOSYSTEM must be a real named product,\n"
+        "  platform, technique, or methodology — never a common English word, verb, or generic noun.\n\n"
 
-        "── SUB-STEP 2.3: ASSIGN EVERY WHITELISTED TECH TO EXACTLY ONE DOMAIN BUCKET ─\n"
-        "For every technology in the WHITELIST, assign it to exactly ONE bucket below.\n"
-        "Use these permanent, non-negotiable domain definitions:\n\n"
-        "  BUCKET: Backend & API Development\n"
-        "    Belongs here: server-side frameworks, API paradigms, middleware, ORMs, message brokers\n"
-        "    Examples: ASP.NET Core, C#, .NET 8, Entity Framework Core, Dapper, MediatR, AutoMapper,\n"
-        "              SignalR, gRPC, REST APIs, GraphQL, RabbitMQ, Kafka, Hangfire, Polly, NestJS,\n"
-        "              Express.js, Django, FastAPI, Flask, Spring Boot, Laravel\n"
-        "    NEVER put here: React, Vue.js, Angular, CSS frameworks, CI/CD tools, databases, cloud services\n\n"
-        "  BUCKET: Frontend & UI\n"
-        "    Belongs here: browser-side frameworks, UI libraries, CSS tools, build tools, state managers\n"
-        "    Examples: Angular, React, Vue.js, Next.js, TypeScript (when used for UI), Tailwind CSS,\n"
-        "              SCSS, Webpack, Vite, RxJS, NgRx, Redux, Angular Material, Storybook\n"
-        "    NEVER put here: Node.js, Express.js, any server framework, any database, any CI/CD tool\n\n"
-        "  BUCKET: Database & Storage\n"
-        "    Belongs here: relational DBs, NoSQL, caching, search engines, migration tools\n"
-        "    Examples: SQL Server, PostgreSQL, MySQL, MongoDB, Redis, Elasticsearch, DynamoDB,\n"
-        "              Cosmos DB, Entity Framework Core (migrations), Flyway, Liquibase, T-SQL,\n"
-        "              Azure SQL Database, Azure Cache for Redis, PgBouncer\n"
-        "    NEVER put here: any framework, any cloud compute service, any CI/CD tool\n\n"
-        "  BUCKET: Cloud & Infrastructure  (name after actual platform: 'Azure Cloud Services', 'AWS Infrastructure', etc.)\n"
-        "    Belongs here: cloud platform services, hosting, compute, storage, serverless, managed services\n"
-        "    Examples: Azure App Service, Azure Functions, Azure Blob Storage, Azure Service Bus,\n"
-        "              Azure AD, Azure Key Vault, Azure Monitor, Azure CDN, Azure Container Registry,\n"
-        "              AWS EC2, AWS S3, AWS Lambda, AWS RDS, GCP Cloud Run, Firebase\n"
-        "    NEVER put here: Docker/Kubernetes (those go in DevOps), databases, backend frameworks\n\n"
-        "  BUCKET: DevOps & CI/CD\n"
-        "    Belongs here: containerisation, orchestration, pipelines, IaC, registries, version control\n"
-        "    Examples: Docker, Kubernetes, Helm, Azure DevOps, GitHub Actions, Jenkins, Terraform,\n"
-        "              ArgoCD, Git, GitHub, GitLab CI, Ansible, Dockerfile\n"
-        "    NEVER put here: React, Vue.js, Angular, any frontend tool, any database, any cloud service\n\n"
-        "  BUCKET: Testing & Quality\n"
-        "    Belongs here: test frameworks, mocking, quality gates, code analysis\n"
-        "    Examples: xUnit, NUnit, MSTest, Moq, Jest, Jasmine, Karma, Pytest, JUnit, SonarQube,\n"
-        "              Selenium, Cypress, Playwright, Postman, Swagger, OpenAPI\n"
-        "    NEVER put here: backend frameworks, databases, or cloud tools\n\n"
-        "  BUCKET: Security & Auth\n"
-        "    Belongs here: authentication libraries, authorisation protocols, secrets management, scanning\n"
-        "    Examples: JWT, OAuth 2.0, Azure AD, IdentityServer, OpenID Connect, OWASP ZAP,\n"
-        "              Azure Key Vault, AWS Secrets Manager, HashiCorp Vault, ASP.NET Core Identity\n"
-        "    NEVER put here: Node.js, Django, Express.js, or any general-purpose framework\n\n"
-        "  BUCKET: Monitoring & Observability\n"
-        "    Belongs here: logging, metrics, tracing, alerting, dashboards\n"
-        "    Examples: Azure Monitor, Application Insights, Prometheus, Grafana, Datadog,\n"
-        "              Serilog, NLog, ELK Stack, Jaeger, OpenTelemetry, PagerDuty, Seq\n"
-        "    NEVER put here: databases, backend frameworks, or cloud compute services\n\n"
-        "ASSIGNMENT RULE: Each technology goes into the bucket where it PRIMARILY FUNCTIONS.\n"
-        "JWT → Security (not Backend). Redis → Database (not Cloud). Docker → DevOps (not Cloud).\n"
-        "If a technology serves multiple roles, pick the one most emphasised in the JD.\n\n"
+        "── SUB-STEP 2.3: DEFINE 5 CATEGORY GROUPS SPECIFIC TO THIS ROLE ───────────\n"
+        "Based on ROLE_TYPE and the items extracted in 2.2, create 5 natural category groupings\n"
+        "that reflect how THIS SPECIFIC role actually works.\n\n"
+        "TECHNICAL roles — example groupings (derive names from actual JD tech):\n"
+        "  Backend, Frontend, Database & Storage, Cloud Platform, DevOps & CI/CD,\n"
+        "  Testing & Quality, Security & Auth, Monitoring, Mobile, Data Engineering, ML/AI\n"
+        "NON-TECHNICAL roles — example groupings (derive names from actual JD domain):\n"
+        "  SEO & Search Visibility, AI Search & GEO, Content & CMS, Analytics & Reporting,\n"
+        "  Technical SEO & Schema, Campaign Management, Paid Media, Email & CRM,\n"
+        "  Social Media & Community, Research & Competitive Intelligence,\n"
+        "  Finance Tools & ERP, Legal Research, HR Systems, Design & Prototyping\n"
+        "RULES:\n"
+        "  - Group names must describe what is ACTUALLY IN the group — never label and then fill wrong.\n"
+        "  - Each group is drawn from ONE coherent professional domain.\n"
+        "  - ZERO cross-contamination: an SEO group must contain only SEO-related items.\n"
+        "    A backend group must contain only server-side items.\n"
+        "  - No item repeated across any two groups.\n\n"
 
-        "── SUB-STEP 2.4: SELECT 5 BUCKETS AND NAME THEM ───────────────────────────\n"
-        "From the populated buckets above, select exactly 5 that have the most JD-relevant items.\n"
-        "Name each selected bucket using the ACTUAL technology domain of its contents.\n"
-        "  CORRECT: 'ASP.NET Core & Backend APIs', '.NET Backend & API Development',\n"
-        "           'Azure Cloud Services', 'Database & Storage', 'DevOps & CI/CD',\n"
-        "           'Testing & Quality Assurance', 'Frontend & UI' (only if JD has frontend)\n"
-        "  WRONG:   'Cloud & Infrastructure' containing React\n"
-        "           'Backend & API' containing Vue.js or Tailwind CSS or Webpack\n"
-        "           'Scripting & Version Control' containing only GitHub and C# (too sparse)\n"
-        "           'Security & Compliance' containing Node.js or Django\n"
-        "Rename a bucket only if the JD's technology makes a more specific name accurate.\n\n"
+        "── SUB-STEP 2.4: POPULATE EACH GROUP WITH 10+ ITEMS ───────────────────────\n"
+        "Fill each group with at least 10 real named items.\n"
+        "All items MUST come from CORE + PREFERRED + ECOSYSTEM (Sub-Step 2.2).\n"
+        "If a group needs more items to reach 10, expand using real companion tools from\n"
+        "your knowledge of this field — BUT only companions from the SAME domain.\n"
+        "DEDUPLICATION: once an item is placed in a group, it cannot appear in any other group.\n\n"
 
-        "── SUB-STEP 2.5: POPULATE EACH BUCKET WITH 10+ ITEMS ──────────────────────\n"
-        "Fill each selected bucket with at least 10 technologies.\n"
-        "All items MUST be from the WHITELIST built in Sub-Step 2.2.\n"
-        "If a bucket has fewer than 10 whitelist items, expand using ONLY companions from the\n"
-        "COMPANION RULE in Sub-Step 2.2 that belong to that specific bucket's domain.\n"
-        "DEDUPLICATION: Maintain a global 'used' set. Once a technology is placed in a bucket,\n"
-        "add it to 'used'. Any technology already in 'used' CANNOT be placed in any other bucket.\n\n"
-
-        "── SUB-STEP 2.6: CROSS-CONTAMINATION GATE (final check before output) ─────\n"
-        "Before writing the skills JSON, run this explicit checklist:\n"
-        "  □ DETECTED_ECOSYSTEM is DOTNET → skills contain ZERO of: React, Vue.js, Next.js,\n"
-        "    Node.js, Express.js, Django, Flask, FastAPI, RabbitMQ (unless in JD), gRPC (unless in JD),\n"
-        "    MongoDB (unless in JD), DynamoDB (unless in JD), Cosmos DB (unless in JD)\n"
-        "  □ DETECTED_ECOSYSTEM is REACT → skills contain ZERO of: Angular, NgRx, Vue.js, Django,\n"
-        "    Spring Boot, Laravel, ASP.NET Core (unless JD names them)\n"
-        "  □ DETECTED_ECOSYSTEM is ANGULAR → skills contain ZERO of: React, Redux, Next.js, Vue.js,\n"
-        "    Django, Spring Boot (unless JD names them)\n"
-        "  □ No technology appears in more than ONE bucket\n"
-        "  □ No bucket contains technologies from a different domain type\n"
-        "    (e.g. Frontend bucket must not contain any backend framework or database)\n"
-        "  □ Every technology in every bucket is a real named software product\n"
-        "  □ No English verbs, nouns, adjectives, or soft skills appear as technologies\n"
-        "If ANY checkbox fails, remove the violating item and replace with a valid one.\n\n"
+        "── SUB-STEP 2.5: SELF-CHECK BEFORE WRITING OUTPUT ─────────────────────────\n"
+        "Before writing the skills JSON, verify:\n"
+        "  □ Every item is a real named product, platform, technique, or methodology\n"
+        "  □ No English verbs (e.g. Implement, Deploy, Monitor) used as items\n"
+        "  □ No generic nouns (e.g. System, Platform, Service, Application) used as items\n"
+        "  □ No soft skills (e.g. Leadership, Teamwork, Communication) in skills categories\n"
+        "  □ No item from a completely unrelated professional field\n"
+        "    (e.g. Docker/Kubernetes in an SEO CV is WRONG unless JD explicitly mentions them)\n"
+        "  □ Each group name accurately describes what is in it\n"
+        "  □ No item appears in more than one group\n"
+        "  □ Every group has at least 10 items\n"
+        "If ANY check fails, remove the violating item and replace with a valid one from the same domain.\n\n"
 
         "=== COMPANY TECH TAGS ===\n"
         "Each company MUST have a 'tech' field with exactly 6-8 pipe-separated technologies from the JD.\n"
@@ -2279,241 +2228,119 @@ def _sanitize_skills_list(skills: list) -> list:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# DEDICATED TECHNICAL SKILLS EXTRACTION — Second LLM request
-# Runs AFTER the full CV is generated. The full CV JSON is shown to the model
-# so it knows exactly what technologies are already being used, and can output
-# a perfectly consistent, non-duplicate skills section.
+# DEDICATED SKILLS EXTRACTION — Second LLM request
+# Fully AI-driven: no static domain detection, no hardcoded category templates.
+# The AI reads the JD, classifies the role, and determines categories itself.
+# Works for ANY professional field: tech, SEO, marketing, finance, legal, etc.
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_dedicated_skills_prompt(req: CVRequest, cv: dict, techs: dict) -> tuple:
     """
-    Build a standalone second-request prompt that extracts Technical Skills.
-    Input: the full generated CV + the raw JD + the extracted tech list.
-    Output: {"skills": ["Category: item1, item2, ...", ...]}
-    
-    This guarantees:
-    - Every technology explicitly named in the JD appears somewhere in the skills
-    - Sub-technologies are strictly aligned to their parent category
-    - No ecosystem mixing (no React in a .NET CV unless JD says so)
-    - Each category has 10-13 items from ONE coherent domain
-    - Zero items repeated across categories
+    Build a fully AI-driven second-pass skills prompt.
+    The AI does all domain detection and category design from the JD itself.
+    No static ecosystem maps, no hardcoded category templates.
     """
-    jd = req.job_description.strip()[:1400]
+    jd        = req.job_description.strip()[:1800]
     job_title = req.job_title.strip()
 
-    # Build the allowed tech list from extracted techs + CV companies tech tags
-    core      = techs.get("core",      techs.get("mustHave",   []))
-    preferred = techs.get("preferred", techs.get("niceToHave", []))
-    ecosystem = techs.get("ecosystem", techs.get("additional", []))
-    
-    all_allowed = list(dict.fromkeys(core + preferred + ecosystem))[:50]
-    
-    # Also add any tech tags from the CV companies (they're already validated)
-    company_techs = set()
+    # Collect all items already in the CV (for consistency reference)
+    company_items = []
     for co in cv.get("companies", []):
         tech_str = co.get("tech", "")
         if tech_str:
             for t in re.split(r"[|,]", tech_str):
                 t = t.strip()
-                if t and _is_real_tech(t):
-                    company_techs.add(t)
+                if t:
+                    company_items.append(t)
     
-    # Merge: JD techs first, then company techs
-    for t in company_techs:
-        if t not in all_allowed:
-            all_allowed.append(t)
-    
-    allowed_str = ", ".join(all_allowed[:60]) if all_allowed else "technologies from the JD"
-    
-    # Extract what's already used in experience bullets for context
     used_in_bullets = []
     for co in cv.get("companies", []):
         for b in co.get("bullets", []):
-            # Extract capitalized words that look like tech names from bullets
-            words = re.findall(r'\b([A-Z][a-zA-Z0-9#\.\+]+)\b', b)
+            words = re.findall(r'\b([A-Z][a-zA-Z0-9#\.\+\-]+)\b', b)
             for w in words:
-                if len(w) > 2 and w not in {"The", "A", "An", "In", "By", "To"}:
+                if len(w) > 2 and w not in {"The", "A", "An", "In", "By", "To", "We", "Our"}:
                     used_in_bullets.append(w)
     
-    used_in_bullets_str = ", ".join(list(dict.fromkeys(used_in_bullets))[:20]) if used_in_bullets else "(see JD)"
-    
-    # Detect role domain for category hints
-    title_lower = job_title.lower()
-    jd_lower    = jd.lower()
-    
-    if ".net" in title_lower or "c#" in title_lower or "asp" in title_lower:
-        domain       = "DOTNET"
-        cat_guidance = (
-            "Category 1 (Backend & API): ASP.NET Core, C#, .NET 8, Entity Framework Core, Dapper, MediatR, SignalR, REST APIs, gRPC, Swagger/OpenAPI\n"
-            "Category 2 (Database & Storage): SQL Server, PostgreSQL, Redis, T-SQL, Azure SQL, Elasticsearch, Entity Framework Migrations, Dapper, PgBouncer, Azure Cache for Redis\n"
-            "Category 3 (Azure Cloud Services): Azure App Service, Azure Functions, Azure DevOps, Azure Service Bus, Azure Blob Storage, Azure AD, Azure Key Vault, Azure Monitor, Azure CDN, Azure Container Registry\n"
-            "Category 4 (DevOps & CI/CD): Docker, Kubernetes, Helm, GitHub Actions, Azure Pipelines, Terraform, Git, SonarQube, ArgoCD, Dockerfile\n"
-            "Category 5 (Testing & Quality): xUnit, NUnit, MSTest, Moq, Postman, Playwright, SonarQube, OWASP ZAP, Serilog, OpenTelemetry"
-        )
-        banned_from_skills = "React, Vue.js, Next.js, Node.js, Express.js, Django, Flask, MongoDB, DynamoDB (unless in JD)"
-    elif "angular" in title_lower or "angular" in jd_lower[:300]:
-        domain       = "ANGULAR"
-        cat_guidance = (
-            "Category 1 (Angular & Frontend): Angular 17, TypeScript, RxJS, NgRx, Angular Material, Angular Router, Angular Forms, Angular CLI, Angular CDK, Standalone Components\n"
-            "Category 2 (UI & Styling): HTML5, CSS3, SCSS, Tailwind CSS, Bootstrap, Storybook, Figma, Webpack, Vite, Nx Monorepo\n"
-            "Category 3 (API & Integration): REST APIs, GraphQL, Apollo Client, HTTP Client, JWT, OAuth 2.0, WebSockets, OpenAPI, Swagger, Axios\n"
-            "Category 4 (Testing & Quality): Jasmine, Karma, Jest, Cypress, Playwright, ESLint, Prettier, SonarQube, TestBed, Protractor\n"
-            "Category 5 (DevOps & Tooling): Git, GitHub Actions, Docker, npm, Yarn, Jenkins, GitLab CI, Webpack, Vercel, Firebase Hosting"
-        )
-        banned_from_skills = "React, Vue.js, Next.js, Redux, Spring Boot, Django, Laravel (unless in JD)"
-    elif "react" in title_lower or "react" in jd_lower[:300]:
-        domain       = "REACT"
-        cat_guidance = (
-            "Category 1 (React & Frontend): React 18, TypeScript, Redux Toolkit, React Query, React Router, React Hook Form, Zustand, Context API, Custom Hooks, Suspense\n"
-            "Category 2 (UI & Styling): HTML5, CSS3, Tailwind CSS, SCSS, Material UI, shadcn/ui, Radix UI, Framer Motion, Storybook, Figma\n"
-            "Category 3 (API & Backend Integration): REST APIs, GraphQL, Apollo Client, Axios, SWR, tRPC, JWT, OAuth 2.0, WebSockets, Next.js\n"
-            "Category 4 (Testing & Quality): Jest, React Testing Library, Cypress, Playwright, ESLint, Prettier, Storybook, SonarQube, Vitest, MSW\n"
-            "Category 5 (Build & DevOps): Vite, Webpack, npm, Yarn, GitHub Actions, Docker, Vercel, Netlify, Git, CI/CD"
-        )
-        banned_from_skills = "Angular, NgRx, Vue.js, Spring Boot, Django (unless in JD)"
-    elif "node" in title_lower or "express" in title_lower:
-        domain       = "NODE"
-        cat_guidance = (
-            "Category 1 (Node.js & Backend): Node.js, Express.js, NestJS, TypeScript, REST APIs, GraphQL, JWT, OAuth 2.0, Socket.IO, Fastify\n"
-            "Category 2 (Database & ORM): PostgreSQL, MongoDB, MySQL, Redis, Mongoose, Prisma, Sequelize, TypeORM, DynamoDB, Elasticsearch\n"
-            "Category 3 (API & Messaging): REST APIs, GraphQL, Apollo Server, gRPC, RabbitMQ, Kafka, AWS SQS, Swagger, OpenAPI, WebSockets\n"
-            "Category 4 (Cloud & DevOps): AWS Lambda, AWS EC2, AWS S3, Docker, Kubernetes, GitHub Actions, Terraform, PM2, Nginx, Heroku\n"
-            "Category 5 (Testing & Quality): Jest, Mocha, Supertest, Chai, ESLint, Prettier, SonarQube, Husky, Artillery, Postman"
-        )
-        banned_from_skills = "Angular, React, Vue.js, Spring Boot, Django (unless in JD)"
-    elif "python" in title_lower or "django" in title_lower or "fastapi" in title_lower:
-        domain       = "PYTHON"
-        cat_guidance = (
-            "Category 1 (Python & Backend): Python 3.x, Django, FastAPI, Flask, SQLAlchemy, Alembic, Pydantic, Celery, asyncio, Gunicorn\n"
-            "Category 2 (Database & Storage): PostgreSQL, MySQL, MongoDB, Redis, Elasticsearch, DynamoDB, Cassandra, SQLite, PgBouncer, MinIO\n"
-            "Category 3 (Cloud & Infrastructure): AWS Lambda, AWS EC2, AWS S3, GCP Cloud Run, Docker, Kubernetes, Terraform, GitHub Actions, Nginx, Ansible\n"
-            "Category 4 (Data & Analytics): Pandas, NumPy, Jupyter, Matplotlib, Seaborn, Apache Airflow, dbt, PySpark, Scikit-learn, Plotly\n"
-            "Category 5 (Testing & Quality): Pytest, Unittest, Mypy, Flake8, Black, Bandit, Hypothesis, Coverage.py, Locust, Postman"
-        )
-        banned_from_skills = "React, Angular, Vue.js, Spring Boot, Laravel (unless in JD)"
-    elif "java" in title_lower and "javascript" not in title_lower:
-        domain       = "JAVA"
-        cat_guidance = (
-            "Category 1 (Java & Spring): Java 17, Spring Boot, Spring MVC, Spring Security, Hibernate, JPA, Lombok, MapStruct, Jackson, Maven\n"
-            "Category 2 (Database & Messaging): PostgreSQL, MySQL, MongoDB, Redis, Kafka, RabbitMQ, Elasticsearch, Oracle DB, Liquibase, HikariCP\n"
-            "Category 3 (Cloud & DevOps): AWS EC2, AWS S3, AWS RDS, Docker, Kubernetes, Helm, GitHub Actions, Jenkins, Terraform, Ansible\n"
-            "Category 4 (API & Integration): REST APIs, GraphQL, gRPC, JWT, OAuth 2.0, OpenAPI, Swagger, WebSockets, Spring Integration, Apache Camel\n"
-            "Category 5 (Testing & Quality): JUnit 5, Mockito, TestContainers, Postman, SonarQube, Jacoco, Gatling, AssertJ, WireMock, Selenium"
-        )
-        banned_from_skills = "React, Angular, Vue.js, Node.js, Django (unless in JD)"
-    elif "seo" in title_lower or "digital marketing" in title_lower or "marketing" in title_lower:
-        domain       = "DIGITAL_MARKETING"
-        cat_guidance = (
-            "Category 1 (SEO & Analytics): Google Analytics 4, Google Search Console, SEMrush, Ahrefs, Moz, Screaming Frog, Sitebulb, Majestic, SurferSEO, Looker Studio\n"
-            "Category 2 (Content & CMS): WordPress, Yoast SEO, Rank Math, Elementor, Contentful, HubSpot CMS, Webflow, WP Rocket, Clearscope, Frase\n"
-            "Category 3 (Paid & Social): Google Ads, Facebook Ads Manager, LinkedIn Ads, TikTok Ads, Microsoft Ads, Google Tag Manager, Pixel, Hootsuite, Buffer, Sprout Social\n"
-            "Category 4 (Email & CRM): Mailchimp, HubSpot, Klaviyo, ActiveCampaign, Salesforce, Pardot, Marketo, Constant Contact, SendGrid, Drip\n"
-            "Category 5 (Reporting & BI): Google Data Studio, Looker Studio, Tableau, Power BI, Supermetrics, DataBox, Hotjar, Crazy Egg, Heap, Mixpanel"
-        )
-        banned_from_skills = "Docker, Kubernetes, React, Angular, Spring Boot, Django (unless in JD)"
-    else:
-        domain       = "FULLSTACK"
-        cat_guidance = (
-            "Category 1 (Backend & API): Pick the primary backend tech from JD - add its framework, ORM, auth lib, test framework\n"
-            "Category 2 (Frontend & UI): Pick the primary frontend tech from JD - add its state manager, UI lib, CSS framework, build tool\n"
-            "Category 3 (Database & Storage): Pick databases from JD - add migration tool, caching layer, search engine\n"
-            "Category 4 (Cloud & DevOps): Pick cloud/DevOps tools from JD - add CI/CD, containers, monitoring\n"
-            "Category 5 (Testing & Quality): Pick testing tools from JD - add quality gates, mocking, API testing"
-        )
-        banned_from_skills = "Tools from completely unrelated ecosystems"
+    all_context_items = list(dict.fromkeys(company_items + used_in_bullets))[:60]
+    context_str = ", ".join(all_context_items) if all_context_items else "(see JD)"
 
     system = (
-        "You are a senior technical CV writer and technology classifier. Output ONLY valid JSON. "
-        "No explanations, no markdown, no backticks. Start { end }.\n\n"
-        
-        "YOUR SOLE TASK: Generate the TECHNICAL SKILLS section for a CV.\n\n"
-        
-        f"=== DETECTED ECOSYSTEM: {domain} ===\n"
-        f"BANNED from skills (ecosystem gate): {banned_from_skills}\n\n"
-        
-        "=== CRITICAL RULES ===\n"
-        "1. EXACTLY 5 categories.\n"
-        "2. Each category: EXACTLY 10-13 items. Fewer than 10 = HARD FAILURE.\n"
-        "3. ZERO items repeated across any two categories.\n"
-        "4. Each category name must precisely describe its ACTUAL contents.\n"
-        "   - 'Backend & API' → ONLY server-side frameworks, APIs, ORMs, middleware\n"
-        "   - 'Frontend & UI' → ONLY browser-side frameworks, CSS, state managers\n"
-        "   - 'Database & Storage' → ONLY databases, caches, search engines\n"
-        "   - 'Cloud Services' → ONLY cloud platform services (not Docker/K8s)\n"
-        "   - 'DevOps & CI/CD' → ONLY containers, pipelines, IaC\n"
-        "   - 'Testing & Quality' → ONLY test frameworks, mocking, quality tools\n"
-        "5. SUB-TECHNOLOGY ALIGNMENT: Every item in a category MUST belong to that category's domain.\n"
-        "   HARD FAILURE examples:\n"
-        "   - React in 'Database & Storage' category\n"
-        "   - PostgreSQL in 'Frontend & UI' category\n"
-        "   - Docker in 'Backend & API' category\n"
-        "6. STACK CONSISTENCY: Never mix competing ecosystems.\n"
-        "   - If detected ecosystem is DOTNET → no React, Vue, Django\n"
-        "   - If detected ecosystem is ANGULAR → no React, Next.js, Redux\n"
-        "   - If detected ecosystem is REACT → no Angular, NgRx\n"
-        "7. JD PRIORITY: Technologies EXPLICITLY named in the JD MUST appear.\n"
-        "   Do not drop any technology from the JD. It must be placed in the correct category.\n"
-        "8. Every item must be a real named tool (e.g. 'ASP.NET Core', 'PostgreSQL', 'GitHub Actions').\n"
-        "   NEVER use: verbs (Deploy, Build, Test), nouns (Platform, System), adjectives (Good, Strong)\n\n"
-        
-        f"=== CATEGORY GUIDANCE FOR {domain} ECOSYSTEM ===\n"
-        f"{cat_guidance}\n\n"
-        
-        "=== MANDATORY JD KEYWORDS — EVERY SINGLE ONE MUST APPEAR IN OUTPUT ===\n"
-        "The following technologies come directly from the job description.\n"
-        "EVERY item in this list MUST appear in exactly one skill category.\n"
-        "Skipping even one of these is a HARD FAILURE.\n"
-        f"MANDATORY LIST: {', '.join(core[:40]) if core else 'see JD'}\n\n"
+        "You are a senior CV writer and domain expert covering ALL professional fields. "
+        "Output ONLY valid JSON. No explanations, no markdown, no backticks. Start { end }.\n\n"
 
-        "=== PREFERRED / NICE-TO-HAVE FROM JD — ALL MUST ALSO APPEAR ===\n"
-        "These are explicitly listed as preferred, nice-to-have, good-to-have, or bonus.\n"
-        "They are NOT optional — include ALL of them in the skills section.\n"
-        f"PREFERRED LIST: {', '.join(preferred[:30]) if preferred else '(none listed separately)'}\n\n"
+        "YOUR SOLE TASK: Generate the SKILLS section for a CV, given the job title, job description, "
+        "and the tools/items already used in the CV's experience bullets.\n\n"
 
-        "=== ECOSYSTEM COMPANIONS (standard tools for this stack) ===\n"
-        "Add closely related tools to fill each category to 10-13 items.\n"
-        "Only add companions that STRICTLY belong to the same ecosystem.\n"
-        f"Ecosystem pool: {', '.join(ecosystem[:40]) if ecosystem else '(derive from JD)'}\n\n"
+        "=== STEP 1: CLASSIFY THE ROLE ===\n"
+        "Read the Job Title and Job Description. Classify the role as:\n"
+        "  TECHNICAL     → Software engineer, developer, DevOps, data engineer, ML engineer, QA, architect\n"
+        "  NON-TECHNICAL → SEO, GEO, digital marketing, content, HR, finance, legal, operations, design, PM\n"
+        "  HYBRID        → Business analyst, technical PM, growth hacker, solutions architect\n"
+        "Store as ROLE_TYPE. This controls what kinds of items are valid for skills.\n\n"
 
-        "Technologies already in experience bullets (for reference — include in skills too): "
-        f"{used_in_bullets_str}\n\n"
+        "=== STEP 2: EXTRACT ALL NAMED ITEMS FROM THE JD ===\n"
+        "Read the ENTIRE JD. Extract every real named item — tool, platform, methodology, technique.\n"
+        "TECHNICAL roles: software tools, languages, frameworks, libraries, cloud services, databases.\n"
+        "NON-TECHNICAL roles: named platforms (e.g. SEMrush, GA4, HubSpot), named methodologies\n"
+        "  (e.g. E-E-A-T, GEO, entity-based SEO, LLM Optimisation, share of model, citation strength),\n"
+        "  named techniques, and named tracking/reporting/CMS/CRM/analytics tools.\n"
+        "Split into REQUIRED (must have) and PREFERRED (nice-to-have).\n"
+        "Then add COMPANIONS: real tools used alongside each extracted item in that professional field.\n"
+        "COMPANIONS must come from the SAME professional domain — never cross-pollinate fields.\n\n"
 
-        "COMPLETENESS SELF-CHECK (run before outputting):\n"
-        "1. Count items in MANDATORY LIST above.\n"
-        "2. Confirm each one appears in your output.\n"
-        "3. Count items in PREFERRED LIST above.\n"
-        "4. Confirm each one appears in your output.\n"
-        "5. If ANY mandatory or preferred item is missing, add it now before outputting.\n\n"
+        "=== STEP 3: DESIGN 5 CATEGORIES SPECIFIC TO THIS ROLE ===\n"
+        "Based on ROLE_TYPE and the extracted items, create 5 natural groupings.\n"
+        "Name each group after what is ACTUALLY in it — not a generic label.\n"
+        "TECHNICAL examples: 'ASP.NET Core & Backend APIs', 'Azure Cloud Services', 'DevOps & CI/CD',\n"
+        "  'Database & Storage', 'Testing & Quality', 'Angular & Frontend', 'Data Engineering'\n"
+        "NON-TECHNICAL examples: 'AI Search & GEO Optimisation', 'SEO Analytics & Tracking',\n"
+        "  'Content & CMS Platforms', 'Technical SEO & Schema', 'Reporting & Intelligence Tools',\n"
+        "  'Paid Media & Campaign Management', 'Email Automation & CRM', 'Social & Community Tools'\n"
+        "RULES:\n"
+        "  - Each group must be from ONE coherent professional domain.\n"
+        "  - No item repeated across any two groups.\n"
+        "  - Group name must describe what is actually in it.\n"
+        "  - ZERO cross-field contamination (no Docker in an SEO CV; no SEMrush in a backend CV)\n"
+        "    UNLESS the JD explicitly mentions that item.\n\n"
 
-        "OUTPUT FORMAT:\n"
+        "=== STEP 4: POPULATE EACH GROUP — MINIMUM 10 ITEMS ===\n"
+        "All REQUIRED and PREFERRED items from the JD MUST appear in a group.\n"
+        "Expand each group with real companion items from the same domain until 10-13 items.\n"
+        "Every item must be a real named product, platform, technique, or methodology.\n"
+        "NEVER use: English verbs (Deploy, Build, Optimise), generic nouns (System, Platform),\n"
+        "  soft skills (Leadership, Communication), or adjectives (Strong, Good, Advanced).\n\n"
+
+        "=== STEP 5: SELF-CHECK ===\n"
+        "Before outputting, verify:\n"
+        "  □ Every REQUIRED JD item appears in at least one group\n"
+        "  □ Every PREFERRED JD item appears in at least one group\n"
+        "  □ No item repeated across groups\n"
+        "  □ Every item is a real named product/technique (not a verb or generic noun)\n"
+        "  □ No item from an unrelated professional field\n"
+        "  □ Every group has exactly 10-13 items\n"
+        "  □ Exactly 5 groups total\n\n"
+
+        "OUTPUT FORMAT — output ONLY this JSON:\n"
         '{"skills": [\n'
-        '  "Category Name: Tool1, Tool2, Tool3, Tool4, Tool5, Tool6, Tool7, Tool8, Tool9, Tool10",\n'
-        '  "Category Name: Tool1, Tool2, Tool3, Tool4, Tool5, Tool6, Tool7, Tool8, Tool9, Tool10",\n'
-        '  "Category Name: Tool1, Tool2, Tool3, Tool4, Tool5, Tool6, Tool7, Tool8, Tool9, Tool10",\n'
-        '  "Category Name: Tool1, Tool2, Tool3, Tool4, Tool5, Tool6, Tool7, Tool8, Tool9, Tool10",\n'
-        '  "Category Name: Tool1, Tool2, Tool3, Tool4, Tool5, Tool6, Tool7, Tool8, Tool9, Tool10"\n'
+        '  "Category Name: Item1, Item2, Item3, Item4, Item5, Item6, Item7, Item8, Item9, Item10",\n'
+        '  "Category Name: Item1, Item2, Item3, Item4, Item5, Item6, Item7, Item8, Item9, Item10",\n'
+        '  "Category Name: Item1, Item2, Item3, Item4, Item5, Item6, Item7, Item8, Item9, Item10",\n'
+        '  "Category Name: Item1, Item2, Item3, Item4, Item5, Item6, Item7, Item8, Item9, Item10",\n'
+        '  "Category Name: Item1, Item2, Item3, Item4, Item5, Item6, Item7, Item8, Item9, Item10"\n'
         "]}"
     )
 
-    # Build a short mandatory keywords string for the user prompt
-    _mandatory_str = ", ".join(list(dict.fromkeys(core + preferred))[:50]) if (core or preferred) else allowed_str
-
     user = (
         f"Job Title: {job_title}\n\n"
-        f"FULL JOB DESCRIPTION (read every word — extract ALL tools):\n{jd}\n\n"
-        f"Detected Ecosystem: {domain}\n\n"
-        f"MANDATORY KEYWORDS (from JD required + preferred sections — ALL must be in output):\n"
-        f"{_mandatory_str}\n\n"
-        f"Full technology pool (mandatory + ecosystem companions):\n{allowed_str}\n\n"
-        "TASK: Generate EXACTLY 5 skill categories (10-13 items each).\n"
-        "REQUIREMENTS:\n"
-        "1. Every item in the MANDATORY KEYWORDS list MUST appear in a category.\n"
-        "2. Every item in the PREFERRED list MUST appear in a category.\n"
-        "3. Sub-technologies MUST align to their parent category's domain.\n"
-        "4. Zero items repeated across categories.\n"
-        "5. Minimum 10 items per category — HARD REQUIREMENT.\n"
-        "6. Run the COMPLETENESS SELF-CHECK before outputting.\n\n"
-        "Output JSON only:"
+        f"FULL JOB DESCRIPTION (read every word — classify the role, extract ALL named items):\n{jd}\n\n"
+        f"Items already used in CV experience bullets (include these in skills for consistency):\n"
+        f"{context_str}\n\n"
+        "TASK:\n"
+        "1. Classify the role (TECHNICAL / NON-TECHNICAL / HYBRID).\n"
+        "2. Extract every named tool/platform/methodology/technique from the JD.\n"
+        "3. Design 5 category groups that are natural for THIS specific role's domain.\n"
+        "4. Populate each group with 10-13 real named items (all JD items MUST appear).\n"
+        "5. Run the self-check. Output JSON only."
     )
 
     return system, user
