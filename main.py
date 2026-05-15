@@ -1262,12 +1262,15 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
             
             # Header row
             company_para = Paragraph(company.upper(), S["company"])
-            date_para = Paragraph(date_range, ps("dr", fontName="Helvetica", fontSize=10, leading=12, alignment=TA_RIGHT, textColor=colors.HexColor("#666666")))
+            date_style = ParagraphStyle("dr", fontName="Helvetica", fontSize=10, leading=12, alignment=TA_RIGHT, textColor=colors.HexColor("#666666"))
+            date_para = Paragraph(date_range, date_style)
             header_table = Table([[company_para, date_para]], colWidths=[TW * 0.65, TW * 0.35])
             header_table.setStyle(TableStyle([
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("VALIGN", (0, 0), (1, 0), "TOP"),
+                ("LEFTPADDING", (0, 0), (1, 0), 0),
+                ("RIGHTPADDING", (0, 0), (1, 0), 0),
+                ("TOPPADDING", (0, 0), (1, 0), 0),
+                ("BOTTOMPADDING", (0, 0), (1, 0), 0),
             ]))
             story.append(header_table)
             
