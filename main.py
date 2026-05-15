@@ -401,16 +401,53 @@ EDUCATION YEARS: {edu['start']} - {edu['end']}
 {profile_block}
 
 ========================================
-CRITICAL FORMATTING REQUIREMENTS:
+CRITICAL TITLE FORMAT REQUIREMENT:
 ========================================
 
-1. TITLE FORMAT:
-   The title MUST end with " | {years_display}+"
-   Example: "EXPERT SEARCH STRATEGIST | GENERATIVE ENGINE OPTIMIZATION, LARGE LANGUAGE MODELS, AI VISIBILITY | {years_display}+"
+The title MUST follow this EXACT format:
 
-2. SUMMARY FORMAT:
-   The summary MUST start with "{years_display}+ years of experience in [domain from JD]..."
-   Example: "{years_display}+ years of experience in Generative Engine Optimization and Large Language Models..."
+[Position Title] | [Tech1], [Tech2], [Tech3] | [Experience]
+
+EXPLANATION OF EACH PART:
+
+1. POSITION TITLE:
+   - MUST be derived from the Job Title
+   - NOT an exact copy - rephrase it
+   - Keep the SAME meaning and seniority level
+   - Example: Job Title "Python Developer" → "Python Software Engineer"
+   - Example: Job Title "Senior SEO Specialist" → "Senior Search Engine Optimization Expert"
+   - Example: Job Title "Generative AI Engineer" → "LLM Application Developer"
+
+2. TECHNICAL STACK (after first pipe):
+   - Pick 3-5 key technologies from the Job Description
+   - Separate with commas
+   - Example: "Python, FastAPI, PostgreSQL, Docker"
+   - Example: "Generative Engine Optimization, LLM, AI Visibility"
+
+3. EXPERIENCE (after second pipe):
+   - Use EXACTLY: "{years_display}+"
+   - Example: "5+" or "3+" or "8+"
+
+VALID TITLE EXAMPLES:
+- "Python Software Engineer | FastAPI, PostgreSQL, Docker, Redis | 5+"
+- "Senior SEO Specialist | Generative Engine Optimization, LLM, AI Visibility | 4+"
+- "Generative AI Engineer | LangChain, OpenAI API, Vector Databases, RAG | 3+"
+- "Full Stack Developer | React, Node.js, MongoDB, AWS | 6+"
+- "Data Engineer | Python, Spark, Airflow, BigQuery | 5+"
+
+INVALID TITLE EXAMPLES (DO NOT USE):
+- "AI-DRIVEN SEARCH STRATEGIST | 5+" (missing technical stack)
+- "5+ | Python Developer" (wrong order)
+- "Senior SEO Specialist | 5+" (missing technical stack)
+- Exact copy of Job Title without rephrasing
+
+========================================
+CRITICAL SUMMARY FORMAT REQUIREMENT:
+========================================
+
+The summary MUST start with: "{years_display}+ years of experience in [domain from JD]..."
+
+Example: "5+ years of experience in Generative Engine Optimization and Large Language Models..."
 
 ========================================
 TASK: Generate a complete CV in JSON format
@@ -418,8 +455,10 @@ TASK: Generate a complete CV in JSON format
 
 Read the job description carefully. Extract ALL information from it. Then generate:
 
-1. **title**: Transform the job title - different wording, same meaning. Add 3 key technologies from the JD after the first pipe, then add experience at the end.
-   FORMAT: "Transformed Title | Tech1, Tech2, Tech3 | {years_display}+"
+1. **title**: MUST follow format: "[Rephrased Position Title] | [Tech1], [Tech2], [Tech3] | {years_display}+"
+   - Rephrase the Job Title (not exact copy)
+   - Pick 3 technologies from the JD for the middle section
+   - Add experience at the end with + sign
 
 2. **summary**: Write 6-7 sentences (120-180 words) that:
    - Start EXACTLY with: "{years_display}+ years of experience in [domain from JD]..."
@@ -460,7 +499,7 @@ Read the job description carefully. Extract ALL information from it. Then genera
 OUTPUT FORMAT (JSON only, no markdown):
 
 {{
-  "title": "Transformed Job Title | Tech1, Tech2, Tech3 | {years_display}+",
+  "title": "[Rephrased Position Title] | [Tech1], [Tech2], [Tech3] | {years_display}+",
   "summary": "{years_display}+ years of experience in [domain]... (6-7 sentences total, 120-180 words)",
   "competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10",
   "keywords": "keyword1, keyword2, keyword3, keyword4, keyword5, keyword6, keyword7, keyword8, keyword9, keyword10, keyword11, keyword12, keyword13, keyword14, keyword15, keyword16, keyword17, keyword18",
@@ -537,9 +576,25 @@ OUTPUT FORMAT (JSON only, no markdown):
 }}
 
 ========================================
+TITLE TRANSFORMATION RULES:
+========================================
+
+When rephrasing the Job Title:
+- Keep the SAME seniority level (Senior, Junior, Lead, etc.)
+- Keep the SAME core domain
+- Change the wording slightly
+- Examples:
+  - "Python Developer" → "Python Software Engineer"
+  - "Senior SEO Specialist" → "Senior Search Engine Optimization Expert"
+  - "Generative AI Engineer" → "LLM Application Developer"
+  - "Frontend Developer" → "UI Engineering Specialist"
+  - "Data Scientist" → "Machine Learning Analyst"
+  - "DevOps Engineer" → "Cloud Infrastructure Engineer"
+
+========================================
 REMEMBER:
-- Title MUST end with " | {years_display}+"
-- Summary MUST start with "{years_display}+ years of experience..."
+- Title format: "[Rephrased Position] | [Tech1], [Tech2], [Tech3] | {years_display}+"
+- Summary starts with: "{years_display}+ years of experience in [domain]..."
 - Read the job description below
 - Extract EVERYTHING from it
 - Generate ALL content based ONLY on what you read
@@ -552,8 +607,13 @@ JOB DESCRIPTION:
 {jd}
 
 Generate the complete CV now.
-CRITICAL: Title format: "... | {years_display}+"
-CRITICAL: Summary start: "{years_display}+ years of experience in..."
+CRITICAL TITLE FORMAT: "[Rephrased Position Title] | [Tech1], [Tech2], [Tech3] | {years_display}+"
+CRITICAL SUMMARY START: "{years_display}+ years of experience in..."
+
+Example for SEO role: "Generative AI Search Specialist | LLM Optimization, AI Visibility, Entity-Based SEO | 5+"
+Example for Python role: "Python Software Engineer | FastAPI, PostgreSQL, Docker, Redis | 4+"
+Example for .NET role: "Senior .NET Developer | ASP.NET Core, C#, Azure, Entity Framework | 6+"
+
 Everything must come from this job description.
 """
 
