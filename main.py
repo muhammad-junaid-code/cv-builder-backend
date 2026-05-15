@@ -1372,6 +1372,9 @@ def _prioritised_keys(keys: list) -> list:
     valid = [k for k in keys if k.strip() and _key_rate_limited_until.get(k.strip(),0) < now]
     return sorted(valid, key=lambda k: _key_usage.get(k.strip(),0))
 
+# Alias used by provider callers
+_prioritised_keys_list = _prioritised_keys
+
 # ─────────────────────────────────────────────────────────────────────────────
 # GENERATE CV ATOMIC — 3-pipe AI-only pipeline
 # Pipe A: extract named items from JD
