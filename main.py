@@ -329,7 +329,7 @@ class CVRequest(BaseModel):
 def build_dynamic_prompt(req: CVRequest) -> tuple:
     """
     Build a prompt that forces the AI to derive EVERYTHING from the JD.
-    NO hardcoded technologies, NO regex extraction, NO static content.
+    NO examples, NO hardcoded technologies, NO static content.
     The AI reads the JD and decides everything.
     """
     jd = req.job_description.strip()
@@ -388,7 +388,7 @@ CONTACT: {', '.join([l.get('value', '') for l in profile_links[:4]])}
 
 JOB DETAILS:
 - Job Title: {job_title}
-- Experience: {years_display} years (use EXACTLY this format with the + sign in your output)
+- Experience: {years_display} years
 - Companies: {num_cos} positions
 
 COMPANIES (use these exact names and dates):
@@ -401,205 +401,67 @@ EDUCATION YEARS: {edu['start']} - {edu['end']}
 {profile_block}
 
 ========================================
-CRITICAL TITLE FORMAT REQUIREMENT:
+TITLE FORMAT RULES (NO EXCEPTIONS):
 ========================================
 
-The title MUST follow this EXACT format:
+The title MUST contain THREE parts separated by " | ":
 
-[Position Title] | [Tech1], [Tech2], [Tech3] | [Experience]
+PART 1: POSITION TITLE
+- Take the Job Title from above
+- Rephrase it slightly (different wording, same meaning)
+- Keep the seniority level (Senior, Junior, Lead, etc.)
 
-EXPLANATION OF EACH PART:
+PART 2: TECHNICAL STACK
+- Select 3 key technologies from the Job Description
+- Write them as a comma-separated list
+- These must be technologies explicitly mentioned in the JD
 
-1. POSITION TITLE:
-   - MUST be derived from the Job Title
-   - NOT an exact copy - rephrase it
-   - Keep the SAME meaning and seniority level
-   - Example: Job Title "Python Developer" → "Python Software Engineer"
-   - Example: Job Title "Senior SEO Specialist" → "Senior Search Engine Optimization Expert"
-   - Example: Job Title "Generative AI Engineer" → "LLM Application Developer"
+PART 3: EXPERIENCE
+- Write exactly: "{years_display}+"
 
-2. TECHNICAL STACK (after first pipe):
-   - Pick 3-5 key technologies from the Job Description
-   - Separate with commas
-   - Example: "Python, FastAPI, PostgreSQL, Docker"
-   - Example: "Generative Engine Optimization, LLM, AI Visibility"
+The FINAL format is: "PART 1 | PART 2 | PART 3"
 
-3. EXPERIENCE (after second pipe):
-   - Use EXACTLY: "{years_display}+"
-   - Example: "5+" or "3+" or "8+"
+Do NOT add anything else to the title. Do NOT change the order.
+The title must have exactly two pipe characters "|" separating the three parts.
 
-VALID TITLE EXAMPLES:
-- "Python Software Engineer | FastAPI, PostgreSQL, Docker, Redis | 5+"
-- "Senior SEO Specialist | Generative Engine Optimization, LLM, AI Visibility | 4+"
-- "Generative AI Engineer | LangChain, OpenAI API, Vector Databases, RAG | 3+"
-- "Full Stack Developer | React, Node.js, MongoDB, AWS | 6+"
-- "Data Engineer | Python, Spark, Airflow, BigQuery | 5+"
-
-INVALID TITLE EXAMPLES (DO NOT USE):
-- "AI-DRIVEN SEARCH STRATEGIST | 5+" (missing technical stack)
-- "5+ | Python Developer" (wrong order)
-- "Senior SEO Specialist | 5+" (missing technical stack)
-- Exact copy of Job Title without rephrasing
+Example structure (not the content, just the format):
+"Rephrased Job Title | Technology1, Technology2, Technology3 | 5+"
 
 ========================================
-CRITICAL SUMMARY FORMAT REQUIREMENT:
+SUMMARY FORMAT RULES:
 ========================================
 
-The summary MUST start with: "{years_display}+ years of experience in [domain from JD]..."
+The summary MUST start with: "{years_display}+ years of experience in [main domain from JD]..."
 
-Example: "5+ years of experience in Generative Engine Optimization and Large Language Models..."
-
-========================================
-TASK: Generate a complete CV in JSON format
-========================================
-
-Read the job description carefully. Extract ALL information from it. Then generate:
-
-1. **title**: MUST follow format: "[Rephrased Position Title] | [Tech1], [Tech2], [Tech3] | {years_display}+"
-   - Rephrase the Job Title (not exact copy)
-   - Pick 3 technologies from the JD for the middle section
-   - Add experience at the end with + sign
-
-2. **summary**: Write 6-7 sentences (120-180 words) that:
-   - Start EXACTLY with: "{years_display}+ years of experience in [domain from JD]..."
-   - Naturally include 6-8 different technologies from the JD
-   - Never repeat the same technology twice
-   - Sound professional and human-written
-
-3. **competencies**: 10 domain-specific phrases separated by " * " - all from the JD
-
-4. **keywords**: 18-20 ATS keywords from the JD - comma separated
-
-5. **technologies**: 
-   - mustHave: technologies explicitly required in the JD (10-14 items)
-   - niceToHave: technologies listed as preferred/nice-to-have (8-12 items)
-   - additional: related technologies from the same ecosystem (8-10 items)
-
-6. **skills**: 5 categories. For each category:
-   - Name a category that makes sense for THIS job
-   - List 10-12 technologies from the JD
-
-7. **companies**: For each company, generate:
-   - role: Seniority level based on experience + domain from JD + function word
-   - bullets: 4 achievements (20-30 words each) using technologies from the JD
-   - tech: 6-8 technologies from the JD separated by |
-
-8. **projects**: EXACTLY 4 projects with:
-   - name: Descriptive name (NEVER "Project 1", "Project 2")
-   - overview: 3-4 sentences telling a complete story
-   - bullets: 3 achievements with unique metrics
-   - techTags: 5-7 technologies from the JD
-
-9. **relatedTech**: 5 category boxes, 5 items each, all from the JD
-
-10. **education**: Use the provided university and degree, add the years
+Then write 5-6 more sentences (total 6-7 sentences, 120-180 words).
+Each sentence must naturally include different technologies from the JD.
+Do not repeat any technology name twice in the summary.
 
 ========================================
-
-OUTPUT FORMAT (JSON only, no markdown):
-
-{{
-  "title": "[Rephrased Position Title] | [Tech1], [Tech2], [Tech3] | {years_display}+",
-  "summary": "{years_display}+ years of experience in [domain]... (6-7 sentences total, 120-180 words)",
-  "competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10",
-  "keywords": "keyword1, keyword2, keyword3, keyword4, keyword5, keyword6, keyword7, keyword8, keyword9, keyword10, keyword11, keyword12, keyword13, keyword14, keyword15, keyword16, keyword17, keyword18",
-  "technologies": {{
-    "mustHave": ["tech1", "tech2", "tech3", "tech4", "tech5", "tech6", "tech7", "tech8", "tech9", "tech10", "tech11", "tech12"],
-    "niceToHave": ["tech1", "tech2", "tech3", "tech4", "tech5", "tech6", "tech7", "tech8", "tech9", "tech10"],
-    "additional": ["tech1", "tech2", "tech3", "tech4", "tech5", "tech6", "tech7", "tech8", "tech9", "tech10"]
-  }},
-  "skills": [
-    "Category Name 1: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10, tech11, tech12",
-    "Category Name 2: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10, tech11, tech12",
-    "Category Name 3: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10, tech11, tech12",
-    "Category Name 4: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10, tech11, tech12",
-    "Category Name 5: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10, tech11, tech12"
-  ],
-  "companies": [
-    {{
-      "company": "Company Name",
-      "role": "Seniority Domain Function",
-      "dateRange": "Start - End",
-      "bullets": [
-        "Achievement description with technology and metric (20-30 words)",
-        "Achievement description with different technology and metric (20-30 words)",
-        "Achievement description with technology and metric (20-30 words)",
-        "Achievement description with business impact (20-30 words)"
-      ],
-      "tech": "Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6 | Tech7 | Tech8"
-    }}
-  ],
-  "projects": [
-    {{
-      "name": "Descriptive Project Name",
-      "overview": "3-4 sentences explaining the problem, solution, functionality, and impact.",
-      "bullets": [
-        "Specific accomplishment with technology (20-30 words)",
-        "Technical challenge solved with unique metric (20-30 words)",
-        "Business outcome with measurable result (20-30 words)"
-      ],
-      "techTags": ["Tech1", "Tech2", "Tech3", "Tech4", "Tech5", "Tech6"]
-    }},
-    {{
-      "name": "Another Descriptive Project Name",
-      "overview": "3-4 sentences for a different project...",
-      "bullets": ["Bullet 1", "Bullet 2", "Bullet 3"],
-      "techTags": ["Tech1", "Tech2", "Tech3", "Tech4", "Tech5", "Tech6"]
-    }},
-    {{
-      "name": "Company-Relevant Project Name",
-      "overview": "3-4 sentences based on company context...",
-      "bullets": ["Bullet 1", "Bullet 2", "Bullet 3"],
-      "techTags": ["Tech1", "Tech2", "Tech3", "Tech4", "Tech5", "Tech6"]
-    }},
-    {{
-      "name": "Industry Innovation Project Name",
-      "overview": "3-4 sentences for industry-wide problem...",
-      "bullets": ["Bullet 1", "Bullet 2", "Bullet 3"],
-      "techTags": ["Tech1", "Tech2", "Tech3", "Tech4", "Tech5", "Tech6"]
-    }}
-  ],
-  "education": {{
-    "university": "QURTUBA UNIVERSITY OF SCIENCE AND INFORMATION TECHNOLOGY",
-    "degree": "Bachelor of Science in Computer Science (BSCS)",
-    "cgpa": "3.97/4.0",
-    "years": "{edu['start']} - {edu['end']}",
-    "achievement": "Gold Medalist for Academic Excellence"
-  }},
-  "relatedTech": [
-    {{"category": "Category Name 1", "items": ["tech1", "tech2", "tech3", "tech4", "tech5"]}},
-    {{"category": "Category Name 2", "items": ["tech1", "tech2", "tech3", "tech4", "tech5"]}},
-    {{"category": "Category Name 3", "items": ["tech1", "tech2", "tech3", "tech4", "tech5"]}},
-    {{"category": "Category Name 4", "items": ["tech1", "tech2", "tech3", "tech4", "tech5"]}},
-    {{"category": "Category Name 5", "items": ["tech1", "tech2", "tech3", "tech4", "tech5"]}}
-  ]
-}}
-
-========================================
-TITLE TRANSFORMATION RULES:
+REST OF THE CV:
 ========================================
 
-When rephrasing the Job Title:
-- Keep the SAME seniority level (Senior, Junior, Lead, etc.)
-- Keep the SAME core domain
-- Change the wording slightly
-- Examples:
-  - "Python Developer" → "Python Software Engineer"
-  - "Senior SEO Specialist" → "Senior Search Engine Optimization Expert"
-  - "Generative AI Engineer" → "LLM Application Developer"
-  - "Frontend Developer" → "UI Engineering Specialist"
-  - "Data Scientist" → "Machine Learning Analyst"
-  - "DevOps Engineer" → "Cloud Infrastructure Engineer"
+Generate all other sections based ONLY on the Job Description:
+- competencies: 10 phrases separated by " * "
+- keywords: 18-20 terms from JD
+- technologies: mustHave, niceToHave, additional arrays
+- skills: 5 categories, each with 10-12 technologies from JD
+- companies: roles, bullets (4 each), tech tags (6-8 each)
+- projects: exactly 4 projects with descriptive names
+- relatedTech: 5 categories, 5 items each
 
 ========================================
-REMEMBER:
-- Title format: "[Rephrased Position] | [Tech1], [Tech2], [Tech3] | {years_display}+"
-- Summary starts with: "{years_display}+ years of experience in [domain]..."
-- Read the job description below
-- Extract EVERYTHING from it
-- Generate ALL content based ONLY on what you read
-- The CV must be DIFFERENT for every different job description
+CRITICAL REMINDERS:
 ========================================
+- EVERY technology must come from the Job Description
+- If the JD doesn't mention it, NEVER include it
+- Do NOT copy any example content - generate fresh content for THIS job
+- Do NOT use "Project 1", "Project 2" as names - be descriptive
+- Each company's tech tags must be unique (no repeating across companies)
+- For Project 3: if company context provided, create an analogous system
+- For Project 4: if company context provided, create an industry innovation
+
+Now generate the CV JSON based ONLY on the job description below.
 """
 
     user_prompt = f"""
@@ -607,14 +469,11 @@ JOB DESCRIPTION:
 {jd}
 
 Generate the complete CV now.
-CRITICAL TITLE FORMAT: "[Rephrased Position Title] | [Tech1], [Tech2], [Tech3] | {years_display}+"
-CRITICAL SUMMARY START: "{years_display}+ years of experience in..."
-
-Example for SEO role: "Generative AI Search Specialist | LLM Optimization, AI Visibility, Entity-Based SEO | 5+"
-Example for Python role: "Python Software Engineer | FastAPI, PostgreSQL, Docker, Redis | 4+"
-Example for .NET role: "Senior .NET Developer | ASP.NET Core, C#, Azure, Entity Framework | 6+"
-
-Everything must come from this job description.
+Remember:
+1. Title format: "Rephrased Title | Tech1, Tech2, Tech3 | {years_display}+"
+2. Summary starts with: "{years_display}+ years of experience in..."
+3. ALL technologies from the JD only
+4. NO copying of example content - create unique content for THIS job
 """
 
     return system_prompt, user_prompt
@@ -742,9 +601,9 @@ def sanitise_cv(cv: dict) -> dict:
     return cv
 
 def final_polish(cv: dict, years_exp: str = "") -> dict:
-    """Final polishing - deduplicates tech tags and ensures proper experience display"""
+    """Final polishing - ensures title format is correct"""
     
-    # Use the exact years_exp from UI, don't recalculate
+    # Use the exact years_exp from UI
     if years_exp:
         real_years = years_exp.strip()
     else:
@@ -752,31 +611,73 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
     
     cv["totalYears"] = real_years
     
-    # Update title to include experience with + sign
+    # FIX TITLE FORMAT - ensure it has three parts separated by " | "
     title = cv.get("title", "")
-    if title and real_years:
-        # Check if title already has experience
-        if "|" in title:
+    
+    if title:
+        # Count how many pipe separators
+        pipe_count = title.count("|")
+        
+        if pipe_count == 0:
+            # No pipes - title is just position, need to add tech stack and experience
+            # Extract some technologies from skills or technologies section
+            techs = []
+            skills = cv.get("skills", [])
+            for s in skills[:3]:
+                if ":" in s:
+                    parts = s.split(":", 1)
+                    if len(parts) > 1:
+                        items = [t.strip() for t in parts[1].split(",")[:3]]
+                        techs.extend(items)
+            if not techs:
+                techs = ["Technology"]
+            tech_stack = ", ".join(techs[:3])
+            years_display = f"{real_years}+" if real_years.isdigit() and "+" not in real_years else real_years
+            cv["title"] = f"{title} | {tech_stack} | {years_display}"
+            
+        elif pipe_count == 1:
+            # Only one pipe - missing either tech stack or experience
             parts = title.split("|")
-            # Remove any existing experience from last part
-            last_part = parts[-1].strip()
-            if "+" in last_part or any(c.isdigit() for c in last_part):
-                parts.pop()
-            # Add experience as new last part
-            title = " | ".join(parts + [real_years + "+" if real_years.isdigit() else real_years])
-        else:
-            title = f"{title} | {real_years}+" if real_years.isdigit() else f"{title} | {real_years}"
-        cv["title"] = title
+            if len(parts) == 2:
+                first = parts[0].strip()
+                second = parts[1].strip()
+                years_display = f"{real_years}+" if real_years.isdigit() and "+" not in real_years else real_years
+                # Check if second part looks like experience (has + or is a number)
+                if "+" in second or second.strip().isdigit():
+                    # Second part is experience, missing tech stack
+                    techs = []
+                    skills = cv.get("skills", [])
+                    for s in skills[:3]:
+                        if ":" in s:
+                            items = [t.strip() for t in s.split(":", 1)[1].split(",")[:3]]
+                            techs.extend(items)
+                    if not techs:
+                        techs = ["Technology"]
+                    tech_stack = ", ".join(techs[:3])
+                    cv["title"] = f"{first} | {tech_stack} | {second}"
+                else:
+                    # Second part is tech stack, missing experience
+                    cv["title"] = f"{first} | {second} | {years_display}"
+        
+        elif pipe_count >= 2:
+            # Already has correct format, just ensure experience at the end
+            parts = title.split("|")
+            if len(parts) >= 3:
+                position = parts[0].strip()
+                tech_stack = parts[1].strip()
+                years_display = f"{real_years}+" if real_years.isdigit() and "+" not in real_years else real_years
+                cv["title"] = f"{position} | {tech_stack} | {years_display}"
     
     # Update summary to use the same years with + sign
     summary = cv.get("summary", "")
     if summary and real_years:
-        # Replace any existing year mention with the exact format from UI
         years_display = f"{real_years}+" if real_years.isdigit() and "+" not in real_years else real_years
-        summary = re.sub(r'\b\d+\+?\s*years?\b', f"{years_display} years", summary, count=1)
-        # Also handle the first sentence that might start with the year
-        if summary.lower().startswith(("with", "over")):
-            summary = re.sub(r'(with|over)\s+\d+\+?\s*years?', f"\\1 {years_display} years", summary, count=1, flags=re.IGNORECASE)
+        # Fix any double ++ issue
+        if "++" in summary:
+            summary = summary.replace("++", "+")
+        # Update the first occurrence of years
+        summary = re.sub(r'^\d+\+?\s*years?', f"{years_display} years", summary, flags=re.IGNORECASE)
+        summary = re.sub(r'\b\d+\+?\s*years?\b', f"{years_display} years", summary, count=1, flags=re.IGNORECASE)
         cv["summary"] = summary
     
     # Deduplicate tech tags across companies
