@@ -788,55 +788,55 @@ async def generate_pdf(req: PDFRequest):
         TW = PAGE_W - ML - MR
         
         def ps(name, **kw):
-            defaults = dict(fontName="Helvetica", fontSize=10, leading=14,
+            defaults = dict(fontName="Helvetica", fontSize=19, leading=26,
                             spaceAfter=0, spaceBefore=0, textColor=colors.HexColor("#111111"))
             defaults.update(kw)
             return ParagraphStyle(name, **defaults)
         
         S = {
-            "name":        ps("name",   fontName="Helvetica-Bold", fontSize=18, leading=24,
-                               textColor=colors.HexColor("#111111"), spaceAfter=3,
+            "name":        ps("name",   fontName="Helvetica-Bold", fontSize=36, leading=42,
+                               textColor=colors.HexColor("#111111"), spaceAfter=6,
                                alignment=TA_CENTER),
-            "role":        ps("role",   fontName="Helvetica", fontSize=8, leading=12,
-                               textColor=colors.HexColor("#444444"), spaceAfter=1,
+            "role":        ps("role",   fontName="Helvetica", fontSize=16, leading=22,
+                               textColor=colors.HexColor("#444444"), spaceAfter=2,
                                alignment=TA_CENTER),
-            "contact":     ps("con",    fontName="Helvetica", fontSize=8, leading=11,
-                               textColor=colors.HexColor("#0057A8"), spaceAfter=1,
+            "contact":     ps("con",    fontName="Helvetica", fontSize=15, leading=20,
+                               textColor=colors.HexColor("#0057A8"), spaceAfter=2,
                                alignment=TA_CENTER),
-            "sec_title":   ps("sec",    fontName="Helvetica-Bold", fontSize=11, leading=14,
-                               textColor=colors.HexColor("#222222"), spaceBefore=4, spaceAfter=2),
-            "company":     ps("co",     fontName="Helvetica-Bold", fontSize=11, leading=14,
+            "sec_title":   ps("sec",    fontName="Helvetica-Bold", fontSize=21, leading=26,
+                               textColor=colors.HexColor("#222222"), spaceBefore=8, spaceAfter=4),
+            "company":     ps("co",     fontName="Helvetica-Bold", fontSize=21, leading=26,
+                               textColor=colors.HexColor("#111111"), spaceAfter=3),
+            "role_title":  ps("rt",     fontName="Helvetica-Oblique", fontSize=19, leading=24,
+                               textColor=colors.HexColor("#555555"), spaceAfter=3),
+            "bullet":      ps("bul",    fontName="Helvetica", fontSize=18, leading=24,
+                               leftIndent=20, firstLineIndent=0, textColor=colors.HexColor("#222222"),
+                               spaceAfter=3),
+            "tech_line":   ps("tech",   fontName="Helvetica", fontSize=16, leading=20,
+                               leftIndent=20, textColor=colors.HexColor("#666666"), spaceAfter=4),
+            "skill":       ps("sitm",   fontName="Helvetica", fontSize=17, leading=22,
+                               textColor=colors.HexColor("#333333"), spaceAfter=2),
+            "proj_name":   ps("pn",     fontName="Helvetica-Bold", fontSize=20, leading=26,
                                textColor=colors.HexColor("#111111"), spaceAfter=2),
-            "role_title":  ps("rt",     fontName="Helvetica-Oblique", fontSize=10, leading=13,
-                               textColor=colors.HexColor("#555555"), spaceAfter=2),
-            "bullet":      ps("bul",    fontName="Helvetica", fontSize=9.5, leading=13,
-                               leftIndent=12, firstLineIndent=0, textColor=colors.HexColor("#222222"),
-                               spaceAfter=2),
-            "tech_line":   ps("tech",   fontName="Helvetica", fontSize=8.5, leading=11,
-                               leftIndent=12, textColor=colors.HexColor("#666666"), spaceAfter=3),
-            "skill":       ps("sitm",   fontName="Helvetica", fontSize=9, leading=12,
-                               textColor=colors.HexColor("#333333"), spaceAfter=1),
-            "proj_name":   ps("pn",     fontName="Helvetica-Bold", fontSize=10.5, leading=14,
-                               textColor=colors.HexColor("#111111"), spaceAfter=1),
-            "proj_body":   ps("pb",     fontName="Helvetica", fontSize=9.5, leading=13,
-                               textColor=colors.HexColor("#333333"), spaceAfter=1),
-            "proj_bullet": ps("pbul",   fontName="Helvetica", fontSize=9.5, leading=12.5,
-                               leftIndent=12, textColor=colors.HexColor("#333333"), spaceAfter=2),
-            "proj_stack":  ps("pst",    fontName="Helvetica-Bold", fontSize=8.5, leading=11,
-                               textColor=colors.HexColor("#555555"), spaceAfter=2),
-            "competency":  ps("comp",   fontName="Helvetica", fontSize=9.5, leading=13,
-                               textColor=colors.HexColor("#333333"), spaceAfter=1),
-            "edu_uni":     ps("uni",    fontName="Helvetica-Bold", fontSize=11, leading=14,
-                               textColor=colors.HexColor("#111111"), spaceAfter=1),
-            "edu_deg":     ps("deg",    fontName="Helvetica", fontSize=10, leading=13,
-                               textColor=colors.HexColor("#444444"), spaceAfter=2),
-            "edu_medal":   ps("med",    fontName="Helvetica-Bold", fontSize=10, leading=13,
-                               textColor=colors.HexColor("#166534"), spaceAfter=1),
+            "proj_body":   ps("pb",     fontName="Helvetica", fontSize=18, leading=24,
+                               textColor=colors.HexColor("#333333"), spaceAfter=2),
+            "proj_bullet": ps("pbul",   fontName="Helvetica", fontSize=18, leading=24,
+                               leftIndent=20, textColor=colors.HexColor("#333333"), spaceAfter=3),
+            "proj_stack":  ps("pst",    fontName="Helvetica-Bold", fontSize=16, leading=20,
+                               textColor=colors.HexColor("#555555"), spaceAfter=3),
+            "competency":  ps("comp",   fontName="Helvetica", fontSize=18, leading=24,
+                               textColor=colors.HexColor("#333333"), spaceAfter=2),
+            "edu_uni":     ps("uni",    fontName="Helvetica-Bold", fontSize=21, leading=26,
+                               textColor=colors.HexColor("#111111"), spaceAfter=2),
+            "edu_deg":     ps("deg",    fontName="Helvetica", fontSize=19, leading=24,
+                               textColor=colors.HexColor("#444444"), spaceAfter=3),
+            "edu_medal":   ps("med",    fontName="Helvetica-Bold", fontSize=19, leading=24,
+                               textColor=colors.HexColor("#166534"), spaceAfter=2),
         }
         
         def HR():
-            return HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc"),
-                              spaceAfter=3, spaceBefore=1)
+            return HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cccccc"),
+                              spaceAfter=5, spaceBefore=3)
         
         story = []
         
@@ -871,7 +871,7 @@ async def generate_pdf(req: PDFRequest):
                 bullets = co.get("bullets", [])
                 tech = co.get("tech", "")
                 
-                header = Table([[Paragraph(company.upper(), S["company"]), Paragraph(date_range, ps("dr", fontName="Helvetica", fontSize=10, leading=12, alignment=TA_RIGHT, textColor=colors.HexColor("#666666")))]], colWidths=[TW * 0.65, TW * 0.35])
+                header = Table([[Paragraph(company.upper(), S["company"]), Paragraph(date_range, ps("dr", fontName="Helvetica", fontSize=19, leading=24, alignment=TA_RIGHT, textColor=colors.HexColor("#666666")))]], colWidths=[TW * 0.65, TW * 0.35])
                 header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
                 story.append(header)
                 if role:
