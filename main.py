@@ -1,5 +1,5 @@
 """
-CV Builder AI - FastAPI Backend v13
+CV Builder AI - FastAPI Backend v14
 Port: 8001  |  Start: uvicorn main:app --host 0.0.0.0 --port 8001
 """
 
@@ -15,13 +15,13 @@ from datetime import date, datetime, timedelta
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, PageBreak
 )
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 from reportlab.lib import colors
 
-app = FastAPI(title="CV Builder AI", version="13.0")
+app = FastAPI(title="CV Builder AI", version="14.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -90,7 +90,6 @@ def _calc_total_years(years_exp: str = "") -> str:
     else: return "1+"
 
 def _build_dynamic_companies(years_exp: str, profile_work: list = None) -> list:
-    # If profile has work entries with dates, use those
     if profile_work and len(profile_work) > 0:
         result = []
         for i, w in enumerate(profile_work[:3]):
@@ -106,7 +105,6 @@ def _build_dynamic_companies(years_exp: str, profile_work: list = None) -> list:
         if result:
             return result
     
-    # Fallback to dynamic calculation
     if not years_exp:
         return CANDIDATE_COMPANIES[:3]
     try:
@@ -352,7 +350,6 @@ def build_prompt(req: CVRequest) -> tuple:
         if years_display.isdigit():
             years_display = f"{years_display}+"
     
-    # Get companies from profile or dynamic
     profile_work = req.profile_data.get("work", []) if req.profile_data else []
     companies = _build_dynamic_companies(years_exp, profile_work)
     edu = _build_education_year(years_exp, req.profile_data.get("edu", []) if req.profile_data else [])
@@ -380,44 +377,12 @@ CRITICAL RULES:
 3. ALL technologies must come from the job description only
 4. Each company's tech tags must be different
 
-Output valid JSON only:
-{{
-  "title": "rephrased job title | Tech1,Tech2,Tech3 | {years_display}+",
-  "summary": "{years_display}+ years of experience in... (6-7 sentences total)",
-  "competencies": "phrase1 * phrase2 * phrase3 * phrase4 * phrase5 * phrase6 * phrase7 * phrase8 * phrase9 * phrase10",
-  "keywords": "kw1,kw2,kw3,kw4,kw5,kw6,kw7,kw8,kw9,kw10,kw11,kw12,kw13,kw14,kw15,kw16,kw17,kw18",
-  "technologies": {{
-    "mustHave": ["tech1","tech2","tech3","tech4","tech5","tech6","tech7","tech8","tech9","tech10","tech11","tech12"],
-    "niceToHave": ["tech1","tech2","tech3","tech4","tech5","tech6","tech7","tech8","tech9","tech10"],
-    "additional": ["tech1","tech2","tech3","tech4","tech5","tech6","tech7","tech8","tech9","tech10"]
-  }},
-  "skills": [
-    "Category1: tech1,tech2,tech3,tech4,tech5,tech6,tech7,tech8,tech9,tech10,tech11,tech12",
-    "Category2: tech1,tech2,tech3,tech4,tech5,tech6,tech7,tech8,tech9,tech10,tech11,tech12",
-    "Category3: tech1,tech2,tech3,tech4,tech5,tech6,tech7,tech8,tech9,tech10,tech11,tech12",
-    "Category4: tech1,tech2,tech3,tech4,tech5,tech6,tech7,tech8,tech9,tech10,tech11,tech12",
-    "Category5: tech1,tech2,tech3,tech4,tech5,tech6,tech7,tech8,tech9,tech10,tech11,tech12"
-  ],
-  "companies": [
-    {{"company":"{companies[0]['name'] if companies else 'Company 1'}","role":"Seniority Domain Function","dateRange":"{companies[0]['start'] if companies else 'Start'} - {companies[0]['end'] if companies else 'End'}","bullets":["bullet1","bullet2","bullet3","bullet4"],"tech":"Tech1|Tech2|Tech3|Tech4|Tech5|Tech6"}}
-  ],
-  "projects": [
-    {{"name":"Project Name 1","overview":"3-4 sentences","bullets":["b1","b2","b3"],"techTags":["t1","t2","t3","t4","t5"]}},
-    {{"name":"Project Name 2","overview":"3-4 sentences","bullets":["b1","b2","b3"],"techTags":["t1","t2","t3","t4","t5"]}},
-    {{"name":"Project Name 3","overview":"3-4 sentences","bullets":["b1","b2","b3"],"techTags":["t1","t2","t3","t4","t5"]}},
-    {{"name":"Project Name 4","overview":"3-4 sentences","bullets":["b1","b2","b3"],"techTags":["t1","t2","t3","t4","t5"]}}
-  ],
-  "education": {{"university":"QURTUBA UNIVERSITY OF SCIENCE AND INFORMATION TECHNOLOGY","degree":"Bachelor of Science in Computer Science (BSCS)","cgpa":"3.97/4.0","years":"{edu['start']} - {edu['end']}","achievement":"Gold Medalist for Academic Excellence"}},
-  "relatedTech": [
-    {{"category":"Category1","items":["t1","t2","t3","t4","t5"]}},
-    {{"category":"Category2","items":["t1","t2","t3","t4","t5"]}},
-    {{"category":"Category3","items":["t1","t2","t3","t4","t5"]}},
-    {{"category":"Category4","items":["t1","t2","t3","t4","t5"]}},
-    {{"category":"Category5","items":["t1","t2","t3","t4","t5"]}}
-  ]
-}}"""
+Output valid JSON only. Do not add any text before or after the JSON."""
 
-    user = f"Job Description:\n{jd[:3000]}\n\nGenerate CV JSON now. Remember: title has only THREE technologies separated by commas (no spaces)."
+    user = f"""Job Description:
+{jd[:3000]}
+
+Generate CV JSON now. Remember: title has only THREE technologies separated by commas (no spaces)."""
     return system, user
 
 # ==============================================================================
@@ -480,10 +445,8 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
     if title and "|" in title:
         parts = title.split("|")
         if len(parts) >= 2:
-            # Extract only first 3 technologies
             tech_part = parts[1].strip()
             tech_list = [t.strip() for t in tech_part.split(",")]
-            # Take only first 3 technologies
             tech_list = tech_list[:3]
             tech_part = ",".join(tech_list)
             
@@ -757,7 +720,7 @@ async def generate_cv(req: CVRequest):
         raise HTTPException(500, str(e))
 
 # ==============================================================================
-# PDF GENERATION - FIXED FOR NO EXTRA SPACE
+# PDF GENERATION - SINGLE PAGE, NO PAGE BREAK
 # ==============================================================================
 class PDFRequest(BaseModel):
     cv: dict
@@ -770,16 +733,14 @@ async def generate_pdf(req: PDFRequest):
         _pd = req.profileData or {}
         p_name = (_pd.get("name") or "").strip() or "CANDIDATE"
         p_links = _pd.get("links") or []
-        p_work = _pd.get("work") or []
         
-        # Get companies from profile or use from CV
         companies_from_cv = req.cv.get("companies", [])
         
         buf = io.BytesIO()
         PAGE_W, PAGE_H = A4
-        ML, MR, MT, MB = 13 * mm, 13 * mm, 11 * mm, 11 * mm
+        ML, MR, MT, MB = 13 * mm, 13 * mm, 15 * mm, 10 * mm  # Reduced bottom margin
         
-        # Build document with minimal bottom margin
+        # Build document with exact page size - prevent page breaks
         doc = SimpleDocTemplate(
             buf, pagesize=A4,
             leftMargin=ML, rightMargin=MR, topMargin=MT, bottomMargin=MB,
@@ -793,23 +754,23 @@ async def generate_pdf(req: PDFRequest):
             return ParagraphStyle(name, **defaults)
         
         S = {
-            "name": ps("name", fontName="Helvetica-Bold", fontSize=18, alignment=TA_CENTER),
-            "role": ps("role", fontSize=8, alignment=TA_CENTER, textColor=colors.HexColor("#444444")),
-            "contact": ps("contact", fontSize=8, alignment=TA_CENTER, textColor=colors.HexColor("#0057A8")),
-            "sec_title": ps("sec", fontName="Helvetica-Bold", fontSize=11, spaceBefore=4, spaceAfter=2),
-            "company": ps("co", fontName="Helvetica-Bold", fontSize=11),
-            "role_title": ps("rt", fontName="Helvetica-Oblique", fontSize=10, textColor=colors.HexColor("#555555")),
-            "bullet": ps("bul", fontSize=9.5, leftIndent=12, spaceAfter=2),
-            "tech_line": ps("tech", fontSize=8.5, leftIndent=12, textColor=colors.HexColor("#666666")),
-            "skill": ps("skill", fontSize=9, spaceAfter=1),
-            "proj_name": ps("pn", fontName="Helvetica-Bold", fontSize=10.5),
-            "proj_body": ps("pb", fontSize=9.5),
-            "proj_bullet": ps("pbul", fontSize=9.5, leftIndent=12, spaceAfter=2),
-            "proj_stack": ps("pst", fontName="Helvetica-Bold", fontSize=8.5),
-            "competency": ps("comp", fontSize=9.5),
-            "edu_uni": ps("uni", fontName="Helvetica-Bold", fontSize=11),
-            "edu_deg": ps("deg", fontSize=10, textColor=colors.HexColor("#444444")),
-            "edu_medal": ps("med", fontName="Helvetica-Bold", fontSize=10, textColor=colors.HexColor("#166534")),
+            "name": ps("name", fontName="Helvetica-Bold", fontSize=18, leading=24, alignment=TA_CENTER, spaceAfter=8),  # Added space after name
+            "role": ps("role", fontSize=9, leading=12, alignment=TA_CENTER, textColor=colors.HexColor("#444444"), spaceAfter=4),
+            "contact": ps("contact", fontSize=8, leading=11, alignment=TA_CENTER, textColor=colors.HexColor("#0057A8")),
+            "sec_title": ps("sec", fontName="Helvetica-Bold", fontSize=11, leading=14, spaceBefore=4, spaceAfter=3),
+            "company": ps("co", fontName="Helvetica-Bold", fontSize=11, leading=14),
+            "role_title": ps("rt", fontName="Helvetica-Oblique", fontSize=10, leading=13, textColor=colors.HexColor("#555555"), spaceAfter=2),
+            "bullet": ps("bul", fontSize=9.5, leading=13, leftIndent=12, spaceAfter=2),
+            "tech_line": ps("tech", fontSize=8.5, leading=11, leftIndent=12, textColor=colors.HexColor("#666666"), spaceAfter=3),
+            "skill": ps("skill", fontSize=9, leading=12, spaceAfter=2),
+            "proj_name": ps("pn", fontName="Helvetica-Bold", fontSize=10.5, leading=14, spaceAfter=2),
+            "proj_body": ps("pb", fontSize=9.5, leading=13, spaceAfter=2),
+            "proj_bullet": ps("pbul", fontSize=9.5, leading=12.5, leftIndent=12, spaceAfter=2),
+            "proj_stack": ps("pst", fontName="Helvetica-Bold", fontSize=8.5, leading=11, spaceAfter=4),
+            "competency": ps("comp", fontSize=9.5, leading=13, spaceAfter=3),
+            "edu_uni": ps("uni", fontName="Helvetica-Bold", fontSize=11, leading=14, spaceAfter=2),
+            "edu_deg": ps("deg", fontSize=10, leading=13, textColor=colors.HexColor("#444444"), spaceAfter=2),
+            "edu_medal": ps("med", fontName="Helvetica-Bold", fontSize=10, leading=13, textColor=colors.HexColor("#166534"), spaceAfter=0),  # No space after medal
         }
         
         def HR():
@@ -817,18 +778,21 @@ async def generate_pdf(req: PDFRequest):
         
         story = []
         
-        # Header
+        # Header - with proper spacing
         story.append(Paragraph(p_name.upper(), S["name"]))
         title = req.cv.get("title", "")
         if title:
             story.append(Paragraph(title.upper(), S["role"]))
+        story.append(Spacer(1, 2 * mm))
         story.append(HR())
         
         # Contact
         if p_links:
             contacts = [l.get("value", "") for l in p_links[:4] if l.get("value")]
             if contacts:
+                story.append(Spacer(1, 1 * mm))
                 story.append(Paragraph("  |  ".join(contacts), S["contact"]))
+        story.append(Spacer(1, 1 * mm))
         story.append(HR())
         
         # Summary
@@ -841,7 +805,7 @@ async def generate_pdf(req: PDFRequest):
         # Experience
         if companies_from_cv:
             story.append(Paragraph("WORK EXPERIENCE", S["sec_title"]))
-            for co in companies_from_cv:
+            for idx, co in enumerate(companies_from_cv):
                 company = co.get("company", "")
                 role = co.get("role", "")
                 date_range = co.get("dateRange", "")
@@ -858,7 +822,8 @@ async def generate_pdf(req: PDFRequest):
                         story.append(Paragraph(f"\u2022 {b}", S["bullet"]))
                 if tech:
                     story.append(Paragraph(f"Technologies: {tech}", S["tech_line"]))
-                story.append(Spacer(1, 3 * mm))
+                if idx < len(companies_from_cv) - 1:
+                    story.append(Spacer(1, 2 * mm))
         
         # Skills
         skills = req.cv.get("skills", [])
@@ -867,13 +832,12 @@ async def generate_pdf(req: PDFRequest):
             for s in skills[:5]:
                 if s:
                     story.append(Paragraph(s, S["skill"]))
-                    story.append(Spacer(1, 1 * mm))
         
-        # Projects
+        # Projects - limit to keep on one page
         projects = req.cv.get("projects", [])
         if projects:
             story.append(Paragraph("KEY PROJECTS", S["sec_title"]))
-            for p in projects[:4]:
+            for idx, p in enumerate(projects[:3]):  # Only show 3 projects to save space
                 name = p.get("name", "")
                 overview = p.get("overview", "")
                 bullets = p.get("bullets", [])
@@ -882,25 +846,33 @@ async def generate_pdf(req: PDFRequest):
                 if name:
                     story.append(Paragraph(name, S["proj_name"]))
                 if overview:
+                    # Shorten overview to save space
+                    if len(overview) > 250:
+                        overview = overview[:250] + "..."
                     story.append(Paragraph(overview, S["proj_body"]))
-                for b in bullets[:3]:
+                for b in bullets[:2]:  # Only 2 bullets per project
                     if b:
+                        if len(b) > 150:
+                            b = b[:150] + "..."
                         story.append(Paragraph(f"\u2022 {b}", S["proj_bullet"]))
                 if tags and isinstance(tags, list):
-                    clean = [str(t) for t in tags[:6] if t]
+                    clean = [str(t) for t in tags[:4] if t]
                     if clean:
                         story.append(Paragraph(f"Stack: {', '.join(clean)}", S["proj_stack"]))
-                story.append(Spacer(1, 3 * mm))
+                if idx < len(projects[:3]) - 1:
+                    story.append(Spacer(1, 1 * mm))
         
         # Competencies
         competencies = req.cv.get("competencies", "")
         if competencies:
             story.append(Paragraph("KEY COMPETENCIES", S["sec_title"]))
             comp_display = competencies.replace(" * ", ", ").replace("* ", ", ").replace(" *", ", ")
+            # Limit length
+            if len(comp_display) > 200:
+                comp_display = comp_display[:200] + "..."
             story.append(Paragraph(comp_display, S["competency"]))
-            story.append(Spacer(1, 2 * mm))
         
-        # Education - LAST SECTION (no spacer after)
+        # Education - LAST SECTION (no extra space after)
         story.append(Paragraph("EDUCATION", S["sec_title"]))
         edu = req.cv.get("education", {})
         uni = edu.get("university", "QURTUBA UNIVERSITY OF SCIENCE AND INFORMATION TECHNOLOGY")
@@ -917,8 +889,9 @@ async def generate_pdf(req: PDFRequest):
         if achievement and "gold" in achievement.lower():
             story.append(Paragraph(f"🏅 {achievement}", S["edu_medal"]))
         
-        # Build PDF - no extra spacer at the end
-        doc.build(story)
+        # Build PDF - NO page break allowed
+        doc.build(story, onLaterPages=lambda *args: None)  # Prevent new pages
+        
         buf.seek(0)
         return Response(content=buf.getvalue(), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{req.filename}"'})
         
