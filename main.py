@@ -777,9 +777,9 @@ async def generate_pdf(req: PDFRequest):
         
         buf = io.BytesIO()
         PAGE_W, PAGE_H = A4
-        ML, MR, MT, MB = 18 * mm, 18 * mm, 14 * mm, 14 * mm
+        ML, MR, MT, MB = 13 * mm, 13 * mm, 11 * mm, 11 * mm
         
-        # Build document with minimal bottom margin
+        # Build document
         doc = SimpleDocTemplate(
             buf, pagesize=A4,
             leftMargin=ML, rightMargin=MR, topMargin=MT, bottomMargin=MB,
@@ -788,32 +788,55 @@ async def generate_pdf(req: PDFRequest):
         TW = PAGE_W - ML - MR
         
         def ps(name, **kw):
-            defaults = dict(fontName="Helvetica", fontSize=11, leading=16, textColor=colors.HexColor("#111111"))
+            defaults = dict(fontName="Helvetica", fontSize=10, leading=14,
+                            spaceAfter=0, spaceBefore=0, textColor=colors.HexColor("#111111"))
             defaults.update(kw)
             return ParagraphStyle(name, **defaults)
         
         S = {
-            "name":        ps("name",  fontName="Helvetica-Bold", fontSize=22, leading=26, alignment=TA_CENTER, spaceAfter=6),
-            "role":        ps("role",  fontSize=10, leading=14, alignment=TA_CENTER, textColor=colors.HexColor("#444444"), spaceBefore=3, spaceAfter=5),
-            "contact":     ps("con",   fontSize=9.5, leading=14, alignment=TA_CENTER, textColor=colors.HexColor("#0057A8"), spaceAfter=2),
-            "sec_title":   ps("sec",   fontName="Helvetica-Bold", fontSize=12, leading=16, spaceBefore=6, spaceAfter=3),
-            "company":     ps("co",    fontName="Helvetica-Bold", fontSize=12, leading=16),
-            "role_title":  ps("rt",    fontName="Helvetica-Oblique", fontSize=10.5, leading=15, textColor=colors.HexColor("#555555"), spaceAfter=2),
-            "bullet":      ps("bul",   fontSize=10.5, leading=15, leftIndent=14, spaceAfter=2),
-            "tech_line":   ps("tech",  fontSize=9.5, leading=13, leftIndent=14, textColor=colors.HexColor("#666666"), spaceAfter=1),
-            "skill":       ps("skill", fontSize=10.5, leading=15, spaceAfter=2),
-            "proj_name":   ps("pn",    fontName="Helvetica-Bold", fontSize=11.5, leading=16),
-            "proj_body":   ps("pb",    fontSize=10.5, leading=15),
-            "proj_bullet": ps("pbul",  fontSize=10.5, leading=15, leftIndent=14, spaceAfter=2),
-            "proj_stack":  ps("pst",   fontName="Helvetica-Bold", fontSize=9.5, leading=13),
-            "competency":  ps("comp",  fontSize=10.5, leading=15),
-            "edu_uni":     ps("uni",   fontName="Helvetica-Bold", fontSize=12, leading=16),
-            "edu_deg":     ps("deg",   fontSize=10.5, leading=15, textColor=colors.HexColor("#444444")),
-            "edu_medal":   ps("med",   fontName="Helvetica-Bold", fontSize=10.5, leading=15, textColor=colors.HexColor("#166534")),
+            "name":        ps("name",   fontName="Helvetica-Bold", fontSize=18, leading=24,
+                               textColor=colors.HexColor("#111111"), spaceAfter=3,
+                               alignment=TA_CENTER),
+            "role":        ps("role",   fontName="Helvetica", fontSize=8, leading=12,
+                               textColor=colors.HexColor("#444444"), spaceAfter=1,
+                               alignment=TA_CENTER),
+            "contact":     ps("con",    fontName="Helvetica", fontSize=8, leading=11,
+                               textColor=colors.HexColor("#0057A8"), spaceAfter=1,
+                               alignment=TA_CENTER),
+            "sec_title":   ps("sec",    fontName="Helvetica-Bold", fontSize=11, leading=14,
+                               textColor=colors.HexColor("#222222"), spaceBefore=4, spaceAfter=2),
+            "company":     ps("co",     fontName="Helvetica-Bold", fontSize=11, leading=14,
+                               textColor=colors.HexColor("#111111"), spaceAfter=2),
+            "role_title":  ps("rt",     fontName="Helvetica-Oblique", fontSize=10, leading=13,
+                               textColor=colors.HexColor("#555555"), spaceAfter=2),
+            "bullet":      ps("bul",    fontName="Helvetica", fontSize=9.5, leading=13,
+                               leftIndent=12, firstLineIndent=0, textColor=colors.HexColor("#222222"),
+                               spaceAfter=2),
+            "tech_line":   ps("tech",   fontName="Helvetica", fontSize=8.5, leading=11,
+                               leftIndent=12, textColor=colors.HexColor("#666666"), spaceAfter=3),
+            "skill":       ps("sitm",   fontName="Helvetica", fontSize=9, leading=12,
+                               textColor=colors.HexColor("#333333"), spaceAfter=1),
+            "proj_name":   ps("pn",     fontName="Helvetica-Bold", fontSize=10.5, leading=14,
+                               textColor=colors.HexColor("#111111"), spaceAfter=1),
+            "proj_body":   ps("pb",     fontName="Helvetica", fontSize=9.5, leading=13,
+                               textColor=colors.HexColor("#333333"), spaceAfter=1),
+            "proj_bullet": ps("pbul",   fontName="Helvetica", fontSize=9.5, leading=12.5,
+                               leftIndent=12, textColor=colors.HexColor("#333333"), spaceAfter=2),
+            "proj_stack":  ps("pst",    fontName="Helvetica-Bold", fontSize=8.5, leading=11,
+                               textColor=colors.HexColor("#555555"), spaceAfter=2),
+            "competency":  ps("comp",   fontName="Helvetica", fontSize=9.5, leading=13,
+                               textColor=colors.HexColor("#333333"), spaceAfter=1),
+            "edu_uni":     ps("uni",    fontName="Helvetica-Bold", fontSize=11, leading=14,
+                               textColor=colors.HexColor("#111111"), spaceAfter=1),
+            "edu_deg":     ps("deg",    fontName="Helvetica", fontSize=10, leading=13,
+                               textColor=colors.HexColor("#444444"), spaceAfter=2),
+            "edu_medal":   ps("med",    fontName="Helvetica-Bold", fontSize=10, leading=13,
+                               textColor=colors.HexColor("#166534"), spaceAfter=1),
         }
         
         def HR():
-            return HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc"), spaceAfter=4, spaceBefore=2)
+            return HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc"),
+                              spaceAfter=3, spaceBefore=1)
         
         story = []
         
@@ -834,13 +857,8 @@ async def generate_pdf(req: PDFRequest):
         # Summary
         summary = req.cv.get("summary", "")
         if summary:
-            # Truncate to ~2 lines max so it doesn't eat the whole page
-            words = summary.split()
-            short = " ".join(words[:55])
-            if len(words) > 55:
-                short += "…"
             story.append(Paragraph("PROFESSIONAL SUMMARY", S["sec_title"]))
-            story.append(Paragraph(short, S["bullet"]))
+            story.append(Paragraph(summary, S["bullet"]))
             story.append(Spacer(1, 3 * mm))
         
         # Experience
@@ -853,12 +871,12 @@ async def generate_pdf(req: PDFRequest):
                 bullets = co.get("bullets", [])
                 tech = co.get("tech", "")
                 
-                header = Table([[Paragraph(company.upper(), S["company"]), Paragraph(date_range, ps("dr", fontSize=11, alignment=TA_RIGHT, textColor=colors.HexColor("#666666")))]], colWidths=[TW * 0.65, TW * 0.35])
+                header = Table([[Paragraph(company.upper(), S["company"]), Paragraph(date_range, ps("dr", fontName="Helvetica", fontSize=10, leading=12, alignment=TA_RIGHT, textColor=colors.HexColor("#666666")))]], colWidths=[TW * 0.65, TW * 0.35])
                 header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
                 story.append(header)
                 if role:
                     story.append(Paragraph(role, S["role_title"]))
-                for b in bullets[:3]:   # max 3 bullets per company
+                for b in bullets[:4]:
                     if b:
                         story.append(Paragraph(f"\u2022 {b}", S["bullet"]))
                 if tech:
