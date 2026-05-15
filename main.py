@@ -330,13 +330,12 @@ def build_dynamic_prompt(req: CVRequest) -> tuple:
     """
     Build a prompt that forces the AI to derive EVERYTHING from the JD.
     NO examples, NO hardcoded technologies, NO static content.
-    The AI reads the JD and decides everything.
     """
     jd = req.job_description.strip()
     job_title = req.job_title.strip()
     years_exp = (req.years_exp or "").strip()
     
-    # Format years display for the prompt
+    # Format years display
     if years_exp:
         years_display = f"{years_exp}+" if years_exp.isdigit() and "+" not in years_exp else years_exp
     else:
@@ -348,13 +347,13 @@ def build_dynamic_prompt(req: CVRequest) -> tuple:
     num_cos = len(companies)
     edu = _build_education_year(years_exp)
     
-    # Build company list for the prompt
+    # Build company list
     co_lines = "\n".join(
         f'Company {i+1}: "{c["name"]}" (Dates: {c["start"]} - {c["end"]})'
         for i, c in enumerate(companies)
     )
     
-    # Company context - just pass raw data, AI analyzes it
+    # Company context
     company_context_block = ""
     if req.company_context and req.company_name:
         company_context_block = f"""
@@ -362,7 +361,7 @@ TARGET COMPANY CONTEXT:
 Company Name: {req.company_name}
 Company Data: {req.company_context[:1500]}
 
-Read and understand this company data. Use it to make projects relevant to this company.
+Analyze this data to make projects relevant to this company.
 """
     elif req.company_name:
         company_context_block = f"""
@@ -372,12 +371,11 @@ Use your knowledge of this company to create relevant projects.
     else:
         company_context_block = "No target company provided."
     
-    # Profile block - just pass raw data
+    # Profile block
     profile_block = ""
     if req.profile_data:
         profile_name = req.profile_data.get("name", "")
         profile_links = req.profile_data.get("links", [])
-        
         if profile_name:
             profile_block = f"""
 CANDIDATE NAME: {profile_name}
@@ -400,36 +398,40 @@ EDUCATION YEARS: {edu['start']} - {edu['end']}
 
 {profile_block}
 
-========================================
-TITLE FORMAT RULES (NO EXCEPTIONS):
-========================================
+===========================================================================
+TITLE FORMAT - STRICT REQUIREMENT
+===========================================================================
 
-The title MUST contain THREE parts separated by " | ":
+The title MUST be a single line with exactly TWO pipe characters "|" creating THREE parts:
 
-PART 1: POSITION TITLE
+PART 1: POSITION NAME
 - Take the Job Title from above
-- Rephrase it slightly (different wording, same meaning)
-- Keep the seniority level (Senior, Junior, Lead, etc.)
+- Rephrase it to be slightly different but keep the same meaning
+- Keep seniority level (Senior, Junior, Lead, etc.)
+- Make it concise (5-8 words maximum)
 
-PART 2: TECHNICAL STACK
-- Select 3 key technologies from the Job Description
-- Write them as a comma-separated list
-- These must be technologies explicitly mentioned in the JD
+PART 2: THREE MAIN TECHNOLOGIES
+- Read the Job Description carefully
+- Identify the THREE most important/main technologies mentioned
+- These should be the core technologies the role requires
+- Write them as a comma-separated list with NO extra spaces after commas
+- Example format: "Technology1,Technology2,Technology3"
 
 PART 3: EXPERIENCE
 - Write exactly: "{years_display}+"
 
-The FINAL format is: "PART 1 | PART 2 | PART 3"
+FINAL FORMAT:
+"PART 1 | PART 2 | PART 3"
 
-Do NOT add anything else to the title. Do NOT change the order.
-The title must have exactly two pipe characters "|" separating the three parts.
+CRITICAL: 
+- The title must have EXACTLY two pipe characters "|"
+- PART 2 must contain EXACTLY THREE technologies separated by commas
+- Do NOT put spaces after the commas in PART 2
+- Do NOT add any extra text or symbols
 
-Example structure (not the content, just the format):
-"Rephrased Job Title | Technology1, Technology2, Technology3 | 5+"
-
-========================================
-SUMMARY FORMAT RULES:
-========================================
+===========================================================================
+SUMMARY FORMAT
+===========================================================================
 
 The summary MUST start with: "{years_display}+ years of experience in [main domain from JD]..."
 
@@ -437,29 +439,36 @@ Then write 5-6 more sentences (total 6-7 sentences, 120-180 words).
 Each sentence must naturally include different technologies from the JD.
 Do not repeat any technology name twice in the summary.
 
-========================================
-REST OF THE CV:
-========================================
+===========================================================================
+OTHER SECTIONS
+===========================================================================
 
 Generate all other sections based ONLY on the Job Description:
-- competencies: 10 phrases separated by " * "
-- keywords: 18-20 terms from JD
-- technologies: mustHave, niceToHave, additional arrays
-- skills: 5 categories, each with 10-12 technologies from JD
-- companies: roles, bullets (4 each), tech tags (6-8 each)
-- projects: exactly 4 projects with descriptive names
-- relatedTech: 5 categories, 5 items each
 
-========================================
-CRITICAL REMINDERS:
-========================================
+1. competencies: 10 phrases separated by " * "
+2. keywords: 18-20 terms from JD - comma separated
+3. technologies: 
+   - mustHave: technologies explicitly required in JD (10-14 items)
+   - niceToHave: preferred technologies from JD (8-12 items)
+   - additional: related ecosystem technologies (8-10 items)
+4. skills: 5 categories, each with 10-12 technologies from JD
+5. companies: for each company, generate:
+   - role: seniority level + domain + function word
+   - bullets: 4 achievements (20-30 words each)
+   - tech: 6-8 JD technologies separated by |
+6. projects: exactly 4 projects with descriptive names
+7. relatedTech: 5 categories, 5 items each
+
+===========================================================================
+CRITICAL RULES
+===========================================================================
 - EVERY technology must come from the Job Description
 - If the JD doesn't mention it, NEVER include it
-- Do NOT copy any example content - generate fresh content for THIS job
-- Do NOT use "Project 1", "Project 2" as names - be descriptive
-- Each company's tech tags must be unique (no repeating across companies)
-- For Project 3: if company context provided, create an analogous system
-- For Project 4: if company context provided, create an industry innovation
+- Do NOT copy any content from training data - generate fresh for THIS job
+- Do NOT use "Project 1", "Project 2" as names
+- Each company's tech tags must be unique
+- Project 3: if company context provided, create an analogous system
+- Project 4: if company context provided, create an industry innovation
 
 Now generate the CV JSON based ONLY on the job description below.
 """
@@ -469,11 +478,14 @@ JOB DESCRIPTION:
 {jd}
 
 Generate the complete CV now.
-Remember:
-1. Title format: "Rephrased Title | Tech1, Tech2, Tech3 | {years_display}+"
-2. Summary starts with: "{years_display}+ years of experience in..."
-3. ALL technologies from the JD only
-4. NO copying of example content - create unique content for THIS job
+
+REMEMBER THE TITLE FORMAT:
+"Rephrased Position Name | FirstMainTechnology,SecondMainTechnology,ThirdMainTechnology | {years_display}+"
+
+Example of the FORMAT (not the content):
+"Senior Software Engineer | Python,FastAPI,PostgreSQL | 5+"
+
+Now generate your unique title for THIS job description.
 """
 
     return system_prompt, user_prompt
@@ -601,7 +613,7 @@ def sanitise_cv(cv: dict) -> dict:
     return cv
 
 def final_polish(cv: dict, years_exp: str = "") -> dict:
-    """Final polishing - ensures title format is correct"""
+    """Final polishing - aggressively fixes title format"""
     
     # Use the exact years_exp from UI
     if years_exp:
@@ -611,70 +623,95 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
     
     cv["totalYears"] = real_years
     
-    # FIX TITLE FORMAT - ensure it has three parts separated by " | "
+    # FIX TITLE FORMAT - MUST have "Position | Tech1,Tech2,Tech3 | Experience"
     title = cv.get("title", "")
+    years_display = f"{real_years}+" if real_years.isdigit() and "+" not in real_years else real_years
     
     if title:
-        # Count how many pipe separators
+        # Check if title has the correct format
         pipe_count = title.count("|")
         
-        if pipe_count == 0:
-            # No pipes - title is just position, need to add tech stack and experience
-            # Extract some technologies from skills or technologies section
-            techs = []
-            skills = cv.get("skills", [])
-            for s in skills[:3]:
-                if ":" in s:
-                    parts = s.split(":", 1)
-                    if len(parts) > 1:
-                        items = [t.strip() for t in parts[1].split(",")[:3]]
-                        techs.extend(items)
-            if not techs:
-                techs = ["Technology"]
-            tech_stack = ", ".join(techs[:3])
-            years_display = f"{real_years}+" if real_years.isdigit() and "+" not in real_years else real_years
-            cv["title"] = f"{title} | {tech_stack} | {years_display}"
+        if pipe_count < 2:
+            # Title is malformed - reconstruct it
+            # Try to extract position from existing title
+            parts = title.split("|")
+            position = parts[0].strip()
             
-        elif pipe_count == 1:
-            # Only one pipe - missing either tech stack or experience
-            parts = title.split("|")
-            if len(parts) == 2:
-                first = parts[0].strip()
-                second = parts[1].strip()
-                years_display = f"{real_years}+" if real_years.isdigit() and "+" not in real_years else real_years
-                # Check if second part looks like experience (has + or is a number)
-                if "+" in second or second.strip().isdigit():
-                    # Second part is experience, missing tech stack
-                    techs = []
-                    skills = cv.get("skills", [])
-                    for s in skills[:3]:
-                        if ":" in s:
-                            items = [t.strip() for t in s.split(":", 1)[1].split(",")[:3]]
-                            techs.extend(items)
-                    if not techs:
-                        techs = ["Technology"]
-                    tech_stack = ", ".join(techs[:3])
-                    cv["title"] = f"{first} | {tech_stack} | {second}"
-                else:
-                    # Second part is tech stack, missing experience
-                    cv["title"] = f"{first} | {second} | {years_display}"
+            # Extract 3 main technologies from skills or technologies section
+            main_techs = []
+            
+            # First try from technologies.mustHave
+            techs = cv.get("technologies", {})
+            must_have = techs.get("mustHave", [])
+            if must_have and len(must_have) >= 3:
+                main_techs = must_have[:3]
+            
+            # If not enough, try from skills
+            if len(main_techs) < 3:
+                skills = cv.get("skills", [])
+                for skill in skills:
+                    if ":" in skill:
+                        items = skill.split(":", 1)[1].split(",")
+                        for item in items[:2]:
+                            item = item.strip()
+                            if item and len(main_techs) < 3:
+                                main_techs.append(item)
+            
+            # If still not enough, extract from companies tech tags
+            if len(main_techs) < 3:
+                companies = cv.get("companies", [])
+                for co in companies:
+                    tech_str = co.get("tech", "")
+                    if tech_str:
+                        tech_items = [t.strip() for t in tech_str.split("|")[:2]]
+                        for t in tech_items:
+                            if t and len(main_techs) < 3 and t not in main_techs:
+                                main_techs.append(t)
+            
+            # Last resort
+            if len(main_techs) < 3:
+                main_techs = ["Technology1", "Technology2", "Technology3"]
+            
+            # Join with commas (no spaces)
+            tech_stack = ",".join(main_techs[:3])
+            
+            # Rebuild title
+            cv["title"] = f"{position} | {tech_stack} | {years_display}"
         
-        elif pipe_count >= 2:
-            # Already has correct format, just ensure experience at the end
-            parts = title.split("|")
-            if len(parts) >= 3:
-                position = parts[0].strip()
-                tech_stack = parts[1].strip()
-                years_display = f"{real_years}+" if real_years.isdigit() and "+" not in real_years else real_years
-                cv["title"] = f"{position} | {tech_stack} | {years_display}"
+        elif pipe_count == 2:
+            # Has correct number of pipes, check format
+            parts = [p.strip() for p in title.split("|")]
+            
+            # Fix part 2 (technologies) - ensure no spaces after commas
+            if len(parts) >= 2:
+                tech_part = parts[1]
+                # Remove spaces after commas
+                tech_part = re.sub(r',\s+', ',', tech_part)
+                # Ensure exactly 3 technologies
+                tech_list = [t.strip() for t in tech_part.split(",")]
+                if len(tech_list) < 3:
+                    # Need more technologies
+                    skills = cv.get("skills", [])
+                    for skill in skills:
+                        if ":" in skill:
+                            items = skill.split(":", 1)[1].split(",")
+                            for item in items[:2]:
+                                item = item.strip()
+                                if item and len(tech_list) < 3 and item not in tech_list:
+                                    tech_list.append(item)
+                    tech_part = ",".join(tech_list[:3])
+                elif len(tech_list) > 3:
+                    tech_part = ",".join(tech_list[:3])
+                
+                # Fix part 3 (experience)
+                if len(parts) >= 3:
+                    exp_part = years_display
+                    cv["title"] = f"{parts[0]} | {tech_part} | {exp_part}"
     
-    # Update summary to use the same years with + sign
+    # Fix any double ++ in summary
     summary = cv.get("summary", "")
-    if summary and real_years:
-        years_display = f"{real_years}+" if real_years.isdigit() and "+" not in real_years else real_years
-        # Fix any double ++ issue
-        if "++" in summary:
-            summary = summary.replace("++", "+")
+    if summary:
+        summary = summary.replace("++", "+")
         # Update the first occurrence of years
         summary = re.sub(r'^\d+\+?\s*years?', f"{years_display} years", summary, flags=re.IGNORECASE)
         summary = re.sub(r'\b\d+\+?\s*years?\b', f"{years_display} years", summary, count=1, flags=re.IGNORECASE)
