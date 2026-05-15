@@ -2045,15 +2045,15 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
                 if not dr and i < len(STATIC_CANDIDATE["dates"]):
                     dr = STATIC_CANDIDATE["dates"][i]
                 cn = _safe(c.get("company", ""))
-                if not cn and i < len(STATIC_CANDIDATE["companies"]):
-                    cn = STATIC_CANDIDATE["companies"][i]
+                if not cn and i < len(CANDIDATE_COMPANIES):
+                    cn = CANDIDATE_COMPANIES[i]["name"]
                 _render_exp_entry(cn, _safe(c.get("role", "")), dr,
                                   c.get("bullets") or [],
                                   _safe(c.get("tech") or c.get("technologies") or ""))
 
     # -- TECHNICAL SKILLS --
     skills_raw = cv.get("skills") or []
-    skills = _sanitize_skills(skills_raw, cv)   # enforce 5 buckets, dedup, re-sort
+    skills = _sanitize_skills_list(skills_raw)   # clean up items, keep AI category names
     if skills:
         story.append(Paragraph("TECHNICAL SKILLS", S["sec_title"]))
 
