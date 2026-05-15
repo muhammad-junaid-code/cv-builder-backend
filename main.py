@@ -746,150 +746,7 @@ def _normalize_job_title(title: str) -> str:
     return " ".join(seen)
 
 
-# -- Thin-JD detection & enrichment --------------------------------------------
-_REAL_TECH_WORDS = {
-    "net", "asp", "angular", "react", "vue", "node", "python", "java", "php",
-    "ruby", "swift", "kotlin", "go", "rust", "typescript", "javascript",
-    "sql", "mysql", "postgres", "mongodb", "redis", "docker", "kubernetes",
-    "azure", "aws", "gcp", "linux", "django", "laravel", "spring", "flask",
-    "flutter", "android", "ios", "terraform", "jenkins", "git", "graphql",
-    "elasticsearch", "kafka", "rabbitmq", "nginx", "apache", "webpack",
-    "tailwind", "bootstrap", "jquery", "scss", "sass", "rest", "api",
-    "oauth", "jwt", "openapi", "swagger", "c#", "f#", "c++", "scala",
-    "perl", "bash", "powershell", "excel", "powerbi", "tableau",
-}
 
-def _jd_is_thin(jd: str, min_tech_words: int = 3) -> bool:
-    """
-    Returns True if the JD contains fewer than `min_tech_words` real technology names.
-    A 'thin' JD is one that describes requirements in plain English without naming
-    actual tools (e.g. "Good understanding of REST APIs, SQL, and Web Development").
-    """
-    words = re.findall(r"[a-zA-Z0-9#\.\+]+", jd.lower())
-    found = sum(1 for w in words if w in _REAL_TECH_WORDS)
-    return found < min_tech_words
-
-
-# Domain-based technology expansion: maps role keywords -> concrete tech stacks
-_DOMAIN_TECH_STACKS: dict = {
-    "dotnet": (
-        "ASP.NET Core, C#, .NET 8, Entity Framework Core, LINQ, Dapper, "
-        "REST APIs, SignalR, MediatR, AutoMapper, Swagger/OpenAPI, "
-        "SQL Server, PostgreSQL, Redis, Azure App Service, Azure DevOps, "
-        "Docker, GitHub Actions, xUnit, NUnit, MSTest, SonarQube, "
-        "Angular, TypeScript, RxJS, NuGet"
-    ),
-    "angular": (
-        "Angular 17, TypeScript, RxJS, NgRx, Angular Material, "
-        "HTML5, CSS3, SCSS, Tailwind CSS, Webpack, Vite, Jest, Cypress, "
-        "REST APIs, HTTP Client, OAuth 2.0, JWT, "
-        "npm, ESLint, Prettier, Git, GitHub, Jasmine, Karma"
-    ),
-    "react": (
-        "React 18, TypeScript, Redux Toolkit, React Query, Next.js, "
-        "HTML5, CSS3, Tailwind CSS, SCSS, Webpack, Vite, Jest, Cypress, "
-        "REST APIs, GraphQL, Apollo Client, OAuth 2.0, JWT, "
-        "Node.js, ESLint, Prettier, Git, GitHub"
-    ),
-    "node": (
-        "Node.js, Express.js, TypeScript, NestJS, REST APIs, GraphQL, "
-        "JWT, OAuth 2.0, Redis, PostgreSQL, MongoDB, Mongoose, Prisma, "
-        "Docker, AWS Lambda, GitHub Actions, Jest, Mocha, Supertest, "
-        "npm, ESLint, Swagger, Socket.IO"
-    ),
-    "python": (
-        "Python 3.x, Django, FastAPI, Flask, SQLAlchemy, Alembic, "
-        "PostgreSQL, MySQL, MongoDB, Redis, Celery, RabbitMQ, "
-        "Docker, AWS Lambda, GitHub Actions, Pytest, Unittest, "
-        "Pandas, NumPy, Pydantic, pip, Mypy, Flake8, Black"
-    ),
-    "java": (
-        "Java 17, Spring Boot, Spring MVC, Hibernate, JPA, Maven, Gradle, "
-        "PostgreSQL, MySQL, MongoDB, Redis, Kafka, RabbitMQ, "
-        "Docker, Kubernetes, AWS, GitHub Actions, JUnit, Mockito, "
-        "REST APIs, GraphQL, JWT, OAuth 2.0, Lombok"
-    ),
-    "php": (
-        "PHP 8.x, Laravel, Symfony, Composer, Eloquent ORM, Blade, "
-        "MySQL, PostgreSQL, Redis, Queue Workers, REST APIs, "
-        "Docker, DigitalOcean, Forge, Envoyer, PHPUnit, Pest, "
-        "HTML, CSS, JavaScript, Vue.js, Tailwind CSS, Git"
-    ),
-    "fullstack": (
-        "React, Angular, TypeScript, Node.js, Express.js, REST APIs, "
-        "PostgreSQL, MySQL, MongoDB, Redis, "
-        "Docker, AWS, GitHub Actions, Jest, Cypress, Git, "
-        "HTML5, CSS3, Tailwind CSS, JWT, OAuth 2.0"
-    ),
-    "devops": (
-        "Docker, Kubernetes, Helm, Terraform, Ansible, "
-        "AWS EC2, S3, Lambda, ECS, RDS, CloudWatch, "
-        "GitHub Actions, Jenkins, ArgoCD, GitLab CI, "
-        "Prometheus, Grafana, Datadog, PagerDuty, "
-        "Linux, Bash, Python, Nginx, Vault"
-    ),
-    "data": (
-        "Python, Pandas, NumPy, PySpark, Apache Airflow, dbt, "
-        "PostgreSQL, MySQL, BigQuery, Snowflake, Redshift, "
-        "AWS S3, Glue, Athena, GCP Pub/Sub, Dataflow, "
-        "Kafka, Elasticsearch, Tableau, Power BI, Great Expectations, "
-        "GitHub Actions, Docker, Jupyter"
-    ),
-}
-
-
-def _enrich_thin_jd(job_title: str, jd: str) -> str:
-    """
-    When a JD contains fewer than 3 real tech names, expand it by appending
-    a concrete technology context block derived from the job title's domain.
-    This prevents the AI from treating plain English adjectives ('Good', 'Hands',
-    'Ability', 'Web') as skill tags.
-    """
-    title_lower = job_title.lower()
-
-    # Pick the best matching domain from job title keywords
-    if ".net" in title_lower or "c#" in title_lower or "asp" in title_lower:
-        domain_key = "dotnet"
-    elif "angular" in title_lower:
-        domain_key = "angular"
-    elif "react" in title_lower:
-        domain_key = "react"
-    elif "node" in title_lower or "express" in title_lower:
-        domain_key = "node"
-    elif "python" in title_lower or "django" in title_lower or "flask" in title_lower:
-        domain_key = "python"
-    elif "java" in title_lower and "javascript" not in title_lower:
-        domain_key = "java"
-    elif "php" in title_lower or "laravel" in title_lower:
-        domain_key = "php"
-    elif "devops" in title_lower or "sre" in title_lower or "platform engineer" in title_lower:
-        domain_key = "devops"
-    elif "data engineer" in title_lower or "data analyst" in title_lower:
-        domain_key = "data"
-    elif "full" in title_lower and "stack" in title_lower:
-        domain_key = "fullstack"
-    else:
-        # Generic fallback: try to detect from JD content
-        if "angular" in jd.lower():
-            domain_key = "angular"
-        elif "react" in jd.lower():
-            domain_key = "react"
-        elif ".net" in jd.lower() or "c#" in jd.lower():
-            domain_key = "dotnet"
-        elif "node" in jd.lower():
-            domain_key = "node"
-        else:
-            domain_key = "fullstack"
-
-    tech_block = _DOMAIN_TECH_STACKS.get(domain_key, _DOMAIN_TECH_STACKS["fullstack"])
-
-    enriched = (
-        jd.strip() +
-        "\n\n[TECHNOLOGY CONTEXT - derived from role domain. "
-        "Use ONLY these as skill/tech items; ignore plain English adjectives from above]\n" +
-        tech_block
-    )
-    return enriched
 
 
 # -- Prompt builder -------------------------------------------------------------
@@ -904,11 +761,7 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
     # -- CRITICAL: Normalize job title - remove duplicate words --------------
     req = req.copy(update={"job_title": _normalize_job_title(req.job_title.strip())})
 
-    _raw_jd = req.job_description.strip()
-    # -- Thin-JD enrichment: if JD has <3 real tech words, expand from domain --
-    if _jd_is_thin(_raw_jd):
-        _raw_jd = _enrich_thin_jd(req.job_title, _raw_jd)
-    jd          = _raw_jd[:jd_chars]
+    jd          = req.job_description.strip()[:jd_chars]
     #profile     = (req.profile.strip()[:150] if req.profile else "Full-stack developer, 3+ years")
     years_exp   = (req.years_exp or "").strip()
     total_years = _calc_total_years(years_exp)   # dynamic - uses frontend input if given
@@ -1059,7 +912,9 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "  'Setup', 'Mindset', 'Remote', 'Problem-solving' are DESCRIPTION WORDS, NOT technologies.\n"
         "  NEVER extract plain English adjectives, nouns, or adverbs as technology names.\n"
         "  ONLY extract real named software tools, frameworks, languages, libraries, platforms, or services.\n"
-        "  If a TECHNOLOGY CONTEXT block is appended below the JD, use THOSE named tools for skill extraction.\n"
+        "  If the JD uses plain English without naming specific tools, infer the most appropriate\n"
+        "  technology stack purely from the job title and the role domain described.\n"
+        "  Do NOT use any predefined stacks. Generate skills from context alone.\n"
         "ABSOLUTE RULE: Every technology written ANYWHERE in the output MUST come from CORE, PREFERRED, or ECOSYSTEM.\n"
         "ABSOLUTE RULE: Technologies NOT extracted from the JD are BANNED - do not add technologies from your training data.\n"
         "ABSOLUTE RULE: The output changes completely for every different JD - nothing is hardcoded.\n"
@@ -1103,24 +958,14 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "  - Technology mentioned in a bullet must be traceable to that company's tech tag list.\n\n"
 
         "=== STEP 1.5: CLOUD & HOSTING INFERENCE (mandatory - execute right after STEP 1) ===\n"
-        "After extracting JD technologies, determine the most relevant cloud/hosting platform for this specific role.\n"
-        "INFERENCE RULES - derive entirely from the JD and job title, nothing hardcoded:\n"
-        "  - JD mentions .NET, C#, Azure DevOps, Active Directory, or any Microsoft stack\n"
-        "    -> infer Azure: Azure App Service, Azure Functions, Azure SQL Database, Azure Blob Storage,\n"
-        "      Azure DevOps, Azure AD, Azure Key Vault, Azure Monitor, Azure Container Registry\n"
-        "  - JD mentions Python, TensorFlow, PyTorch, BigQuery, Dataflow, or data engineering\n"
-        "    -> infer GCP: Cloud Run, GKE, Cloud Storage, BigQuery, Pub/Sub, Cloud Build, Vertex AI,\n"
-        "      Cloud Composer, Artifact Registry, Cloud IAM\n"
-        "  - JD mentions Node.js, Java, Go, Terraform, or generic backend/DevOps with no specific cloud\n"
-        "    -> infer AWS: EC2, S3, Lambda, RDS, ECS/EKS, CloudFront, IAM, CloudWatch, CodePipeline, ECR\n"
-        "  - JD mentions PHP, Laravel, WordPress, or shared-hosting stack\n"
-        "    -> infer: DigitalOcean Droplets, AWS Lightsail, cPanel, Nginx, Apache, Forge, Envoyer\n"
-        "  - JD mentions React Native, Flutter, Ionic, or mobile/cross-platform\n"
-        "    -> infer: Firebase Hosting, Firebase Cloud Messaging, App Engine, Fastlane, TestFlight, Play Console\n"
-        "  - JD explicitly names one or more cloud providers -> those providers are CORE; include their key services\n"
+        "After extracting JD technologies, determine the most relevant cloud/hosting platform for this role.\n"
+        "CLOUD RULE: If the JD names a cloud provider, include only the specific services mentioned\n"
+        "or directly implied by the role context. If no cloud is mentioned but the role is\n"
+        "cloud-adjacent, infer the most commonly used provider for that stack based on the JD alone.\n"
+        "Do not inject cloud services that are not implied by the JD.\n"
+        "If the role is non-technical or cloud is not relevant, omit cloud entirely.\n"
         "  - JD names multiple providers -> include ALL of them; merge into one 'Cloud & Hosting' category\n"
         "  - NEVER default to a fixed provider - always derive from the actual JD content\n"
-        "  - NEVER omit cloud/hosting - every modern software role has a deployment environment\n"
         "MANDATORY PLACEMENT of inferred cloud services:\n"
         "  1. One dedicated skill category named after the platform (e.g. 'Azure Cloud Services',\n"
         "     'AWS Infrastructure', 'GCP & Cloud DevOps') - never use a generic label like 'Cloud Tools'\n"
@@ -1160,41 +1005,13 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "            A companion of a .NET tool must itself be a .NET ecosystem tool.\n"
         "            A companion of an Angular tool must itself be an Angular ecosystem tool.\n"
         "            Cross-ecosystem companions are BANNED.\n\n"
-        "COMPANION LOOKUP TABLE (use ONLY these mappings — do not invent companions):\n"
-        "  C# / ASP.NET Core  → Entity Framework Core, LINQ, Dapper, MediatR, AutoMapper,\n"
-        "                        Swagger/OpenAPI, SignalR, xUnit, NUnit, Moq, Serilog, NuGet\n"
-        "  .NET / .NET 8      → ASP.NET Core, C#, MSTest, FluentValidation, Polly, Hangfire\n"
-        "  SQL Server         → SSMS, T-SQL, SQL Server Agent, Always On, Reporting Services\n"
-        "  Azure              → Azure App Service, Azure Functions, Azure SQL Database,\n"
-        "                        Azure Blob Storage, Azure Service Bus, Azure DevOps,\n"
-        "                        Azure AD, Azure Key Vault, Azure Monitor, Azure Container Registry,\n"
-        "                        Azure Cache for Redis, Azure CDN\n"
-        "  Angular            → TypeScript, RxJS, NgRx, Angular Material, Angular CLI,\n"
-        "                        Jasmine, Karma, Protractor, Angular Universal\n"
-        "  React              → TypeScript, Redux Toolkit, React Query, React Router,\n"
-        "                        Next.js, Vite, Jest, React Testing Library, Storybook\n"
-        "  Node.js            → Express.js, NestJS, TypeScript, npm, Mongoose, Prisma,\n"
-        "                        Socket.IO, Supertest, Mocha, Chai, PM2\n"
-        "  Vue.js             → Vuex, Pinia, Vue Router, Nuxt.js, Vite, Vitest, Quasar\n"
-        "  Spring Boot        → Spring MVC, Spring Security, Spring Data JPA, Hibernate,\n"
-        "                        Maven, Gradle, Lombok, JUnit 5, Mockito\n"
-        "  Django / FastAPI   → SQLAlchemy, Alembic, Pydantic, Celery, Pytest, uWSGI, Gunicorn\n"
-        "  Laravel            → Eloquent ORM, Blade, Artisan, PHPUnit, Pest, Composer, Forge\n"
-        "  Docker             → Docker Compose, Docker Hub, Dockerfile, container networking\n"
-        "  Kubernetes         → Helm, kubectl, ArgoCD, Kustomize, Prometheus, Grafana\n"
-        "  PostgreSQL         → pgAdmin, pg_dump, PostGIS, connection poolers (PgBouncer)\n"
-        "  MySQL              → MySQL Workbench, mysqldump, InnoDB, MySQL Replication\n"
-        "  MongoDB            → Mongoose, MongoDB Atlas, mongodump, aggregation pipelines\n"
-        "  Redis              → Redis Sentinel, Redis Cluster, Pub/Sub, RedisInsight\n"
-        "  AWS                → EC2, S3, Lambda, RDS, ECS, EKS, CloudFront, IAM,\n"
-        "                        CloudWatch, CodePipeline, ECR, Secrets Manager\n"
-        "  GCP                → Cloud Run, GKE, Cloud Storage, BigQuery, Pub/Sub,\n"
-        "                        Cloud Build, Vertex AI, Cloud IAM, Artifact Registry\n"
-        "  GitHub / Git       → GitHub Actions, GitHub Pull Requests, Git branching\n"
-        "  Jenkins            → Jenkins Pipeline, Jenkinsfile, Jenkins plugins\n"
-        "  Terraform          → Terraform Cloud, Terraform modules, HCL, remote state\n"
-        "CRITICAL: This table is EXHAUSTIVE for cross-references. If a companion is NOT in this table,\n"
-        "do NOT add it. Particularly:\n"
+        "COMPANION RULE: For every named technology found in the JD, infer its standard ecosystem\n"
+        "companions (ORMs, test frameworks, build tools, auth libraries, state managers, etc.) from\n"
+        "your knowledge of that technology's official ecosystem. Do NOT use a predefined list.\n"
+        "Only add companions that are strongly associated with the specific version or variant\n"
+        "mentioned in the JD. Cross-ecosystem companions are BANNED.\n"
+        "CRITICAL: This companion rule is EXHAUSTIVE. If a companion is not strongly associated\n"
+        "with the source technology's ecosystem, do NOT add it. Particularly:\n"
         "  .NET / C# role → NEVER add React, Vue.js, Next.js, Node.js, Express.js, Django,\n"
         "                    Flask, MongoDB, RabbitMQ, gRPC as companions. They are NOT .NET companions.\n"
         "  Angular role   → NEVER add React, Vue.js, Next.js, Redux as companions.\n"
@@ -1266,7 +1083,7 @@ def build_prompt(req: CVRequest, jd_chars: int = 1600) -> tuple:
         "Fill each selected bucket with at least 10 technologies.\n"
         "All items MUST be from the WHITELIST built in Sub-Step 2.2.\n"
         "If a bucket has fewer than 10 whitelist items, expand using ONLY companions from the\n"
-        "COMPANION LOOKUP TABLE in Sub-Step 2.2 that belong to that specific bucket's domain.\n"
+        "COMPANION RULE in Sub-Step 2.2 that belong to that specific bucket's domain.\n"
         "DEDUPLICATION: Maintain a global 'used' set. Once a technology is placed in a bucket,\n"
         "add it to 'used'. Any technology already in 'used' CANNOT be placed in any other bucket.\n\n"
 
