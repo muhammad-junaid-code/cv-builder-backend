@@ -365,6 +365,33 @@ async def key_stats(): return {"session_usage":_key_usage,"explanation":"Round-r
 @app.get("/debug-log")
 async def debug_log(): return {"last_generations":_debug_log}
 
+@app.get("/test-cerebras")
+async def test_cerebras(key: str = "", model: str = "llama3.1-8b"):
+    """Quick diagnostic — visit: /test-cerebras?key=csk-YOUR_KEY&model=llama3.1-8b"""
+    if not key:
+        return {"error": "Pass ?key=csk-... to test",
+                "usage": "/test-cerebras?key=csk-YOUR_KEY&model=llama3.1-8b"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(CEREBRAS_URL,
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": model, "messages": [{"role": "user", "content": "Say OK"}], "max_tokens": 5})
+            if r.status_code == 200:
+                data = r.json()
+                text = data.get("choices",[{}])[0].get("message",{}).get("content","")
+                return {"status": "ok", "model": model, "response": text,
+                        "message": "Key and model are working correctly!"}
+            else:
+                try:    body = r.json()
+                except: body = {"raw": r.text[:300]}
+                return {"status": f"HTTP {r.status_code}", "body": body,
+                        "fix": ("429 = rate limited" if r.status_code==429
+                                else "401/403 = invalid key" if r.status_code in(401,403)
+                                else f"400 = bad request (wrong model name?). Try model=llama3.1-8b" if r.status_code==400
+                                else f"Unexpected {r.status_code}")}
+    except Exception as e:
+        return {"status": "error", "error": f"{type(e).__name__}: {e}"}
+
 _key_usage:   dict = {}
 _debug_log:   list = []
 
@@ -708,6 +735,7 @@ def sanitise_cv(cv: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 async def call_llm_atomic(client, key, model, url, system, user,
                            stage, headers, max_tokens=1200, _deadline=0.0) -> dict:
+    """Universal atomic LLM call — handles OpenAI-compat and Gemini formats."""
     import time as _t
     per_call_timeout = 60
 
@@ -720,41 +748,93 @@ async def call_llm_atomic(client, key, model, url, system, user,
         if remaining < per_call_timeout + 10:
             per_call_timeout = max(15, int(remaining) - 5)
 
+    is_gemini = "generativelanguage.googleapis.com" in url
+
     for attempt in range(2):
         try:
-            r = await client.post(url, headers=headers,
-                json={"model":model,"messages":[{"role":"system","content":system},
-                      {"role":"user","content":user}],"temperature":0.2,"max_tokens":max_tokens},
-                timeout=per_call_timeout)
+            if is_gemini:
+                # Gemini uses a different request/response format
+                combined_prompt = f"SYSTEM INSTRUCTIONS:\n{system}\n\nUSER REQUEST:\n{user}"
+                payload = {
+                    "contents": [{"parts": [{"text": combined_prompt}]}],
+                    "generationConfig": {
+                        "temperature": 0.2,
+                        "maxOutputTokens": max_tokens,
+                        "responseMimeType": "application/json",
+                    }
+                }
+                r = await client.post(url, headers=headers, json=payload, timeout=per_call_timeout)
+            else:
+                # OpenAI-compatible (Groq, Cerebras, DeepSeek, OpenAI, Ollama)
+                r = await client.post(url, headers=headers,
+                    json={"model": model,
+                          "messages": [{"role": "system", "content": system},
+                                       {"role": "user",   "content": user}],
+                          "temperature": 0.2,
+                          "max_tokens":  max_tokens},
+                    timeout=per_call_timeout)
         except httpx.TimeoutException:
             raise ValueError(f"{stage} timed out after {per_call_timeout}s")
         except Exception as e:
-            raise ValueError(f"{stage} failed: {e}")
+            raise ValueError(f"{stage} connection error: {e}")
 
         if r.status_code == 200:
-            raw = r.json()["choices"][0]["message"]["content"].strip()
-            raw = re.sub(r'```json\s*','',raw); raw = re.sub(r'```\s*$','',raw)
-            start = raw.find('{'); end = raw.rfind('}')
-            if start != -1 and end != -1: raw = raw[start:end+1]
-            raw = re.sub(r',\s*}','}',raw); raw = re.sub(r',\s*]',']',raw)
-            try: return json.loads(raw)
-            except:
-                print(f"JSON parse error in {stage}: {raw[:300]}")
+            try:
+                rj = r.json()
+                if is_gemini:
+                    raw = rj["candidates"][0]["content"]["parts"][0]["text"]
+                else:
+                    raw = rj["choices"][0]["message"]["content"]
+            except (KeyError, IndexError) as e:
+                print(f"[{stage}] Response parse error: {e} — body: {r.text[:300]}")
                 return {}
+
+            raw = raw.strip()
+            raw = re.sub(r'```json\s*', '', raw)
+            raw = re.sub(r'```\s*$',   '', raw)
+            # Strip <think>…</think> blocks (DeepSeek R1)
+            raw = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
+            start = raw.find('{'); end = raw.rfind('}')
+            if start != -1 and end != -1:
+                raw = raw[start:end+1]
+            raw = re.sub(r',\s*}', '}', raw)
+            raw = re.sub(r',\s*]', ']', raw)
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError as e:
+                print(f"[{stage}] JSON decode error: {e} — raw[:300]: {raw[:300]}")
+                return {}
+
         elif r.status_code == 429:
-            wait = int(r.headers.get("retry-after", r.headers.get("Retry-After", 30)))
+            # Parse retry-after
+            wait = 30
+            try:
+                wait = int(r.headers.get("retry-after") or r.headers.get("Retry-After") or 30)
+            except: pass
             if _deadline:
                 wait = min(wait, max(0, int(_deadline - _t.time()) - 20), 30)
             else:
                 wait = min(wait, 30)
             if attempt == 0 and wait > 0:
-                await asyncio.sleep(wait); continue
-            raise ValueError(f"Rate limited on {stage}")
+                await asyncio.sleep(wait)
+                continue
+            raise ValueError(f"Rate limited on {stage} (retry-after={wait}s)")
+
         elif r.status_code in (401, 403):
-            raise ValueError(f"Invalid key on {stage}")
+            raise ValueError(f"Invalid key on {stage} (HTTP {r.status_code})")
+
+        elif r.status_code == 400:
+            # Bad request — log body for diagnosis
+            try:    body = r.json()
+            except: body = {"raw": r.text[:300]}
+            raise ValueError(f"HTTP 400 on {stage} — {body.get('error', {}).get('message', str(body))[:200]}")
+
         else:
-            raise ValueError(f"HTTP {r.status_code} on {stage}")
-    raise ValueError(f"Rate limited on {stage}")
+            try:    body = r.json()
+            except: body = {}
+            raise ValueError(f"HTTP {r.status_code} on {stage} — {str(body)[:200]}")
+
+    raise ValueError(f"Exhausted retries on {stage}")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PIPE A: ITEM EXTRACTION
@@ -1301,19 +1381,24 @@ def _prioritised_keys(keys: list) -> list:
 # ─────────────────────────────────────────────────────────────────────────────
 async def generate_cv_atomic(req: CVRequest, client, key: str, model: str,
                               url: str, headers: dict) -> dict:
-    import asyncio as _asyncio
     import time as _t
 
-    _deadline = _t.time() + 270
-    jd = req.job_description.strip()[:1800]
+    _deadline  = _t.time() + 270
+    _is_gemini = "generativelanguage.googleapis.com" in url
+    jd         = req.job_description.strip()[:1800]
+
+    # Conservative token budgets that work across all providers/models
+    _CV_MAX_TOKENS     = 3000
+    _SKILLS_MAX_TOKENS = 1800
 
     # ── Pipe A: Extract named items from JD ──────────────────────────────────
     sys_a, usr_a = build_pipe_a_extract(req)
     try:
         result_a = await call_llm_atomic(client, key, model, url, sys_a, usr_a,
-                                          "PipeA-Extract", headers, max_tokens=1000, _deadline=_deadline)
+                                          "PipeA-Extract", headers,
+                                          max_tokens=900, _deadline=_deadline)
     except Exception as e:
-        print(f"[PIPE-A] Failed ({e}) — using empty extraction")
+        print(f"[PIPE-A] Failed ({e}) — proceeding with empty extraction")
         result_a = {}
 
     print(f"[PIPE-A] role_type={result_a.get('role_type','?')} domain={result_a.get('field_domain','?')}")
@@ -1324,7 +1409,8 @@ async def generate_cv_atomic(req: CVRequest, client, key: str, model: str,
         sys_b, usr_b = build_pipe_b_validate(result_a, req.job_title, jd)
         try:
             result_b = await call_llm_atomic(client, key, model, url, sys_b, usr_b,
-                                              "PipeB-Validate", headers, max_tokens=800, _deadline=_deadline)
+                                              "PipeB-Validate", headers,
+                                              max_tokens=700, _deadline=_deadline)
         except Exception as e:
             print(f"[PIPE-B] Failed ({e}) — using Pipe A results directly")
             result_b = {
@@ -1333,84 +1419,94 @@ async def generate_cv_atomic(req: CVRequest, client, key: str, model: str,
                 "validated_ecosystem": result_a.get("companion_items", []),
             }
     else:
-        result_b = {
-            "validated_core":      [],
-            "validated_preferred": [],
-            "validated_ecosystem": [],
-        }
+        print("[PIPE-B] Skipped — Pipe A returned no items")
+        result_b = {"validated_core": [], "validated_preferred": [], "validated_ecosystem": []}
 
-    # Merge role metadata from Pipe A into validated dict
     validated = {
         **result_b,
         "role_type":    result_a.get("role_type", ""),
         "field_domain": result_a.get("field_domain", ""),
     }
-    print(f"[PIPE-B] core={len(validated.get('validated_core',[]))} preferred={len(validated.get('validated_preferred',[]))} eco={len(validated.get('validated_ecosystem',[]))}")
+    print(f"[PIPE-B] core={len(validated.get('validated_core',[]))} "
+          f"preferred={len(validated.get('validated_preferred',[]))} "
+          f"eco={len(validated.get('validated_ecosystem',[]))}")
 
     # ── Main CV generation ────────────────────────────────────────────────────
-    sys_cv, usr_cv = build_cv_prompt(req, validated)
+    # Adapt JD length to model context: small models (llama3.1-8b etc.) have 8k context;
+    # the system prompt alone is ~4k tokens, so limit JD to 1200 chars for safety.
+    _large_context_models = {"llama-3.3", "llama3.3", "70b", "mixtral", "gpt-4", "gemini",
+                              "deepseek", "qwen", "claude", "gpt-3.5-turbo-16k"}
+    _model_lower = (model or "").lower()
+    _jd_chars = 1600 if any(k in _model_lower for k in _large_context_models) else 1000
+    sys_cv, usr_cv = build_cv_prompt(req, validated, jd_chars=_jd_chars)
     try:
         result_cv = await call_llm_atomic(client, key, model, url, sys_cv, usr_cv,
-                                           "CV-Main", headers, max_tokens=4000, _deadline=_deadline)
+                                           "CV-Main", headers,
+                                           max_tokens=_CV_MAX_TOKENS, _deadline=_deadline)
     except Exception as e:
         raise ValueError(f"CV generation failed: {e}")
 
+    if not result_cv:
+        raise ValueError("CV generation returned empty response")
+
     cv = sanitise_cv(result_cv)
-    cv["_techs"]    = validated
-    cv["_jd_text"]  = jd[:500]
+    cv["_techs"]   = validated
+    cv["_jd_text"] = jd[:500]
 
     # ── Skills dedicated pass ─────────────────────────────────────────────────
     print(f"\n{'='*60}\n[SKILLS-PASS] Starting dedicated skills extraction")
     sys_sk, usr_sk = build_skills_pass(req, cv, validated)
-    _skills_timeout = 60.0
-    if _deadline:
-        remaining = _deadline - _t.time()
-        if remaining > 15:
-            _skills_timeout = min(_skills_timeout, remaining - 5)
-        else:
-            print(f"[SKILLS-PASS] Skipping — only {remaining:.0f}s left")
-            goto_post = True
-    else:
-        goto_post = False
 
-    if not goto_post:
+    remaining = _deadline - _t.time()
+    if remaining < 20:
+        print(f"[SKILLS-PASS] Skipping — only {remaining:.0f}s left on deadline")
+    else:
         try:
-            if url == GEMINI_URL.split("/models")[0] + "/models":
-                # Gemini path
+            if _is_gemini:
+                combined = f"SYSTEM INSTRUCTIONS:\n{sys_sk}\n\nUSER REQUEST:\n{usr_sk}"
                 r_sk = await client.post(url, headers=headers,
-                    json={"contents":[{"parts":[{"text":sys_sk+"\n\n"+usr_sk}]}],
-                          "generationConfig":{"temperature":0.1,"maxOutputTokens":1800,"responseMimeType":"application/json"}},
-                    timeout=_skills_timeout)
-                if r_sk.status_code == 200:
-                    rj = r_sk.json()
-                    raw_sk = rj["candidates"][0]["content"]["parts"][0]["text"]
-                else:
-                    raw_sk = None
+                    json={"contents": [{"parts": [{"text": combined}]}],
+                          "generationConfig": {"temperature": 0.1,
+                                               "maxOutputTokens": _SKILLS_MAX_TOKENS,
+                                               "responseMimeType": "application/json"}},
+                    timeout=60)
+                raw_sk = (r_sk.json()["candidates"][0]["content"]["parts"][0]["text"]
+                          if r_sk.status_code == 200 else None)
+                if r_sk.status_code != 200:
+                    print(f"[SKILLS-PASS] Gemini HTTP {r_sk.status_code}: {r_sk.text[:200]}")
             else:
                 r_sk = await client.post(url, headers=headers,
-                    json={"model":model,"messages":[{"role":"system","content":sys_sk},
-                          {"role":"user","content":usr_sk}],"temperature":0.1,"max_tokens":1800},
-                    timeout=_skills_timeout)
-                if r_sk.status_code == 200:
-                    raw_sk = r_sk.json()["choices"][0]["message"]["content"]
-                else:
-                    raw_sk = None
+                    json={"model": model,
+                          "messages": [{"role": "system", "content": sys_sk},
+                                       {"role": "user",   "content": usr_sk}],
+                          "temperature": 0.1, "max_tokens": _SKILLS_MAX_TOKENS},
+                    timeout=60)
+                raw_sk = (r_sk.json()["choices"][0]["message"]["content"]
+                          if r_sk.status_code == 200 else None)
+                if r_sk.status_code != 200:
+                    try:    err_body = r_sk.json()
+                    except: err_body = {"raw": r_sk.text[:200]}
+                    print(f"[SKILLS-PASS] HTTP {r_sk.status_code}: {err_body}")
 
             if raw_sk:
-                raw_sk = re.sub(r'```json\s*','',raw_sk.strip())
-                raw_sk = re.sub(r'```\s*$','',raw_sk)
-                start = raw_sk.find('{'); end = raw_sk.rfind('}')
-                if start != -1 and end != -1:
-                    parsed_sk = json.loads(raw_sk[start:end+1].replace(',}','}').replace(',]',']'))
-                    new_skills = parsed_sk.get("skills",[])
-                    valid_sk = [s for s in new_skills if isinstance(s,str) and ':' in s]
+                raw_sk = re.sub(r'```json\s*', '', raw_sk.strip())
+                raw_sk = re.sub(r'```\s*$', '', raw_sk)
+                raw_sk = re.sub(r'<think>.*?</think>', '', raw_sk, flags=re.DOTALL).strip()
+                s = raw_sk.find('{'); e2 = raw_sk.rfind('}')
+                if s != -1 and e2 != -1:
+                    parsed_sk = json.loads(raw_sk[s:e2+1].replace(',}','}').replace(',]',']'))
+                    new_skills = parsed_sk.get("skills", [])
+                    valid_sk   = [x for x in new_skills if isinstance(x, str) and ':' in x]
                     if len(valid_sk) >= 3:
-                        print(f"[SKILLS-PASS] Got {len(valid_sk)} categories")
+                        print(f"[SKILLS-PASS] Got {len(valid_sk)} categories — replacing CV skills")
                         cv["skills"] = valid_sk
                     else:
-                        print(f"[SKILLS-PASS] Too few categories ({len(valid_sk)}) — keeping CV skills")
+                        print(f"[SKILLS-PASS] Only {len(valid_sk)} valid categories — keeping CV skills")
+            else:
+                print("[SKILLS-PASS] No usable response — keeping CV skills")
+
         except Exception as e:
-            print(f"[SKILLS-PASS] Failed ({e}) — keeping CV skills")
+            print(f"[SKILLS-PASS] Failed ({type(e).__name__}: {e}) — keeping CV skills")
 
     print(f"{'='*60}\n")
 
@@ -1418,25 +1514,25 @@ async def generate_cv_atomic(req: CVRequest, client, key: str, model: str,
     years_exp = (req.years_exp or "").strip()
     cv = post_process_cv(cv, validated, years_exp)
 
-    # Inject profile dates/companies
+    # Inject profile company dates
     _profile_work = []
     if req.profile_data and isinstance(req.profile_data, dict):
         _profile_work = req.profile_data.get("work") or []
 
     if _profile_work and cv.get("companies"):
-        cos = _build_dynamic_companies(years_exp, num_companies=min(len(_profile_work),3))
+        cos = _build_dynamic_companies(years_exp, num_companies=min(len(_profile_work), 3))
         for i, co in enumerate(cv["companies"]):
             if i < len(_profile_work):
-                pw = _profile_work[i]
+                pw  = _profile_work[i]
                 frm = str(pw.get("from","") or "").strip()
                 to  = str(pw.get("to","")   or "").strip()
-                ds  = frm if frm else (cos[i]["start"] if i<len(cos) else "")
-                de  = to  if to  else ("Present" if i==0 else (cos[i]["end"] if i<len(cos) else ""))
+                ds  = frm if frm else (cos[i]["start"] if i < len(cos) else "")
+                de  = to  if to  else ("Present" if i == 0 else (cos[i]["end"] if i < len(cos) else ""))
                 co["dateRange"] = f"{ds} – {de}"
                 if pw.get("company"): co["company"] = pw["company"]
     else:
         dcos = _build_dynamic_companies(years_exp)
-        for i, co in enumerate(cv.get("companies",[])):
+        for i, co in enumerate(cv.get("companies", [])):
             if i < len(dcos) and not co.get("dateRange"):
                 dc = dcos[i]
                 co["dateRange"] = f"{dc['start']} – {dc['end']}"
@@ -1451,16 +1547,6 @@ async def generate_cv_atomic(req: CVRequest, client, key: str, model: str,
         cv["education"]["years"] = f"{edu['start']} - {edu['end']}"
 
     return cv
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PROVIDER CALLERS
-# ─────────────────────────────────────────────────────────────────────────────
-def _is_token_error(body: dict) -> bool:
-    msg = str(body.get("error","")).lower() + str(body.get("message","")).lower()
-    return any(w in msg for w in ["token","limit","context","length","maximum"])
-
-def _prioritised_keys_list(valid_keys):
-    return sorted(valid_keys, key=lambda k: _key_usage.get(k.strip(), 0))
 
 async def call_groq(req: CVRequest) -> tuple:
     valid_keys = [k.strip() for k in (req.groq_keys or []) if k.strip()]
