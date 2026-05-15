@@ -1765,27 +1765,11 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     p_work     = _pd.get("work")   or []   # [{company, role, from, to, bullets}]
     p_edu      = _pd.get("edu")    or []   # [{institution, degree, from, to, note}]
 
-    buf = io.BytesIO()
-
     PAGE_W, _ = A4
     ML = 13 * mm
     MR = 13 * mm
     MT = 11 * mm
     MB = 11 * mm
-
-    # Build with a very tall page first to measure actual content height
-    PAGE_H_SINGLE = 841.89 * 2.2
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=(PAGE_W, PAGE_H_SINGLE),
-        leftMargin=ML, rightMargin=MR,
-        topMargin=MT, bottomMargin=MB,
-        title=f"{p_name} CV - {_safe(cv.get('title',''))}",
-        author=p_name,
-        subject=_safe(cv.get("title", "")),
-        keywords=_safe(cv.get("keywords", "")),
-    )
-
     TW = PAGE_W - ML - MR
 
     # -- STYLES WITH INCREASED FONT SIZE AND SPACING -----------------------------
@@ -2281,38 +2265,24 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
             gpa = f"CGPA: {gpa}"
         _render_edu_entry(university, degree, grad_year, gpa, achievement, "")
 
-    # ── Single pass: build on tall canvas, then crop MediaBox to content ──
-    doc.build(story)
-
-    last_y  = doc.frame._y
-    tight_h = (PAGE_H_SINGLE - MT) - last_y + MT + MB + 4 * mm
-    tight_h = max(tight_h, 100 * mm)
-
-    # ReportLab draws content at the TOP of the tall page.
-    # To crop, we set the MediaBox to window into the top tight_h points:
-    #   lower_left  = (0, PAGE_H_SINGLE - tight_h)   ← start just above content
-    #   upper_right = (PAGE_W, PAGE_H_SINGLE)         ← top of page
-    crop_bottom = PAGE_H_SINGLE - tight_h
-
-    try:
-        from pypdf import PdfReader, PdfWriter
-    except ImportError:
-        import subprocess, sys
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pypdf", "--quiet"])
-        from pypdf import PdfReader, PdfWriter
-
-    buf.seek(0)
-    reader = PdfReader(buf)
-    writer = PdfWriter()
-    writer.add_page(reader.pages[0])
-    page = writer.pages[0]
-    page.mediabox.lower_left  = (0, crop_bottom)
-    page.mediabox.upper_right = (PAGE_W, PAGE_H_SINGLE)
-
-    out = io.BytesIO()
-    writer.write(out)
-    out.seek(0)
-    return out.read()
+    # ── Build standard multi-page A4 PDF ─────────────────────────────────────
+    # The old single-tall-page + MediaBox-crop approach truncated CVs when
+    # content exceeded what doc.frame._y could measure reliably.
+    # A standard A4 multi-page PDF is always complete and universally compatible.
+    buf2 = io.BytesIO()
+    doc2 = SimpleDocTemplate(
+        buf2,
+        pagesize=A4,
+        leftMargin=ML, rightMargin=MR,
+        topMargin=MT, bottomMargin=MB,
+        title=f"{p_name} CV - {_safe(cv.get('title',''))}",
+        author=p_name,
+        subject=_safe(cv.get("title", "")),
+        keywords=_safe(cv.get("keywords", "")),
+    )
+    doc2.build(story)
+    buf2.seek(0)
+    return buf2.read()
 
 class PDFRequest(BaseModel):
     cv:          dict
