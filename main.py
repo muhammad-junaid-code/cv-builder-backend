@@ -45,37 +45,66 @@ def _month_name(n: int) -> str:
 
 def _parse_month_year(s: str) -> date:
     s = s.strip()
+    if not s:
+        return date.today()
+    
     if s.lower() == "present":
         return date.today()
+    
     parts = s.split()
-    if len(parts) == 2:
-        return date(int(parts[1]), _MONTH_MAP.get(parts[0].lower(), 1), 1)
-    raise ValueError(f"Cannot parse date: {s!r}")
-
+    if len(parts) != 2:
+        return date.today()
+    
+    month_str = parts[0].lower()
+    try:
+        year = int(parts[1])
+        # Ensure year is reasonable
+        if year < 2000 or year > 2030:
+            year = date.today().year
+        
+        month = _MONTH_MAP.get(month_str, 1)
+        month = max(1, min(12, month))
+        return date(year, month, 1)
+    except (ValueError, TypeError):
+        return date.today()
 def _months_between(start: date, end: date) -> int:
     return max(0, (end.year - start.year) * 12 + (end.month - start.month))
 
 def _calc_total_years(years_exp: str = "") -> str:
     if years_exp:
         try:
-            n = float(years_exp.strip().replace("+", ""))
-            return str(int(n)) if n == int(n) else str(round(n, 1))
+            # Handle various formats: "5", "5+", "5.5", etc.
+            clean = years_exp.strip().replace("+", "")
+            n = float(clean)
+            if n == int(n):
+                return f"{int(n)}+"
+            else:
+                return f"{round(n, 1)}+"
         except ValueError:
             pass
+    
+    # Calculate from companies if no years_exp provided
     total_months = 0
     for co in CANDIDATE_COMPANIES:
         try:
             start = _parse_month_year(co["start"])
             end = _parse_month_year(co["end"])
-            total_months += _months_between(start, end)
+            diff = (end.year - start.year) * 12 + (end.month - start.month)
+            total_months += max(0, diff)
         except Exception:
             pass
-    y = total_months / 12
-    if y >= 5: return "5+"
-    elif y >= 4: return "4+"
-    elif y >= 3: return "3+"
-    elif y >= 2: return "2+"
-    else: return "1+"
+    
+    years = total_months / 12
+    if years >= 5:
+        return "5+"
+    elif years >= 4:
+        return "4+"
+    elif years >= 3:
+        return "3+"
+    elif years >= 2:
+        return "2+"
+    else:
+        return "1+"
 
 def _build_dynamic_companies(years_exp: str, num_companies: int = 0) -> list:
     if not years_exp:
@@ -84,59 +113,106 @@ def _build_dynamic_companies(years_exp: str, num_companies: int = 0) -> list:
         n = float(years_exp.strip().replace("+", ""))
     except ValueError:
         return CANDIDATE_COMPANIES[:3]
+    
     total_months = int(round(n * 12))
     today = date.today()
+    
     def fmt(d: date) -> str:
         return f"{_month_name(d.month)} {d.year}"
+    
+    # Determine number of companies
     if n <= 1.4:
         num_cos = 1
     elif n <= 2.4:
         num_cos = 2
     else:
         num_cos = 3
+    
+    if num_companies > 0:
+        num_cos = min(num_companies, 3)
+    
     each = total_months // num_cos if num_cos > 0 else total_months
     remainder = total_months - each * num_cos
+    
     result = []
     cursor = today
+    
     for i in range(num_cos):
         span = each + (remainder if i == 0 else 0)
-        co_start = cursor.replace(year=cursor.year - (span // 12), month=cursor.month - (span % 12))
-        while co_start.month < 1:
-            co_start = co_start.replace(year=co_start.year - 1, month=co_start.month + 12)
+        
+        # Calculate start date safely
+        years_to_subtract = span // 12
+        months_to_subtract = span % 12
+        
+        try:
+            new_year = cursor.year - years_to_subtract
+            new_month = cursor.month - months_to_subtract
+            
+            # Adjust for negative months
+            while new_month < 1:
+                new_month += 12
+                new_year -= 1
+            
+            # Ensure month is between 1 and 12
+            new_month = max(1, min(12, new_month))
+            
+            # Ensure year is reasonable (not before 2000)
+            if new_year < 2000:
+                new_year = 2000
+                new_month = 1
+            
+            co_start = date(new_year, new_month, 1)
+        except (ValueError, OverflowError):
+            # Fallback: use current date minus 1 year
+            co_start = date(cursor.year - 1, cursor.month, 1)
+        
         co_end = "Present" if i == 0 else fmt(cursor)
         name = CANDIDATE_COMPANIES[i]["name"] if i < len(CANDIDATE_COMPANIES) else f"Company {i+1}"
-        result.append({"name": name, "start": fmt(co_start), "end": co_end})
+        
+        result.append({
+            "name": name, 
+            "start": fmt(co_start), 
+            "end": co_end
+        })
         cursor = co_start
+    
     return result
 
 def _build_education_year(years_exp: str, profile_edu: list = None) -> dict:
     today = date.today()
-    if profile_edu:
+    
+    if profile_edu and len(profile_edu) > 0:
         e = profile_edu[0]
         p_from = str(e.get("from", "") or "").strip()
         p_to = str(e.get("to", "") or "").strip()
+        
         if p_from and p_to:
             return {"start": p_from, "end": p_to}
         if p_to and not p_from:
             try:
                 end_yr = int(p_to[:4])
-                return {"start": str(end_yr - 4), "end": p_to}
+                start_yr = max(2000, end_yr - 4)
+                return {"start": str(start_yr), "end": p_to}
             except:
                 pass
         if p_from and not p_to:
             try:
                 start_yr = int(p_from[:4])
-                return {"start": p_from, "end": str(start_yr + 4)}
+                end_yr = min(today.year, start_yr + 4)
+                return {"start": p_from, "end": str(end_yr)}
             except:
                 pass
+    
     if years_exp:
         try:
             n = int(float(years_exp.strip().replace("+", "")))
-            end_year = today.year - max(n - 1, 0)
-            start_year = end_year - 4
+            # Ensure we don't go negative or too far back
+            end_year = max(2015, today.year - max(n - 1, 0))
+            start_year = max(2010, end_year - 4)
             return {"start": str(start_year), "end": str(end_year)}
         except:
             pass
+    
     return {"start": "2017", "end": "2021"}
 
 # ==============================================================================
