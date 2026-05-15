@@ -1206,7 +1206,7 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         "competency": ps("comp", fontName="Helvetica", fontSize=9.5, leading=13, textColor=colors.HexColor("#333333")),
         "edu_uni": ps("uni", fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#111111")),
         "edu_deg": ps("deg", fontName="Helvetica", fontSize=10, leading=13, textColor=colors.HexColor("#444444")),
-        "edu_medal": ps("med", fontName="Helvetica-Bold", fontSize=10, leading=13, textColor=colors.HexColor("#166534")),  # Green color for medal
+        "edu_medal": ps("med", fontName="Helvetica-Bold", fontSize=10, leading=13, textColor=colors.HexColor("#166534")),
     }
     
     def HR():
@@ -1229,7 +1229,9 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
             if val:
                 contact_items.append(val)
         if contact_items:
-            story.append(Paragraph("  |  ".join(contact_items[:4]), S["contact"]))
+            # Limit to first 4 contact items to avoid overflow
+            display_items = contact_items[:4]
+            story.append(Paragraph("  |  ".join(display_items), S["contact"]))
     story.append(HR())
     
     # Summary
@@ -1250,14 +1252,27 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
             bullets = co.get("bullets", [])
             tech = co.get("tech", "")
             
-            row = [[Paragraph(company.upper(), S["company"]), Paragraph(date_range, ps("dr", fontName="Helvetica", fontSize=10, alignment=TA_RIGHT, textColor=colors.HexColor("#666666")))]]
-            t = Table(row, colWidths=[TW * 0.65, TW * 0.35])
-            t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+            # Create table for company header
+            company_para = Paragraph(company.upper(), S["company"])
+            date_para = Paragraph(date_range, ps("dr", fontName="Helvetica", fontSize=10, leading=12, alignment=TA_RIGHT, textColor=colors.HexColor("#666666")))
+            
+            row_data = [[company_para, date_para]]
+            t = Table(row_data, colWidths=[TW * 0.65, TW * 0.35])
+            t.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]))
             story.append(t)
+            
             if role:
                 story.append(Paragraph(role, S["role_title"]))
+            
+            # Bullets - limit to first 4
             for b in bullets[:4]:
-                story.append(Paragraph(f"\u2022 {b}", S["bullet"]))
+                if b:
+                    story.append(Paragraph(f"\u2022 {b}", S["bullet"]))
+            
             if tech:
                 story.append(Paragraph(f"Technologies: {tech}", S["tech_line"]))
             story.append(Spacer(1, 4 * mm))
@@ -1267,8 +1282,9 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     if skills:
         story.append(Paragraph("TECHNICAL SKILLS", S["sec_title"]))
         for s in skills[:5]:
-            story.append(Paragraph(s, S["skill_items"]))
-            story.append(Spacer(1, 2 * mm))
+            if s:
+                story.append(Paragraph(s, S["skill_items"]))
+                story.append(Spacer(1, 2 * mm))
     
     # Projects
     projects = cv.get("projects", [])
@@ -1284,10 +1300,17 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
                 story.append(Paragraph(name, S["proj_name"]))
             if overview:
                 story.append(Paragraph(overview, S["proj_body"]))
+            
+            # Bullets - limit to first 3
             for b in bullets[:3]:
-                story.append(Paragraph(f"\u2022 {b}", S["proj_bullet"]))
-            if tech_tags:
-                story.append(Paragraph(f"Stack: {', '.join(tech_tags[:6])}", S["proj_stack"]))
+                if b:
+                    story.append(Paragraph(f"\u2022 {b}", S["proj_bullet"]))
+            
+            if tech_tags and isinstance(tech_tags, list):
+                # Ensure tech_tags items are strings
+                clean_tags = [str(t) for t in tech_tags[:6] if t]
+                if clean_tags:
+                    story.append(Paragraph(f"Stack: {', '.join(clean_tags)}", S["proj_stack"]))
             story.append(Spacer(1, 4 * mm))
     
     # Competencies
@@ -1298,7 +1321,7 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         story.append(Paragraph(comp_display, S["competency"]))
         story.append(Spacer(1, 2 * mm))
     
-    # Education with GREEN Gold Medalist
+    # Education
     story.append(Paragraph("EDUCATION", S["sec_title"]))
     edu = cv.get("education", {})
     uni = edu.get("university", "QURTUBA UNIVERSITY OF SCIENCE AND INFORMATION TECHNOLOGY")
@@ -1313,7 +1336,7 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         deg_text += f" | CGPA: {cgpa}"
     story.append(Paragraph(deg_text, S["edu_deg"]))
     
-    # Gold Medalist in GREEN with medal emoji
+    # Gold Medalist in GREEN
     if achievement and "gold" in achievement.lower():
         story.append(Paragraph(f"🏅 {achievement}", S["edu_medal"]))
     elif achievement:
@@ -1323,30 +1346,51 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     doc.build(story)
     
     # Crop to content
-    last_y = doc.frame._y
-    tight_h = (PAGE_H_SINGLE - MT) - last_y + MT + MB + 4 * mm
-    tight_h = max(tight_h, 100 * mm)
-    crop_bottom = PAGE_H_SINGLE - tight_h
-    
     try:
-        from pypdf import PdfReader, PdfWriter
-    except ImportError:
-        import subprocess, sys
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pypdf", "--quiet"])
-        from pypdf import PdfReader, PdfWriter
-    
-    buf.seek(0)
-    reader = PdfReader(buf)
-    writer = PdfWriter()
-    writer.add_page(reader.pages[0])
-    page = writer.pages[0]
-    page.mediabox.lower_left = (0, crop_bottom)
-    page.mediabox.upper_right = (PAGE_W, PAGE_H_SINGLE)
-    
-    out = io.BytesIO()
-    writer.write(out)
-    out.seek(0)
-    return out.read()
+        last_y = doc.frame._y
+        tight_h = (PAGE_H_SINGLE - MT) - last_y + MT + MB + 4 * mm
+        tight_h = max(tight_h, 100 * mm)
+        crop_bottom = PAGE_H_SINGLE - tight_h
+        
+        # Only try to crop if we have pypdf available
+        try:
+            from pypdf import PdfReader, PdfWriter
+            
+            buf.seek(0)
+            reader = PdfReader(buf)
+            writer = PdfWriter()
+            
+            if len(reader.pages) > 0:
+                writer.add_page(reader.pages[0])
+                page = writer.pages[0]
+                
+                # Convert to float to avoid slice issues
+                crop_bottom_float = float(crop_bottom)
+                page_width_float = float(PAGE_W)
+                page_height_float = float(PAGE_H_SINGLE)
+                
+                page.mediabox.lower_left = (0.0, crop_bottom_float)
+                page.mediabox.upper_right = (page_width_float, page_height_float)
+                
+                out = io.BytesIO()
+                writer.write(out)
+                out.seek(0)
+                return out.getvalue()
+        except ImportError:
+            # pypdf not available, return uncropped PDF
+            buf.seek(0)
+            return buf.getvalue()
+        except Exception as crop_error:
+            # If cropping fails, return the original PDF
+            print(f"Cropping error: {crop_error}")
+            buf.seek(0)
+            return buf.getvalue()
+            
+    except Exception as e:
+        # If anything fails in cropping, return the original PDF
+        print(f"PDF finalization error: {e}")
+        buf.seek(0)
+        return buf.getvalue()
 
 @app.post("/generate-pdf")
 async def generate_pdf(req: PDFRequest):
