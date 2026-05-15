@@ -788,32 +788,32 @@ async def generate_pdf(req: PDFRequest):
         TW = PAGE_W - ML - MR
         
         def ps(name, **kw):
-            defaults = dict(fontName="Helvetica", fontSize=10, leading=14, textColor=colors.HexColor("#111111"))
+            defaults = dict(fontName="Helvetica", fontSize=11, leading=16, textColor=colors.HexColor("#111111"))
             defaults.update(kw)
             return ParagraphStyle(name, **defaults)
         
         S = {
-            "name": ps("name", fontName="Helvetica-Bold", fontSize=18, alignment=TA_CENTER, spaceAfter=5),
-            "role": ps("role", fontSize=8, alignment=TA_CENTER, textColor=colors.HexColor("#444444"), spaceBefore=2, spaceAfter=4),
-            "contact": ps("contact", fontSize=8, alignment=TA_CENTER, textColor=colors.HexColor("#0057A8")),
-            "sec_title": ps("sec", fontName="Helvetica-Bold", fontSize=11, spaceBefore=4, spaceAfter=2),
-            "company": ps("co", fontName="Helvetica-Bold", fontSize=11),
-            "role_title": ps("rt", fontName="Helvetica-Oblique", fontSize=10, textColor=colors.HexColor("#555555")),
-            "bullet": ps("bul", fontSize=9.5, leftIndent=12, spaceAfter=2),
-            "tech_line": ps("tech", fontSize=8.5, leftIndent=12, textColor=colors.HexColor("#666666")),
-            "skill": ps("skill", fontSize=9, spaceAfter=1),
-            "proj_name": ps("pn", fontName="Helvetica-Bold", fontSize=10.5),
-            "proj_body": ps("pb", fontSize=9.5),
-            "proj_bullet": ps("pbul", fontSize=9.5, leftIndent=12, spaceAfter=2),
-            "proj_stack": ps("pst", fontName="Helvetica-Bold", fontSize=8.5),
-            "competency": ps("comp", fontSize=9.5),
-            "edu_uni": ps("uni", fontName="Helvetica-Bold", fontSize=11),
-            "edu_deg": ps("deg", fontSize=10, textColor=colors.HexColor("#444444")),
-            "edu_medal": ps("med", fontName="Helvetica-Bold", fontSize=10, textColor=colors.HexColor("#166534")),
+            "name":        ps("name",  fontName="Helvetica-Bold", fontSize=22, leading=26, alignment=TA_CENTER, spaceAfter=6),
+            "role":        ps("role",  fontSize=10, leading=14, alignment=TA_CENTER, textColor=colors.HexColor("#444444"), spaceBefore=3, spaceAfter=5),
+            "contact":     ps("con",   fontSize=9.5, leading=13, alignment=TA_CENTER, textColor=colors.HexColor("#0057A8"), spaceAfter=2),
+            "sec_title":   ps("sec",   fontName="Helvetica-Bold", fontSize=12, leading=16, spaceBefore=7, spaceAfter=3),
+            "company":     ps("co",    fontName="Helvetica-Bold", fontSize=12, leading=16),
+            "role_title":  ps("rt",    fontName="Helvetica-Oblique", fontSize=10.5, leading=15, textColor=colors.HexColor("#555555"), spaceAfter=2),
+            "bullet":      ps("bul",   fontSize=10.5, leading=15, leftIndent=14, spaceAfter=3),
+            "tech_line":   ps("tech",  fontSize=9.5, leading=13, leftIndent=14, textColor=colors.HexColor("#666666"), spaceAfter=1),
+            "skill":       ps("skill", fontSize=10.5, leading=15, spaceAfter=2),
+            "proj_name":   ps("pn",    fontName="Helvetica-Bold", fontSize=11.5, leading=16),
+            "proj_body":   ps("pb",    fontSize=10.5, leading=15),
+            "proj_bullet": ps("pbul",  fontSize=10.5, leading=15, leftIndent=14, spaceAfter=3),
+            "proj_stack":  ps("pst",   fontName="Helvetica-Bold", fontSize=9.5, leading=13),
+            "competency":  ps("comp",  fontSize=10.5, leading=15),
+            "edu_uni":     ps("uni",   fontName="Helvetica-Bold", fontSize=12, leading=16),
+            "edu_deg":     ps("deg",   fontSize=10.5, leading=15, textColor=colors.HexColor("#444444")),
+            "edu_medal":   ps("med",   fontName="Helvetica-Bold", fontSize=10.5, leading=15, textColor=colors.HexColor("#166534")),
         }
         
         def HR():
-            return HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc"), spaceAfter=3, spaceBefore=1)
+            return HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc"), spaceAfter=4, spaceBefore=2)
         
         story = []
         
@@ -836,7 +836,7 @@ async def generate_pdf(req: PDFRequest):
         if summary:
             story.append(Paragraph("PROFESSIONAL SUMMARY", S["sec_title"]))
             story.append(Paragraph(summary, S["bullet"]))
-            story.append(Spacer(1, 2 * mm))
+            story.append(Spacer(1, 4 * mm))
         
         # Experience
         if companies_from_cv:
@@ -848,7 +848,7 @@ async def generate_pdf(req: PDFRequest):
                 bullets = co.get("bullets", [])
                 tech = co.get("tech", "")
                 
-                header = Table([[Paragraph(company.upper(), S["company"]), Paragraph(date_range, ps("dr", fontSize=10, alignment=TA_RIGHT, textColor=colors.HexColor("#666666")))]], colWidths=[TW * 0.65, TW * 0.35])
+                header = Table([[Paragraph(company.upper(), S["company"]), Paragraph(date_range, ps("dr", fontSize=11, alignment=TA_RIGHT, textColor=colors.HexColor("#666666")))]], colWidths=[TW * 0.65, TW * 0.35])
                 header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
                 story.append(header)
                 if role:
@@ -858,7 +858,7 @@ async def generate_pdf(req: PDFRequest):
                         story.append(Paragraph(f"\u2022 {b}", S["bullet"]))
                 if tech:
                     story.append(Paragraph(f"Technologies: {tech}", S["tech_line"]))
-                story.append(Spacer(1, 3 * mm))
+                story.append(Spacer(1, 4 * mm))
         
         # Skills
         skills = req.cv.get("skills", [])
