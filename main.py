@@ -851,24 +851,70 @@ Key reminders:
 # HELPER FUNCTIONS
 # ==============================================================================
 def extract_json(raw: str) -> dict:
+    """Parse JSON from an LLM response, repairing truncated output if needed."""
     raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
     raw = re.sub(r"```(?:json)?", "", raw).strip().strip("`").strip()
     start = raw.find("{")
     if start == -1:
         raise ValueError("No JSON object in model response")
-    end = raw.rfind("}")
-    if end == -1:
-        raw = raw[start:] + "}"
-        j = raw
-    else:
-        j = raw[start:end + 1]
-    j = re.sub(r",\s*([}\]])", r"\1", j)
+    raw = raw[start:]
+
+    # Try direct parse first (the happy path)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # ── Attempt to repair truncated / incomplete JSON ─────────────────────────
+    # 1. Remove trailing comma artefacts
+    j = re.sub(r",\s*([}\]])", r"\1", raw)
+    # 2. Control-character cleanup
+    j = re.sub(r'[\x00-\x1f\x7f]', ' ', j)
+
+    # 3. If the JSON was cut off (no closing brace), close all open structures
+    #    by counting unmatched { and [ and appending the right closers.
     try:
         return json.loads(j)
     except json.JSONDecodeError:
-        j = re.sub(r'[\x00-\x1f\x7f]', ' ', j)
-        j = re.sub(r',\s*([}\]])', r'\1', j)
-        return json.loads(j)
+        pass
+
+    # Count unclosed brackets (ignoring those inside strings)
+    opens = []
+    in_str = False
+    escape = False
+    for ch in j:
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and in_str:
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch in "{[":
+            opens.append("}" if ch == "{" else "]")
+        elif ch in "}]":
+            if opens and opens[-1] == ch:
+                opens.pop()
+
+    # Strip any trailing incomplete string / value that might confuse the parser
+    j_repaired = j.rstrip().rstrip(",").rstrip()
+    # Close all unclosed structures in reverse order
+    j_repaired += "".join(reversed(opens))
+
+    try:
+        return json.loads(j_repaired)
+    except json.JSONDecodeError:
+        # Last resort: extract up to the last complete top-level value
+        end = j_repaired.rfind("}")
+        if end != -1:
+            candidate = j_repaired[:end + 1]
+            candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+            return json.loads(candidate)
+        raise ValueError("Could not parse or repair JSON from model response")
 
 def esc_html(s: str) -> str:
     if not s:
@@ -1293,7 +1339,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
               provider_host, len(system_prompt), len(user_prompt))
 
     result = await call_llm_atomic(client, key, model, url, system_prompt, user_prompt,
-                                    "FullCV", headers, max_tokens=4500, _deadline=_deadline)
+                                    "FullCV", headers, max_tokens=8000, _deadline=_deadline)
 
     if not result:
         _log.error("[GenCV|%s] AI returned empty/unparseable response", provider_host)
@@ -1530,7 +1576,7 @@ async def call_gemini(req: CVRequest) -> tuple:
                 payload = {
                     "systemInstruction": {"parts": [{"text": sys_p}]},
                     "contents": [{"role": "user", "parts": [{"text": usr_p}]}],
-                    "generationConfig": {"temperature": 0.2, "maxOutputTokens": 4000},
+                    "generationConfig": {"temperature": 0.2, "maxOutputTokens": 8000},
                 }
                 r = await client.post(url, headers={"Content-Type": "application/json"}, json=payload)
 
@@ -1834,19 +1880,11 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
                 contact_tokens.append(_link_xml(lnk.get("label", ""), val))
 
         if contact_tokens:
-            # Separator between items (plain, not a link)
+            # Single centered paragraph — ReportLab wraps naturally at page width.
+            # Center alignment (already set on S["contact"]) keeps every wrapped
+            # line centered, producing the balanced layout shown in the mockup.
             SEP = ' <font color="#aaaaaa">|</font> '
-
-            # Fit tokens into rows: estimate ~90 chars per row at font size 8
-            # (generous estimate — ReportLab will word-wrap within a Paragraph too,
-            #  but we pre-split to keep the | separators visually clean)
-            MAX_PER_ROW = 4
-            rows = [contact_tokens[i:i + MAX_PER_ROW]
-                    for i in range(0, len(contact_tokens), MAX_PER_ROW)]
-
-            for row in rows:
-                row_xml = SEP.join(row)
-                story.append(Paragraph(row_xml, S["contact"]))
+            story.append(Paragraph(SEP.join(contact_tokens), S["contact"]))
     story.append(HR())
     
     # Summary
