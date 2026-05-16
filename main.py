@@ -1792,13 +1792,56 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     
     # Contact strip
     if p_links:
-        contact_items = []
-        for l in p_links:
-            val = l.get("value", "")
+        # ── Build a clickable token for every link ────────────────────────────
+        # ReportLab supports <a href="...">text</a> inside Paragraph XML markup.
+        # We auto-prefix bare addresses so they become valid URIs.
+        def _make_href(val: str) -> str:
+            """Return a valid URI for any link value the UI can produce."""
+            v = val.strip()
+            if not v:
+                return ""
+            # Already a full URI
+            if v.startswith(("http://", "https://", "mailto:", "tel:")):
+                return v
+            # Email address
+            if "@" in v and "." in v and "/" not in v:
+                return f"mailto:{v}"
+            # Phone number (digits, spaces, +, dashes, parentheses only)
+            import re as _re
+            if _re.fullmatch(r"[\d\s\+\-\(\)]+", v):
+                return f"tel:{v.replace(' ', '')}"
+            # Everything else → assume a URL; add https:// if missing
+            return f"https://{v}"
+
+        def _link_xml(label: str, val: str, color: str = "#0057A8") -> str:
+            """Return ReportLab XML markup for a single clickable link token."""
+            href = _make_href(val)
+            safe_val = val.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            if href:
+                return f'<a href="{href}" color="{color}">{safe_val}</a>'
+            return safe_val
+
+        # Collect all non-empty link tokens
+        contact_tokens = []
+        for lnk in p_links:
+            val = (lnk.get("value") or "").strip()
             if val:
-                contact_items.append(val)
-        if contact_items:
-            story.append(Paragraph("  |  ".join(contact_items[:4]), S["contact"]))
+                contact_tokens.append(_link_xml(lnk.get("label", ""), val))
+
+        if contact_tokens:
+            # Separator between items (plain, not a link)
+            SEP = ' <font color="#aaaaaa">|</font> '
+
+            # Fit tokens into rows: estimate ~90 chars per row at font size 8
+            # (generous estimate — ReportLab will word-wrap within a Paragraph too,
+            #  but we pre-split to keep the | separators visually clean)
+            MAX_PER_ROW = 4
+            rows = [contact_tokens[i:i + MAX_PER_ROW]
+                    for i in range(0, len(contact_tokens), MAX_PER_ROW)]
+
+            for row in rows:
+                row_xml = SEP.join(row)
+                story.append(Paragraph(row_xml, S["contact"]))
     story.append(HR())
     
     # Summary
