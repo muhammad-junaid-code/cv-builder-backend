@@ -1814,11 +1814,16 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
             return f"https://{v}"
 
         def _link_xml(label: str, val: str, color: str = "#0057A8") -> str:
-            """Return ReportLab XML markup for a single clickable link token."""
-            href = _make_href(val)
+            """Return ReportLab XML markup for a single clickable link token.
+            Location is rendered in blue but NOT as a hyperlink.
+            All other links open in a new window via target='new'."""
             safe_val = val.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            # Location: blue-coloured text, no hyperlink behaviour
+            if label.strip().lower() == "location":
+                return f'<font color="{color}">{safe_val}</font>'
+            href = _make_href(val)
             if href:
-                return f'<a href="{href}" color="{color}">{safe_val}</a>'
+                return f'<a href="{href}" target="new" color="{color}">{safe_val}</a>'
             return safe_val
 
         # Collect all non-empty link tokens
