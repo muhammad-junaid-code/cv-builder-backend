@@ -770,11 +770,13 @@ SECTION-BY-SECTION INSTRUCTIONS
    Inferred role (not a copy of the job title) | 3 key technologies from JD | {years_display}
    The third segment is exactly "{years_display}". Nothing more.
 
-② summary  [70–100 words, 4–5 sentences]
+② summary  [6–7 lines, approximately 130–160 words]
    • Open with: "{years_display} years of experience in [specific JD domain]…"
-   • Concise, impactful, ATS-rich. Mention 4–6 key technologies naturally.
-   • No technology repeated. Reads like a polished professional wrote it.
-   • Do NOT write a long paragraph — keep it punchy and scannable.
+   • Write 6–7 full sentences that flow as a cohesive professional narrative.
+   • Mention 6–8 key technologies and domain concepts naturally throughout.
+   • Cover: what you do, what you've achieved, what tools you master, and what value you bring.
+   • No technology repeated. Reads like a polished senior professional wrote it.
+   • Must be substantive and detailed — do NOT cut it short below 6 lines.
 
 ③ competencies
    Exactly 10 domain-specific skill phrases from the JD, separated by " * ".
@@ -788,11 +790,13 @@ SECTION-BY-SECTION INSTRUCTIONS
    niceToHave : preferred / bonus technologies in the JD (8–12 items)
    additional : logically adjacent ecosystem tools implied by the JD (8–10 items)
 
-⑥ skills  [TECHNICAL SKILLS section — 5 entries only]
+⑥ skills  [MINIMUM 5 categories — add more if the JD warrants it, NO upper limit]
    Format each entry as: "Short Role-Specific Category: tech1, tech2, … tech12"
    • Category labels must be short, specific to THIS role, and useful as subheadings.
    • Use small subheading style — no nested structures, no extra sections.
-   • 10–12 technologies per category, all from the JD.
+   • MINIMUM 10 technologies per category. Include more (12–15) where the JD richly covers that area.
+   • Generate as many categories as needed to fully represent the JD skill surface.
+     A data-heavy JD might need 7–8 categories; a full-stack role might need 6–7. Use your judgment.
    • No duplicates across categories.
 
 ⑦ companies  [one entry per company listed above, in order]
@@ -836,7 +840,7 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 
 {{
   "title": "Inferred Role | Tech1, Tech2, Tech3 | {years_display}",
-  "summary": "{years_display} years of experience in [JD domain]… (4–5 sentences, 70–100 words)",
+  "summary": "{years_display} years of experience in [JD domain]… (6–7 lines, ~130–160 words, covers expertise, achievements, tools, and value delivered)",
   "competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18",
   "technologies": {{
@@ -845,11 +849,12 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
     "additional": ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10"]
   }},
   "skills": [
-    "Short Category Label A: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10",
-    "Short Category Label B: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10",
-    "Short Category Label C: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10",
+    "Short Category Label A: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10, tech11, tech12",
+    "Short Category Label B: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10, tech11",
+    "Short Category Label C: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10, tech11, tech12",
     "Short Category Label D: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10",
-    "Short Category Label E: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10"
+    "Short Category Label E: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10, tech11",
+    "Short Category Label F: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10"
   ],
   "companies": [
     {{
@@ -906,9 +911,10 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 }}
 
 PRE-SUBMIT CHECKLIST — verify every item before writing a single character of output:
+✓ skills has AT LEAST 5 categories, each with MINIMUM 10 technologies — no truncation
 ✓ title last segment is exactly "{years_display}" — not "5++" not "5+ +" not "5+ years"
 ✓ summary opens with exactly "{years_display} years of experience in …"
-✓ summary is 70–100 words (4–5 sentences) — concise, not bloated
+✓ summary is 6–7 lines (~130–160 words) — substantive and detailed, never shorter than 6 lines
 ✓ company role titles follow the seniority progression rules above
 ✓ projects 1–2 are grounded in the company/industry domain
 ✓ projects 3–4 target the JD's specific technical requirements
@@ -924,7 +930,7 @@ Generate the complete CV JSON now.
 
 Key reminders:
 - Title must end with exactly "{years_display}" (one + sign, no more).
-- Summary must open with "{years_display} years of experience in …" and be 70–100 words.
+- Summary must open with "{years_display} years of experience in …" and be 6–7 lines (~130–160 words).
 - Company roles must follow the seniority progression: {seniority_guidance.split(chr(10))[0]}
 - Projects 1–2: company/industry domain. Projects 3–4: JD technical requirements.
 - No company names in any free-text field.
@@ -2146,7 +2152,7 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     skills = cv.get("skills", [])
     if skills:
         story.append(Paragraph("TECHNICAL SKILLS", S["sec_title"]))
-        for s in skills[:5]:
+        for s in skills:
             colon = s.find(":")
             if colon > 0:
                 category = s[:colon].strip()
