@@ -1171,6 +1171,95 @@ def fix_companies(cv: dict, companies_list: list = None) -> dict:
     return cv
 
 # ==============================================================================
+# CV COMPLETENESS CHECK + CONTINUATION
+# ==============================================================================
+_CV_REQUIRED_SECTIONS = ("companies", "projects", "skills", "competencies", "relatedTech")
+
+def _is_cv_complete(result: dict) -> bool:
+    """
+    Return True only when all major sections are present and non-empty.
+    Provider-agnostic: used after every AI call regardless of where it came from.
+    """
+    for key in _CV_REQUIRED_SECTIONS:
+        val = result.get(key)
+        if not val:                        # missing or empty list/string
+            return False
+        if isinstance(val, list) and len(val) == 0:
+            return False
+    return True
+
+def _missing_sections(result: dict) -> list:
+    """Return list of section names that are absent or empty in result."""
+    missing = []
+    for key in _CV_REQUIRED_SECTIONS:
+        val = result.get(key)
+        if not val or (isinstance(val, list) and len(val) == 0):
+            missing.append(key)
+    return missing
+
+async def _complete_cv_via_continuation(
+    partial: dict, missing: list,
+    client, key: str, model: str, url: str, headers: dict,
+    req, companies_list: list, edu: dict
+) -> dict:
+    """
+    Make a second LLM call to supply only the missing CV sections.
+    Merges the continuation response into the partial result.
+    Fully provider-agnostic — works for any OpenAI-compatible endpoint.
+    """
+    import json as _json
+
+    already_have = {k: v for k, v in partial.items() if k not in missing}
+    partial_json_str = _json.dumps(already_have, ensure_ascii=False)[:3000]
+
+    co_lines = "\n".join(
+        'Company {}: "{}" (Dates: {} - {})'.format(i + 1, c["name"], c["start"], c["end"])
+        for i, c in enumerate(companies_list)
+    )
+
+    system = (
+        "You are a world-class CV writer continuing an incomplete CV JSON generation. "
+        "The previous response was cut off before it could finish all sections. "
+        "Output ONLY raw JSON — no markdown fences, no explanation. "
+        "The JSON must contain ONLY the missing sections listed below as top-level keys. "
+        "Do NOT repeat sections that are already complete."
+    )
+
+    user = "\n".join([
+        "JOB TITLE: " + req.job_title,
+        "JOB DESCRIPTION (excerpt):",
+        req.job_description[:1500],
+        "",
+        "WORK HISTORY:",
+        co_lines,
+        "",
+        "ALREADY GENERATED (do NOT repeat these):",
+        partial_json_str,
+        "",
+        "MISSING SECTIONS TO GENERATE NOW: " + ", ".join(missing),
+        "",
+        "Generate a JSON object containing ONLY the missing sections. "
+        "Follow the same format and quality as the already-generated sections above. "
+        "Output raw JSON only — no markdown, no preamble, no explanation.",
+    ])
+
+    _log.info("[ContinuationCall] Requesting missing sections: %s", missing)
+    try:
+        continuation = await call_llm_atomic(
+            client, key, model, url, system, user,
+            "Continuation", headers, max_tokens=6000
+        )
+        for k in missing:
+            if k in continuation and continuation[k]:
+                partial[k] = continuation[k]
+        _log.info("[ContinuationCall] Merged — still missing: %s", _missing_sections(partial))
+    except Exception as e:
+        _log.warning("[ContinuationCall] Failed: %s — returning partial CV", e)
+
+    return partial
+
+
+# ==============================================================================
 # UNIVERSAL LLM CALLER
 # ==============================================================================
 
@@ -1292,6 +1381,19 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             _log.error("%s INVALID/EXPIRED KEY — HTTP %d for key %s", tag, r.status_code, mk)
             raise ValueError(f"Invalid/expired key on {stage} (HTTP {r.status_code})")
 
+        elif r.status_code == 400:
+            # HTTP 400 often means max_tokens exceeds the model per-request cap.
+            # Retry once with a halved token budget before giving up.
+            err_body = r.text[:300]
+            _log.warning("%s HTTP 400 on attempt %d — %s", tag, attempt_num, err_body)
+            if attempt == 0 and max_tokens > 4000:
+                reduced = max_tokens // 2
+                _log.info("%s Retrying with reduced max_tokens=%d (was %d)", tag, reduced, max_tokens)
+                max_tokens = reduced
+                await asyncio.sleep(2)
+                continue
+            raise ValueError(f"HTTP 400 on {stage}: {err_body}")
+
         else:
             last_error = f"HTTP {r.status_code} on {stage}"
             _log.warning("%s Unexpected status %d on attempt %d — %s",
@@ -1349,6 +1451,16 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
               provider_host,
               len(result.get("companies", [])),
               len(result.get("projects",  [])))
+
+    # ── Completeness check: if the model truncated, request the missing sections ──
+    missing = _missing_sections(result)
+    if missing:
+        _log.warning("[GenCV|%s] Incomplete CV — missing: %s — requesting continuation",
+                     provider_host, missing)
+        result = await _complete_cv_via_continuation(
+            result, missing, client, key, model, url, headers,
+            req, companies_list, edu
+        )
 
     if "companies" not in result:
         result["companies"] = []
@@ -1602,6 +1714,63 @@ async def call_gemini(req: CVRequest) -> tuple:
                     _raw_g_edu = (req.profile_data or {}).get("edu", []) if req.profile_data else []
                     profile_edu = [_normalise_edu_entry(e) for e in _raw_g_edu] if _raw_g_edu else []
                     edu = _build_education_year(years_exp_clean, profile_edu=profile_edu or None)
+
+                    # ── Completeness check (provider-agnostic) ────────────────
+                    _g_missing = _missing_sections(result)
+                    if _g_missing:
+                        _log.warning("[Gemini|%s] Incomplete CV — missing: %s — requesting continuation",
+                                     mk, _g_missing)
+                        import json as _jmod
+                        _already = {k: v for k, v in result.items() if k not in _g_missing}
+                        _partial_str = _jmod.dumps(_already, ensure_ascii=False)[:3000]
+                        _co_lines_g = "\n".join(
+                            'Company {}: "{}" (Dates: {} - {})'.format(_ci+1, _cc["name"], _cc["start"], _cc["end"])
+                            for _ci, _cc in enumerate(companies_list)
+                        )
+                        _g_system = (
+                            "You are a world-class CV writer continuing an incomplete CV JSON generation. "
+                            "The previous response was cut off. "
+                            "Output ONLY raw JSON with the missing sections as top-level keys."
+                        )
+                        _g_user = (
+                            "JOB TITLE: {}\n"
+                            "JOB DESCRIPTION (excerpt):\n{}\n\n"
+                            "WORK HISTORY:\n{}\n\n"
+                            "ALREADY GENERATED (do NOT repeat):\n{}\n\n"
+                            "MISSING SECTIONS: {}\n"
+                            "Generate ONLY the missing sections as a JSON object. Raw JSON only."
+                        ).format(
+                            req.job_title,
+                            req.job_description[:1500],
+                            _co_lines_g,
+                            _partial_str,
+                            ", ".join(_g_missing)
+                        )
+                        try:
+                            _g_cont_url = "{}{}:generateContent?key={}".format(GEMINI_URL, model, key)
+                            _g_cont_payload = {
+                                "systemInstruction": {"parts": [{"text": _g_system}]},
+                                "contents": [{"role": "user", "parts": [{"text": _g_user}]}],
+                                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 6000},
+                            }
+                            _g_cont_r = await client.post(
+                                _g_cont_url,
+                                headers={"Content-Type": "application/json"},
+                                json=_g_cont_payload,
+                                timeout=120,
+                            )
+                            if _g_cont_r.status_code == 200:
+                                _g_cont_raw = _g_cont_r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                                _g_cont_parsed = extract_json(_g_cont_raw)
+                                for _gmk in _g_missing:
+                                    if _gmk in _g_cont_parsed and _g_cont_parsed[_gmk]:
+                                        result[_gmk] = _g_cont_parsed[_gmk]
+                                _log.info("[Gemini|%s] Continuation merged — still missing: %s",
+                                          mk, _missing_sections(result))
+                            else:
+                                _log.warning("[Gemini|%s] Continuation HTTP %d", mk, _g_cont_r.status_code)
+                        except Exception as _ge:
+                            _log.warning("[Gemini|%s] Continuation failed: %s", mk, _ge)
 
                     for j, co in enumerate(result.get("companies", [])):
                         if j < len(companies_list):
