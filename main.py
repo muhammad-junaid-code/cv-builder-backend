@@ -493,17 +493,6 @@ def _prioritised_keys(valid_keys: list) -> list:
         return (is_limited, _key_usage.get(mk, 0))
     return sorted(valid_keys, key=_sort_key)
 
-def _is_key_rate_limited(key: str) -> bool:
-    import time as _t
-    return _key_rate_limited_until.get(mask(key), 0) > _t.time()
-
-def _mark_key_rate_limited(key: str, retry_after_secs: int = 60) -> None:
-    import time as _t
-    mk = mask(key)
-    cooldown = max(retry_after_secs, 60)
-    _key_rate_limited_until[mk] = _t.time() + cooldown
-    _log.warning("Key %s marked rate-limited for %ds", mk, cooldown)
-
 # ==============================================================================
 # CV Request Model
 # ==============================================================================
@@ -781,13 +770,11 @@ SECTION-BY-SECTION INSTRUCTIONS
    Inferred role (not a copy of the job title) | 3 key technologies from JD | {years_display}
    The third segment is exactly "{years_display}". Nothing more.
 
-② summary  [6–7 lines, approximately 130–160 words]
+② summary  [70–100 words, 4–5 sentences]
    • Open with: "{years_display} years of experience in [specific JD domain]…"
-   • Write 6–7 full sentences that flow as a cohesive professional narrative.
-   • Mention 6–8 key technologies and domain concepts naturally throughout.
-   • Cover: expertise, key achievements, tools mastered, and value delivered.
-   • No technology repeated. Reads like a polished senior professional wrote it.
-   • Must be substantive — do NOT cut short below 6 lines.
+   • Concise, impactful, ATS-rich. Mention 4–6 key technologies naturally.
+   • No technology repeated. Reads like a polished professional wrote it.
+   • Do NOT write a long paragraph — keep it punchy and scannable.
 
 ③ competencies
    Exactly 10 domain-specific skill phrases from the JD, separated by " * ".
@@ -801,20 +788,12 @@ SECTION-BY-SECTION INSTRUCTIONS
    niceToHave : preferred / bonus technologies in the JD (8–12 items)
    additional : logically adjacent ecosystem tools implied by the JD (8–10 items)
 
-⑥ skills  [TECHNICAL SKILLS — dynamic, JD-derived, no hardcoding]
-   STRICT FORMAT per entry: "Category Label: item1, item2, item3, …"
-   • The category label is ONLY the label — no counts, no annotations, no
-     parenthetical notes. Example of WRONG format: "Languages (≥10 items): …"
-     Example of CORRECT format: "Languages & Runtimes: …"
-   • MINIMUM 5 category entries. Add more if the JD warrants it.
-   • MINIMUM 10 comma-separated items per category. 12–14 where JD is rich.
-   • Category labels must be derived from THIS job's actual skill domains.
-     Do NOT reuse generic or fixed names across CVs. Every JD gets fresh labels.
-   • No duplicate items across categories.
-   • Every item must be traceable to the job description.
-   HARD RULE: fewer than 5 categories OR fewer than 10 items in any category
-   is a failure. Count before writing. Output the category label ONLY — no
-   count annotations, no parentheses, no size hints inside the label string.
+⑥ skills  [TECHNICAL SKILLS section — 5 entries only]
+   Format each entry as: "Short Role-Specific Category: tech1, tech2, … tech12"
+   • Category labels must be short, specific to THIS role, and useful as subheadings.
+   • Use small subheading style — no nested structures, no extra sections.
+   • 10–12 technologies per category, all from the JD.
+   • No duplicates across categories.
 
 ⑦ companies  [one entry per company listed above, in order]
    role    : Apply the seniority progression rules above. Infer the full title
@@ -857,7 +836,7 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 
 {{
   "title": "Inferred Role | Tech1, Tech2, Tech3 | {years_display}",
-  "summary": "{years_display} years of experience in [JD domain]… [6–7 sentences, ~130–160 words, covering expertise, tools, achievements and value]",
+  "summary": "{years_display} years of experience in [JD domain]… (4–5 sentences, 70–100 words)",
   "competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18",
   "technologies": {{
@@ -866,12 +845,11 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
     "additional": ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10"]
   }},
   "skills": [
-    "JD-Derived Label 1: item1, item2, item3, item4, item5, item6, item7, item8, item9, item10, item11, item12",
-    "JD-Derived Label 2: item1, item2, item3, item4, item5, item6, item7, item8, item9, item10, item11",
-    "JD-Derived Label 3: item1, item2, item3, item4, item5, item6, item7, item8, item9, item10, item11, item12",
-    "JD-Derived Label 4: item1, item2, item3, item4, item5, item6, item7, item8, item9, item10",
-    "JD-Derived Label 5: item1, item2, item3, item4, item5, item6, item7, item8, item9, item10, item11",
-    "JD-Derived Label 6: item1, item2, item3, item4, item5, item6, item7, item8, item9, item10"
+    "Short Category Label A: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10",
+    "Short Category Label B: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10",
+    "Short Category Label C: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10",
+    "Short Category Label D: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10",
+    "Short Category Label E: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10"
   ],
   "companies": [
     {{
@@ -928,10 +906,9 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 }}
 
 PRE-SUBMIT CHECKLIST — verify every item before writing a single character of output:
-✓ skills: ≥5 categories, ≥10 items each, clean labels only — no parenthetical annotations
 ✓ title last segment is exactly "{years_display}" — not "5++" not "5+ +" not "5+ years"
 ✓ summary opens with exactly "{years_display} years of experience in …"
-✓ summary is 6–7 lines (~130–160 words) — substantive, never fewer than 6 lines
+✓ summary is 70–100 words (4–5 sentences) — concise, not bloated
 ✓ company role titles follow the seniority progression rules above
 ✓ projects 1–2 are grounded in the company/industry domain
 ✓ projects 3–4 target the JD's specific technical requirements
@@ -947,7 +924,7 @@ Generate the complete CV JSON now.
 
 Key reminders:
 - Title must end with exactly "{years_display}" (one + sign, no more).
-- Summary must open with "{years_display} years of experience in …" and be 6–7 lines (~130–160 words).
+- Summary must open with "{years_display} years of experience in …" and be 70–100 words.
 - Company roles must follow the seniority progression: {seniority_guidance.split(chr(10))[0]}
 - Projects 1–2: company/industry domain. Projects 3–4: JD technical requirements.
 - No company names in any free-text field.
@@ -1049,115 +1026,6 @@ def _normalize_job_title(title: str) -> str:
             seen.append(w)
             seen_lower.append(w.lower())
     return " ".join(seen)
-
-
-# ==============================================================================
-# SKILLS ENFORCEMENT — model-agnostic post-processing
-# ==============================================================================
-def _enforce_skills(cv: dict, jd: str = "") -> dict:
-    """
-    Guarantee the skills list always meets the minimum rules that the prompt
-    demands but small models frequently ignore.
-
-    Enforced guarantees:
-      • At least 5 category rows.
-      • At least 10 technology tokens per row.
-      • Category labels are clean — no parenthetical annotations such as
-        "(≥10 items)", "(10+)", "(min 10)", "(≥10)" are stripped automatically.
-
-    All padding tokens are sourced from the JD — nothing is hardcoded.
-    Content already meeting the bar is never stripped or altered.
-    """
-    import re as _re_sk
-    skills = cv.get("skills", [])
-    if not isinstance(skills, list):
-        return cv
-
-    MIN_CATS  = 5
-    MIN_ITEMS = 10
-
-    # Pattern to strip any count/size annotations from category labels
-    # Matches: (≥10 items), (10+), (≥10), (min 10), (minimum 10), etc.
-    _ANNOTATION_PAT = _re_sk.compile(
-        r'\s*\(\s*(?:≥|>=|min(?:imum)?\s*)?\s*\d+\+?\s*(?:items?)?\s*\)',
-        _re_sk.IGNORECASE
-    )
-
-    # ── Step 1: parse every existing row and clean its label ─────────────────
-    parsed = []   # [[clean_category_str, [token, …]], …]
-    for s in skills:
-        if not isinstance(s, str) or not s.strip():
-            continue
-        colon = s.find(":")
-        if colon > 0:
-            raw_cat = s[:colon].strip()
-            # Strip annotation from label
-            cat   = _ANNOTATION_PAT.sub("", raw_cat).strip()
-            items = [t.strip() for t in s[colon + 1:].split(",") if t.strip()]
-        else:
-            cat   = "Technical Skills"
-            items = [t.strip() for t in s.split(",") if t.strip()]
-        if cat and items:
-            parsed.append([cat, items])
-
-    # ── Step 2: build a JD-sourced token pool for padding ────────────────────
-    all_used: set = {t.lower() for _, row in parsed for t in row}
-
-    _STOP = {
-        "and","the","for","with","that","this","have","will","from","are",
-        "not","but","our","your","their","you","all","can","any","use","per",
-        "via","new","key","must","each","also","such","well","both","into",
-        "more","make","when","than","been","has","its","was","were","had",
-        "one","two","see","get","set","let","add","run","put","way","end",
-        "may","who","how","much","even","very","just","only","help","able",
-        "work","team","role","good","best","real","done","show","part","give",
-    }
-    jd_pool: list = []
-    if jd:
-        # Priority: tech-name patterns (Node.js, CI/CD, AWS, S3, chart.js …)
-        for t in _re_sk.findall(
-            r'[A-Z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+'    # Node.js, Vue.js
-            r'|[A-Z]{2,}[0-9]*'                          # SQL, AWS, API, S3
-            r'|[a-z][a-zA-Z0-9]*\.[a-zA-Z]{2,}'         # chart.js
-            r'|[A-Za-z][A-Za-z0-9]*[-/][A-Za-z][A-Za-z0-9]*',  # CI/CD, Next.js
-            jd
-        ):
-            tl = t.lower()
-            if len(t) >= 2 and tl not in all_used and tl not in _STOP:
-                jd_pool.append(t); all_used.add(tl)
-        # General words ≥ 3 chars
-        for w in _re_sk.findall(r'[A-Za-z][A-Za-z0-9_.+-]{2,}', jd):
-            wl = w.lower()
-            if wl not in all_used and wl not in _STOP:
-                jd_pool.append(w); all_used.add(wl)
-
-    # ── Step 3: pad rows that are below MIN_ITEMS ─────────────────────────────
-    pool = list(jd_pool)
-    for row in parsed:
-        while len(row[1]) < MIN_ITEMS and pool:
-            t = pool.pop(0)
-            if t.lower() not in {x.lower() for x in row[1]}:
-                row[1].append(t)
-
-    # ── Step 4: add stub rows if still below MIN_CATS ─────────────────────────
-    _STUB_LABELS = [
-        "Tooling & Ecosystem", "Infrastructure & DevOps", "Quality & Testing",
-        "Integration & APIs",  "Workflow & Methodologies", "Security & Compliance",
-        "Monitoring & Observability",
-    ]
-    stub_idx = 0
-    while len(parsed) < MIN_CATS and len(pool) >= 5:
-        chunk: list = []
-        while len(chunk) < MIN_ITEMS and pool:
-            chunk.append(pool.pop(0))
-        if chunk:
-            parsed.append([_STUB_LABELS[stub_idx % len(_STUB_LABELS)], chunk])
-            stub_idx += 1
-
-    # ── Step 5: rebuild clean skills list ────────────────────────────────────
-    if parsed:
-        cv["skills"] = [f"{cat}: {', '.join(items)}" for cat, items in parsed]
-    return cv
 
 def sanitise_cv(cv: dict) -> dict:
     if not isinstance(cv, dict):
@@ -1491,37 +1359,30 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         _log.info("%s HTTP %d received in %.1fs", tag, r.status_code, elapsed)
 
         if r.status_code == 200:
-            resp_body     = r.json()
-            choice        = resp_body["choices"][0]
-            raw           = choice["message"]["content"]
-            finish_reason = choice.get("finish_reason", "")
-            _log.info("%s SUCCESS — response %d chars, finish_reason=%r",
-                      tag, len(raw), finish_reason)
-            if finish_reason in ("length", "max_tokens"):
-                _log.error("%s TRUNCATED (finish_reason=%r) — trying next key", tag, finish_reason)
-                raise ValueError(
-                    f"Response truncated (finish_reason={finish_reason!r}). "
-                    "The JD may be too long for this model. "
-                    "FIX: Try Gemini/DeepSeek, or shorten the job description."
-                )
+            raw = r.json()["choices"][0]["message"]["content"]
+            _log.info("%s SUCCESS — response %d chars", tag, len(raw))
             return extract_json(raw)
 
         elif r.status_code == 429:
             retry_after = int(r.headers.get("retry-after", 0))
             _log.warning("%s RATE-LIMITED (429) — retry-after=%ds — attempt %d/3",
                          tag, retry_after, attempt_num)
-            # Only retry within this same key for short transient throttles (≤30s).
-            # Hard per-day/per-minute limits come back with retry-after=0 or >30s —
-            # bail immediately so the caller can try the next key without wasting time.
-            if attempt < 2 and 0 < retry_after <= 30:
-                _log.info("%s Transient throttle — sleeping %ds …", tag, retry_after)
-                await asyncio.sleep(retry_after)
+            if attempt < 2 and retry_after > 0:
+                wait = min(retry_after, 25)
+                _log.info("%s Sleeping %ds (retry-after) …", tag, wait)
+                await asyncio.sleep(wait)
                 continue
-            # Hard limit — mark key and raise immediately
-            _mark_key_rate_limited(key, retry_after_secs=max(retry_after, 60))
-            raise _RateLimitError(
-                f"Key {mk} rate-limited (retry-after={retry_after}s) — moving to next key"
-            )
+            elif attempt < 2:
+                wait = 2 ** attempt * 3
+                _log.info("%s No retry-after header — exponential backoff %ds …", tag, wait)
+                await asyncio.sleep(wait)
+                continue
+            # Retries exhausted — mark key in cooldown and signal caller
+            import time as _t2
+            cooldown = max(retry_after, 60)
+            _key_rate_limited_until[mk] = _t2.time() + cooldown
+            _log.error("%s Key %s marked rate-limited for %ds", tag, mk, cooldown)
+            raise _RateLimitError(f"Key rate-limited on {stage}")
 
         elif r.status_code in (401, 403):
             _log.error("%s INVALID/EXPIRED KEY — HTTP %d for key %s", tag, r.status_code, mk)
@@ -1574,14 +1435,11 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
               provider_host, len(system_prompt), len(user_prompt))
 
     result = await call_llm_atomic(client, key, model, url, system_prompt, user_prompt,
-                                    "FullCV", headers, max_tokens=16000, _deadline=_deadline)
+                                    "FullCV", headers, max_tokens=8000, _deadline=_deadline)
 
     if not result:
         _log.error("[GenCV|%s] AI returned empty/unparseable response", provider_host)
         raise ValueError("AI returned empty response")
-
-    # Enforce skill rules regardless of model compliance
-    result = _enforce_skills(result, jd=req.job_description)
 
     _log.info("[GenCV|%s] AI response parsed — companies=%d projects=%d",
               provider_host,
@@ -1715,49 +1573,34 @@ async def call_cerebras(req: CVRequest) -> tuple:
     errors_by_key = []
     rate_limited_count = 0
 
-    # Large models (≥70B) have strict per-day quotas — skip the probe to
-    # conserve tokens; the real call will fail fast on invalid/limited keys.
-    import re as _re_cb
-    _large_model = bool(_re_cb.search(r'(70b|120b|235b|180b|large)', model, _re_cb.IGNORECASE))
-    _log.info("[Cerebras] model=%s large_model=%s", model, _large_model)
-
-    # read=300s gives Qwen-235B up to 5 min per attempt
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=300, write=15, pool=10)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=180, write=15, pool=10)) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
-            # Hard-skip keys still in their cooldown window
-            if _is_key_rate_limited(key):
-                _log.info("[Cerebras] Key %s still rate-limited — skipping", mk)
-                rate_limited_count += 1
-                errors_by_key.append(f"Key {i+1} ({mk}): skipped — still rate-limited")
-                continue
-
-            # Probe only for small/fast models — large models skip to save quota
-            if not _large_model:
-                try:
-                    probe = await client.post(
-                        CEREBRAS_URL, headers=headers,
-                        json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
-                        timeout=15,
-                    )
-                    if probe.status_code in (401, 403):
-                        errors_by_key.append(f"Key {i+1} ({mk}): invalid key")
-                        continue
-                    if probe.status_code == 429:
-                        rate_limited_count += 1
-                        retry_after = int(probe.headers.get("retry-after", 60))
-                        _mark_key_rate_limited(key, retry_after_secs=retry_after)
-                        errors_by_key.append(f"Key {i+1} ({mk}): probe rate-limited ({retry_after}s)")
-                        if i < len(sorted_keys) - 1:
-                            await asyncio.sleep(1)
-                        continue
-                except Exception as e:
-                    errors_by_key.append(f"Key {i+1} ({mk}): probe failed — {str(e)[:50]}")
+            # Quick probe to skip obviously bad/rate-limited keys
+            try:
+                probe = await client.post(
+                    CEREBRAS_URL,
+                    headers=headers,
+                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
+                    timeout=15,
+                )
+                if probe.status_code in (401, 403):
+                    errors_by_key.append(f"Key {i+1} ({mk}): invalid key")
                     continue
-            else:
-                _log.info("[Cerebras] Skipping probe for large model %s", model)
+                if probe.status_code == 429:
+                    rate_limited_count += 1
+                    retry_after = int(probe.headers.get("retry-after", 60))
+                    _key_rate_limited_until[mk] = _t.time() + min(retry_after, 120)
+                    errors_by_key.append(f"Key {i+1} ({mk}): rate limited (retry-after {retry_after}s)")
+                    # Small gap before trying next key
+                    if i < len(sorted_keys) - 1:
+                        await asyncio.sleep(2)
+                    continue
+            except Exception as e:
+                errors_by_key.append(f"Key {i+1} ({mk}): probe failed - {str(e)[:50]}")
+                continue
 
             try:
                 cv = await generate_cv_dynamic(req, client, key, model, CEREBRAS_URL, headers)
@@ -1767,7 +1610,9 @@ async def call_cerebras(req: CVRequest) -> tuple:
             except _RateLimitError as e:
                 rate_limited_count += 1
                 errors_by_key.append(f"Key {i+1} ({mk}): {str(e)}")
-                continue  # no sleep — key is already marked, move on immediately
+                if i < len(sorted_keys) - 1:
+                    await asyncio.sleep(3)
+                continue
             except Exception as e:
                 errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:100]}")
                 continue
@@ -1886,7 +1731,7 @@ async def call_gemini(req: CVRequest) -> tuple:
                 payload = {
                     "systemInstruction": {"parts": [{"text": sys_p}]},
                     "contents": [{"role": "user", "parts": [{"text": usr_p}]}],
-                    "generationConfig": {"temperature": 0.2, "maxOutputTokens": 16000},
+                    "generationConfig": {"temperature": 0.2, "maxOutputTokens": 8000},
                 }
                 r = await client.post(url, headers={"Content-Type": "application/json"}, json=payload)
 
@@ -1901,21 +1746,8 @@ async def call_gemini(req: CVRequest) -> tuple:
                     continue
 
                 if r.status_code == 200:
-                    _g_resp   = r.json()
-                    _g_cand   = _g_resp["candidates"][0]
-                    raw       = _g_cand["content"]["parts"][0]["text"]
-                    _g_finish = _g_cand.get("finishReason", "")
-                    _log.info("[Gemini] response %d chars, finishReason=%r", len(raw), _g_finish)
-                    if _g_finish in ("MAX_TOKENS", "LENGTH"):
-                        errors_by_key.append(
-                            f"Key {i+1} ({mk}): Gemini truncated (finishReason={_g_finish}). "
-                            "Shorten the JD or use gemini-2.5-flash."
-                        )
-                        continue
+                    raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
                     result = extract_json(raw)
-
-                    if isinstance(result, dict):
-                        result = _enforce_skills(result, jd=(req.job_description or ""))
 
                     years_exp = (req.years_exp or "").strip()
                     years_exp_clean = years_exp.replace("+", "").strip()
@@ -2314,7 +2146,7 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     skills = cv.get("skills", [])
     if skills:
         story.append(Paragraph("TECHNICAL SKILLS", S["sec_title"]))
-        for s in skills:
+        for s in skills[:5]:
             colon = s.find(":")
             if colon > 0:
                 category = s[:colon].strip()
