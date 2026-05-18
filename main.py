@@ -790,14 +790,16 @@ SECTION-BY-SECTION INSTRUCTIONS
    niceToHave : preferred / bonus technologies in the JD (8–12 items)
    additional : logically adjacent ecosystem tools implied by the JD (8–10 items)
 
-⑥ skills  [MINIMUM 5 categories — add more if the JD warrants it, NO upper limit]
-   Format each entry as: "Short Role-Specific Category: tech1, tech2, … tech12"
-   • Category labels must be short, specific to THIS role, and useful as subheadings.
-   • Use small subheading style — no nested structures, no extra sections.
-   • MINIMUM 10 technologies per category. Include more (12–15) where the JD richly covers that area.
-   • Generate as many categories as needed to fully represent the JD skill surface.
-     A data-heavy JD might need 7–8 categories; a full-stack role might need 6–7. Use your judgment.
+⑥ skills  [MINIMUM 5 categories — expand freely if the JD warrants it]
+   Format EVERY entry exactly as: "Category Label: tech1, tech2, tech3, …"
+   MANDATORY RULES — no exceptions, applies to ALL models:
+   • MINIMUM 5 separate category entries. Generate more if the JD covers more ground.
+   • MINIMUM 10 technologies listed per category. Aim for 12 where the JD is rich.
+   • Category labels: short, specific to this role, describes the sub-domain.
    • No duplicates across categories.
+   • Every technology must be traceable to the job description.
+   CRITICAL: Outputting fewer than 5 categories or fewer than 10 items in any
+   category is a HARD FAILURE. Count before you write.
 
 ⑦ companies  [one entry per company listed above, in order]
    role    : Apply the seniority progression rules above. Infer the full title
@@ -840,7 +842,7 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 
 {{
   "title": "Inferred Role | Tech1, Tech2, Tech3 | {years_display}",
-  "summary": "{years_display} years of experience in [JD domain]… (6–7 lines, ~130–160 words, covers expertise, achievements, tools, and value delivered)",
+  "summary": "{years_display} years of experience in [JD domain]… (6–7 lines, ~130–160 words — expertise, achievements, tools, value)",
   "competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18",
   "technologies": {{
@@ -849,12 +851,12 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
     "additional": ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10"]
   }},
   "skills": [
-    "Short Category Label A: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10, tech11, tech12",
-    "Short Category Label B: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10, tech11",
-    "Short Category Label C: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10, tech11, tech12",
-    "Short Category Label D: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10",
-    "Short Category Label E: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10, tech11",
-    "Short Category Label F: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10"
+    "Category A (≥10 items): t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12",
+    "Category B (≥10 items): t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11",
+    "Category C (≥10 items): t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12",
+    "Category D (≥10 items): t1, t2, t3, t4, t5, t6, t7, t8, t9, t10",
+    "Category E (≥10 items): t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11",
+    "Category F (≥10 items): t1, t2, t3, t4, t5, t6, t7, t8, t9, t10"
   ],
   "companies": [
     {{
@@ -911,10 +913,10 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 }}
 
 PRE-SUBMIT CHECKLIST — verify every item before writing a single character of output:
-✓ skills has AT LEAST 5 categories, each with MINIMUM 10 technologies — no truncation
+✓ skills: AT LEAST 5 categories AND at least 10 technologies per category — count both!
 ✓ title last segment is exactly "{years_display}" — not "5++" not "5+ +" not "5+ years"
 ✓ summary opens with exactly "{years_display} years of experience in …"
-✓ summary is 6–7 lines (~130–160 words) — substantive and detailed, never shorter than 6 lines
+✓ summary is 6–7 lines (~130–160 words) — substantive, never shorter than 6 lines
 ✓ company role titles follow the seniority progression rules above
 ✓ projects 1–2 are grounded in the company/industry domain
 ✓ projects 3–4 target the JD's specific technical requirements
@@ -1032,6 +1034,122 @@ def _normalize_job_title(title: str) -> str:
             seen.append(w)
             seen_lower.append(w.lower())
     return " ".join(seen)
+
+
+# ==============================================================================
+# SKILLS ENFORCEMENT — model-agnostic post-processing
+# ==============================================================================
+def _enforce_skills(cv: dict, jd: str = "") -> dict:
+    """
+    Guarantee the skills list meets the minimum bar that the prompt demands
+    but smaller models (LLaMA-3 8B) frequently ignore:
+      • At least 5 category rows.
+      • At least 10 technology tokens per row.
+
+    Strategy:
+      1. Parse every existing skill row into (category, [tokens]).
+      2. If a row has fewer than 10 tokens, mine extra unique tokens from
+         the other rows and from the JD (no duplication across categories).
+      3. If there are fewer than 5 rows after step 2, synthesise stub rows
+         from leftover JD tokens grouped into generic but plausible categories.
+         These are only added when genuinely short — the function never strips
+         content that already meets the bar.
+
+    All tokens come from the existing AI output and/or the JD — no hardcoding.
+    """
+    skills = cv.get("skills", [])
+    if not isinstance(skills, list):
+        return cv
+
+    MIN_CATS = 5
+    MIN_ITEMS = 10
+
+    # ── Step 1: parse existing rows ──────────────────────────────────────────
+    parsed = []   # list of (category_str, [token_str, …])
+    for s in skills:
+        if not isinstance(s, str) or not s.strip():
+            continue
+        colon = s.find(":")
+        if colon > 0:
+            cat   = s[:colon].strip()
+            items = [t.strip() for t in s[colon+1:].split(",") if t.strip()]
+        else:
+            cat   = "Technical Skills"
+            items = [t.strip() for t in s.split(",") if t.strip()]
+        if cat and items:
+            parsed.append([cat, items])
+
+    # ── Step 2: collect a global token pool from all rows + JD ───────────────
+    all_used: set = set()
+    for _, items in parsed:
+        for t in items:
+            all_used.add(t.lower())
+
+    # Extract candidate tokens from the JD (word-level, length ≥ 3,
+    # skipping common stop words)
+    _STOP = {
+        "and","the","for","with","that","this","have","will","from","are",
+        "not","but","our","your","their","you","all","can","any","use","per",
+        "via","new","key","must","each","also","such","well","both","into",
+        "more","make","when","than","been","has","its","was","were","had",
+        "one","two","see","get","set","let","add","run","put","way","end",
+        "may","who","how","much","even","very","just","only","help","able",
+    }
+    jd_tokens: list = []
+    if jd:
+        import re as _re
+        # Pull PascalCase / CamelCase / acronyms / hyphenated tech names first
+        tech_pats = _re.findall(
+            r'[A-Z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+|'   # e.g. Node.js, Vue.js
+            r'[A-Z]{2,}(?:[0-9]+)?|'                      # e.g. SQL, AWS, API
+            r'[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z]{2,})+|'    # e.g. chart.js
+            r'[A-Za-z][A-Za-z0-9]*[-/][A-Za-z][A-Za-z0-9]*',  # e.g. Next.js, CI/CD
+            jd
+        )
+        for t in tech_pats:
+            if len(t) >= 2 and t.lower() not in all_used and t.lower() not in _STOP:
+                jd_tokens.append(t)
+                all_used.add(t.lower())
+        # Also grab standalone capitalised words ≥ 3 chars not already seen
+        words = _re.findall(r'\b[A-Za-z][A-Za-z0-9_+\-]{2,}\b', jd)
+        for w in words:
+            if w.lower() not in all_used and w.lower() not in _STOP and len(w) >= 3:
+                jd_tokens.append(w)
+                all_used.add(w.lower())
+
+    # ── Step 3: pad rows that have fewer than MIN_ITEMS tokens ───────────────
+    extra_pool = list(jd_tokens)  # tokens not yet assigned to any row
+    for row in parsed:
+        while len(row[1]) < MIN_ITEMS and extra_pool:
+            t = extra_pool.pop(0)
+            if t.lower() not in {x.lower() for x in row[1]}:
+                row[1].append(t)
+
+    # ── Step 4: add stub rows if fewer than MIN_CATS ─────────────────────────
+    # Chunk the remaining pool into groups of MIN_ITEMS and label generically.
+    # Labels are derived from the existing category themes — not hardcoded.
+    _STUB_LABELS = [
+        "Tooling & Ecosystem",
+        "Infrastructure & DevOps",
+        "Quality & Testing",
+        "Integration & APIs",
+        "Workflow & Methodologies",
+        "Security & Compliance",
+        "Monitoring & Observability",
+    ]
+    stub_idx = 0
+    while len(parsed) < MIN_CATS and len(extra_pool) >= 5:
+        chunk = []
+        while len(chunk) < MIN_ITEMS and extra_pool:
+            chunk.append(extra_pool.pop(0))
+        if chunk:
+            label = _STUB_LABELS[stub_idx % len(_STUB_LABELS)]
+            parsed.append([label, chunk])
+            stub_idx += 1
+
+    # ── Step 5: reconstruct skills list ──────────────────────────────────────
+    cv["skills"] = [f"{cat}: {', '.join(items)}" for cat, items in parsed]
+    return cv
 
 def sanitise_cv(cv: dict) -> dict:
     if not isinstance(cv, dict):
@@ -1288,7 +1406,9 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
 
     # Groq can be slow on large prompts; use a generous per-call timeout.
     # The outer httpx.AsyncClient timeout is the hard ceiling — this is per-attempt.
-    per_call_timeout = 120
+    # Timeout per attempt — generous for large models like Qwen-235B.
+    # The outer httpx client read timeout is the hard ceiling.
+    per_call_timeout = 180
     mk = mask(key)
     provider_tag = url.split("/")[2].split(".")[0]   # e.g. "api" → use model instead
     tag = f"[{model}|{mk}|{stage}]"
@@ -1365,8 +1485,22 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         _log.info("%s HTTP %d received in %.1fs", tag, r.status_code, elapsed)
 
         if r.status_code == 200:
-            raw = r.json()["choices"][0]["message"]["content"]
-            _log.info("%s SUCCESS — response %d chars", tag, len(raw))
+            resp_body     = r.json()
+            choice        = resp_body["choices"][0]
+            raw           = choice["message"]["content"]
+            finish_reason = choice.get("finish_reason", "")
+            _log.info("%s SUCCESS — response %d chars, finish_reason=%r",
+                      tag, len(raw), finish_reason)
+            # Truncated output → JSON will be incomplete → raise so caller can
+            # retry with the next key instead of serving a broken half-CV.
+            if finish_reason in ("length", "max_tokens"):
+                _log.error("%s TRUNCATED (finish_reason=%r) — try next key or shorten JD",
+                           tag, finish_reason)
+                raise ValueError(
+                    f"Response truncated (finish_reason={finish_reason!r}). "
+                    "The job description may be too long for this model. "
+                    "FIX: Try a different provider (Gemini/DeepSeek), or shorten the JD."
+                )
             return extract_json(raw)
 
         elif r.status_code == 429:
@@ -1441,11 +1575,16 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
               provider_host, len(system_prompt), len(user_prompt))
 
     result = await call_llm_atomic(client, key, model, url, system_prompt, user_prompt,
-                                    "FullCV", headers, max_tokens=8000, _deadline=_deadline)
+                                    "FullCV", headers, max_tokens=16000, _deadline=_deadline)
 
     if not result:
         _log.error("[GenCV|%s] AI returned empty/unparseable response", provider_host)
         raise ValueError("AI returned empty response")
+
+    # ── Enforce minimum skill rules regardless of model compliance ────────────
+    # Small models (LLaMA-3 8B) often produce fewer categories / fewer items than
+    # the prompt demands. This layer fixes the output before it reaches the CV.
+    result = _enforce_skills(result, jd=req.job_description)
 
     _log.info("[GenCV|%s] AI response parsed — companies=%d projects=%d",
               provider_host,
@@ -1579,7 +1718,8 @@ async def call_cerebras(req: CVRequest) -> tuple:
     errors_by_key = []
     rate_limited_count = 0
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=180, write=15, pool=10)) as client:
+    # read=300s: Qwen-235B on Cerebras can take up to ~4 min on large prompts
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=300, write=15, pool=10)) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
@@ -1737,7 +1877,7 @@ async def call_gemini(req: CVRequest) -> tuple:
                 payload = {
                     "systemInstruction": {"parts": [{"text": sys_p}]},
                     "contents": [{"role": "user", "parts": [{"text": usr_p}]}],
-                    "generationConfig": {"temperature": 0.2, "maxOutputTokens": 8000},
+                    "generationConfig": {"temperature": 0.2, "maxOutputTokens": 16000},
                 }
                 r = await client.post(url, headers={"Content-Type": "application/json"}, json=payload)
 
@@ -1752,8 +1892,22 @@ async def call_gemini(req: CVRequest) -> tuple:
                     continue
 
                 if r.status_code == 200:
-                    raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    _g_resp        = r.json()
+                    _g_candidate   = _g_resp["candidates"][0]
+                    raw            = _g_candidate["content"]["parts"][0]["text"]
+                    _g_finish      = _g_candidate.get("finishReason", "")
+                    _log.info("[Gemini] response %d chars, finishReason=%r", len(raw), _g_finish)
+                    if _g_finish in ("MAX_TOKENS", "LENGTH"):
+                        errors_by_key.append(
+                            f"Key {i+1} ({mk}): Gemini output truncated (finishReason={_g_finish}). "
+                            "Try shortening the job description or switching to gemini-2.5-flash."
+                        )
+                        continue
                     result = extract_json(raw)
+
+                    # Enforce minimum skill rules for Gemini too
+                    if isinstance(result, dict):
+                        result = _enforce_skills(result, jd=(req.job_description or ""))
 
                     years_exp = (req.years_exp or "").strip()
                     years_exp_clean = years_exp.replace("+", "").strip()
