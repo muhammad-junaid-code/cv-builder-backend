@@ -334,7 +334,7 @@ def _build_education_year(years_exp: str, profile_edu: list = None) -> dict:
             n      = int(float(years_exp.strip().replace("+", "")))
             degree = (profile_edu[0].get("degree") or "") if profile_edu else ""
             dur    = _infer_degree_duration(degree)
-            grad_year  = today.year - max(n, 0) + 1
+            grad_year  = today.year - (max(n, 0) + 1)
             start_year = grad_year - dur
             return {"start": str(start_year), "end": str(grad_year)}
         except (ValueError, TypeError):
@@ -343,7 +343,7 @@ def _build_education_year(years_exp: str, profile_edu: list = None) -> dict:
     # ── Priority 4: no info ───────────────────────────────────────────────────
     degree     = (profile_edu[0].get("degree") or "") if profile_edu else ""
     dur        = _infer_degree_duration(degree)
-    grad_year  = today.year - 3 + 1
+    grad_year  = today.year - (3 + 1)
     start_year = grad_year - dur
     return {"start": str(start_year), "end": str(grad_year)}
 
@@ -596,7 +596,7 @@ Use your knowledge of this company to create relevant projects.
             except (ValueError, TypeError):
                 pass
         if anchor_start_yr is not None:
-            return f"{anchor_start_yr} - {anchor_start_yr + _dur}"
+            return f"{anchor_start_yr - _dur} - {anchor_start_yr}"
         return f"{edu['start']} - {edu['end']}"
 
     _edu_entries_for_prompt = []
@@ -604,7 +604,7 @@ Use your knowledge of this company to create relevant projects.
     for _pe in _p_edu_l:
         _e_yr = _resolve_edu_yr_prompt(_pe, anchor_start_yr=_prev_start_p)
         try:
-            _prev_start_p = int(_e_yr.split("-")[-1].strip()[:4])
+            _prev_start_p = int(_e_yr.split("-")[0].strip()[:4])
         except (ValueError, TypeError, IndexError):
             pass
         _edu_entries_for_prompt.append({
@@ -1496,8 +1496,8 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
 
         # Case 4: no dates at all — place this degree before the anchor entry
         if anchor_start_yr is not None:
-            start_yr = anchor_start_yr      # begins right where the previous entry ended
-            end_yr   = start_yr + _dur
+            end_yr   = anchor_start_yr      # ends where the previous entry started
+            start_yr = end_yr - _dur
             return f"{start_yr} - {end_yr}"
 
         # Case 5: no anchor either — use calculated years from the first entry
@@ -1510,7 +1510,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
             _yr_str = _resolve_edu_years(_pe, anchor_start_yr=_prev_start_yr)
             # Extract the start year of THIS entry to anchor the next one
             try:
-                _prev_start_yr = int(_yr_str.split("-")[-1].strip()[:4])
+                _prev_start_yr = int(_yr_str.split("-")[0].strip()[:4])
             except (ValueError, TypeError, IndexError):
                 pass
             _merged_edu.append({
@@ -1783,7 +1783,7 @@ async def call_gemini(req: CVRequest) -> tuple:
                             except (ValueError, TypeError):
                                 pass
                         if anchor_start_yr is not None:
-                            return f"{anchor_start_yr} - {anchor_start_yr + _dur}"
+                            return f"{anchor_start_yr - _dur} - {anchor_start_yr}"
                         return f"{edu['start']} - {edu['end']}"
 
                     if profile_edu:
@@ -1792,7 +1792,7 @@ async def call_gemini(req: CVRequest) -> tuple:
                         for _pe_g in profile_edu:
                             _yr_g = _resolve_edu_years_g(_pe_g, anchor_start_yr=_prev_s_g)
                             try:
-                                _prev_s_g = int(_yr_g.split("-")[-1].strip()[:4])
+                                _prev_s_g = int(_yr_g.split("-")[0].strip()[:4])
                             except (ValueError, TypeError, IndexError):
                                 pass
                             _merged_edu_g.append({
@@ -2206,7 +2206,7 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
 
         # Update anchor for the next entry
         try:
-            _pdf_prev_start_yr = int(_yr.split("-")[-1].strip()[:4])
+            _pdf_prev_start_yr = int(_yr.split("-")[0].strip()[:4])
         except (ValueError, TypeError, IndexError):
             pass
 
