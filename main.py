@@ -493,6 +493,20 @@ def _prioritised_keys(valid_keys: list) -> list:
         return (is_limited, _key_usage.get(mk, 0))
     return sorted(valid_keys, key=_sort_key)
 
+def _is_key_rate_limited(key: str) -> bool:
+    """Return True if this key is currently in its cooldown window."""
+    import time as _t
+    mk = mask(key)
+    return _key_rate_limited_until.get(mk, 0) > _t.time()
+
+def _mark_key_rate_limited(key: str, retry_after_secs: int = 60) -> None:
+    """Record that a key is rate-limited for retry_after_secs seconds."""
+    import time as _t
+    mk = mask(key)
+    cooldown = max(retry_after_secs, 60)
+    _key_rate_limited_until[mk] = _t.time() + cooldown
+    _log.warning("Key %s marked rate-limited for %ds", mk, cooldown)
+
 # ==============================================================================
 # CV Request Model
 # ==============================================================================
@@ -1041,52 +1055,42 @@ def _normalize_job_title(title: str) -> str:
 # ==============================================================================
 def _enforce_skills(cv: dict, jd: str = "") -> dict:
     """
-    Guarantee the skills list meets the minimum bar that the prompt demands
-    but smaller models (LLaMA-3 8B) frequently ignore:
+    Guarantee the skills list always meets the minimum bar the prompt demands.
+    Smaller models (LLaMA-3 8B) frequently produce fewer categories / items.
+
+    Rules enforced:
       • At least 5 category rows.
       • At least 10 technology tokens per row.
 
-    Strategy:
-      1. Parse every existing skill row into (category, [tokens]).
-      2. If a row has fewer than 10 tokens, mine extra unique tokens from
-         the other rows and from the JD (no duplication across categories).
-      3. If there are fewer than 5 rows after step 2, synthesise stub rows
-         from leftover JD tokens grouped into generic but plausible categories.
-         These are only added when genuinely short — the function never strips
-         content that already meets the bar.
-
-    All tokens come from the existing AI output and/or the JD — no hardcoding.
+    All padding tokens come from the JD — nothing is hardcoded.
+    Content that already meets the bar is never stripped or altered.
     """
+    import re as _re_sk
     skills = cv.get("skills", [])
     if not isinstance(skills, list):
         return cv
 
-    MIN_CATS = 5
+    MIN_CATS  = 5
     MIN_ITEMS = 10
 
-    # ── Step 1: parse existing rows ──────────────────────────────────────────
-    parsed = []   # list of (category_str, [token_str, …])
+    # ── Step 1: parse every existing row ─────────────────────────────────────
+    parsed = []   # [[category_str, [token, …]], …]
     for s in skills:
         if not isinstance(s, str) or not s.strip():
             continue
         colon = s.find(":")
         if colon > 0:
             cat   = s[:colon].strip()
-            items = [t.strip() for t in s[colon+1:].split(",") if t.strip()]
+            items = [t.strip() for t in s[colon + 1:].split(",") if t.strip()]
         else:
             cat   = "Technical Skills"
             items = [t.strip() for t in s.split(",") if t.strip()]
         if cat and items:
             parsed.append([cat, items])
 
-    # ── Step 2: collect a global token pool from all rows + JD ───────────────
-    all_used: set = set()
-    for _, items in parsed:
-        for t in items:
-            all_used.add(t.lower())
+    # ── Step 2: build a pool of additional tokens from the JD ────────────────
+    all_used: set = {t.lower() for _, row in parsed for t in row}
 
-    # Extract candidate tokens from the JD (word-level, length ≥ 3,
-    # skipping common stop words)
     _STOP = {
         "and","the","for","with","that","this","have","will","from","are",
         "not","but","our","your","their","you","all","can","any","use","per",
@@ -1094,61 +1098,56 @@ def _enforce_skills(cv: dict, jd: str = "") -> dict:
         "more","make","when","than","been","has","its","was","were","had",
         "one","two","see","get","set","let","add","run","put","way","end",
         "may","who","how","much","even","very","just","only","help","able",
+        "work","team","role","good","best","real","done","show","part","give",
     }
-    jd_tokens: list = []
+    jd_pool: list = []
     if jd:
-        import re as _re
-        # Pull PascalCase / CamelCase / acronyms / hyphenated tech names first
-        tech_pats = _re.findall(
-            r'[A-Z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+|'   # e.g. Node.js, Vue.js
-            r'[A-Z]{2,}(?:[0-9]+)?|'                      # e.g. SQL, AWS, API
-            r'[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z]{2,})+|'    # e.g. chart.js
-            r'[A-Za-z][A-Za-z0-9]*[-/][A-Za-z][A-Za-z0-9]*',  # e.g. Next.js, CI/CD
+        # Priority: tech-name patterns (Node.js, CI/CD, AWS, etc.)
+        tech_pats = _re_sk.findall(
+            r'[A-Z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+'    # Node.js, Vue.js
+            r'|[A-Z]{2,}[0-9]*'                          # SQL, AWS, API, S3
+            r'|[a-z][a-zA-Z0-9]*\.[a-zA-Z]{2,}'         # chart.js
+            r'|[A-Za-z][A-Za-z0-9]*[-/][A-Za-z][A-Za-z0-9]*',  # CI/CD, Next.js
             jd
         )
         for t in tech_pats:
-            if len(t) >= 2 and t.lower() not in all_used and t.lower() not in _STOP:
-                jd_tokens.append(t)
-                all_used.add(t.lower())
-        # Also grab standalone capitalised words ≥ 3 chars not already seen
-        words = _re.findall(r'\b[A-Za-z][A-Za-z0-9_+\-]{2,}\b', jd)
-        for w in words:
-            if w.lower() not in all_used and w.lower() not in _STOP and len(w) >= 3:
-                jd_tokens.append(w)
-                all_used.add(w.lower())
+            tl = t.lower()
+            if len(t) >= 2 and tl not in all_used and tl not in _STOP:
+                jd_pool.append(t)
+                all_used.add(tl)
+        # General words ≥ 3 chars
+        for w in _re_sk.findall(r'[A-Za-z][A-Za-z0-9_+.\-]{2,}', jd):
+            wl = w.lower()
+            if wl not in all_used and wl not in _STOP:
+                jd_pool.append(w)
+                all_used.add(wl)
 
-    # ── Step 3: pad rows that have fewer than MIN_ITEMS tokens ───────────────
-    extra_pool = list(jd_tokens)  # tokens not yet assigned to any row
+    # ── Step 3: pad rows below MIN_ITEMS ─────────────────────────────────────
+    pool = list(jd_pool)
     for row in parsed:
-        while len(row[1]) < MIN_ITEMS and extra_pool:
-            t = extra_pool.pop(0)
+        while len(row[1]) < MIN_ITEMS and pool:
+            t = pool.pop(0)
             if t.lower() not in {x.lower() for x in row[1]}:
                 row[1].append(t)
 
-    # ── Step 4: add stub rows if fewer than MIN_CATS ─────────────────────────
-    # Chunk the remaining pool into groups of MIN_ITEMS and label generically.
-    # Labels are derived from the existing category themes — not hardcoded.
+    # ── Step 4: synthesise stub rows if still below MIN_CATS ─────────────────
     _STUB_LABELS = [
-        "Tooling & Ecosystem",
-        "Infrastructure & DevOps",
-        "Quality & Testing",
-        "Integration & APIs",
-        "Workflow & Methodologies",
-        "Security & Compliance",
+        "Tooling & Ecosystem", "Infrastructure & DevOps", "Quality & Testing",
+        "Integration & APIs",  "Workflow & Methodologies", "Security & Compliance",
         "Monitoring & Observability",
     ]
     stub_idx = 0
-    while len(parsed) < MIN_CATS and len(extra_pool) >= 5:
-        chunk = []
-        while len(chunk) < MIN_ITEMS and extra_pool:
-            chunk.append(extra_pool.pop(0))
+    while len(parsed) < MIN_CATS and len(pool) >= 5:
+        chunk: list = []
+        while len(chunk) < MIN_ITEMS and pool:
+            chunk.append(pool.pop(0))
         if chunk:
-            label = _STUB_LABELS[stub_idx % len(_STUB_LABELS)]
-            parsed.append([label, chunk])
+            parsed.append([_STUB_LABELS[stub_idx % len(_STUB_LABELS)], chunk])
             stub_idx += 1
 
-    # ── Step 5: reconstruct skills list ──────────────────────────────────────
-    cv["skills"] = [f"{cat}: {', '.join(items)}" for cat, items in parsed]
+    # ── Step 5: rebuild skills list ───────────────────────────────────────────
+    if parsed:
+        cv["skills"] = [f"{cat}: {', '.join(items)}" for cat, items in parsed]
     return cv
 
 def sanitise_cv(cv: dict) -> dict:
@@ -1406,9 +1405,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
 
     # Groq can be slow on large prompts; use a generous per-call timeout.
     # The outer httpx.AsyncClient timeout is the hard ceiling — this is per-attempt.
-    # Timeout per attempt — generous for large models like Qwen-235B.
-    # The outer httpx client read timeout is the hard ceiling.
-    per_call_timeout = 180
+    per_call_timeout = 120
     mk = mask(key)
     provider_tag = url.split("/")[2].split(".")[0]   # e.g. "api" → use model instead
     tag = f"[{model}|{mk}|{stage}]"
@@ -1491,15 +1488,12 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             finish_reason = choice.get("finish_reason", "")
             _log.info("%s SUCCESS — response %d chars, finish_reason=%r",
                       tag, len(raw), finish_reason)
-            # Truncated output → JSON will be incomplete → raise so caller can
-            # retry with the next key instead of serving a broken half-CV.
             if finish_reason in ("length", "max_tokens"):
-                _log.error("%s TRUNCATED (finish_reason=%r) — try next key or shorten JD",
-                           tag, finish_reason)
+                _log.error("%s TRUNCATED (finish_reason=%r) — raising to try next key", tag, finish_reason)
                 raise ValueError(
                     f"Response truncated (finish_reason={finish_reason!r}). "
-                    "The job description may be too long for this model. "
-                    "FIX: Try a different provider (Gemini/DeepSeek), or shorten the JD."
+                    "The JD may be too long for this model. "
+                    "FIX: Try Gemini/DeepSeek, or shorten the job description."
                 )
             return extract_json(raw)
 
@@ -1507,22 +1501,20 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             retry_after = int(r.headers.get("retry-after", 0))
             _log.warning("%s RATE-LIMITED (429) — retry-after=%ds — attempt %d/3",
                          tag, retry_after, attempt_num)
-            if attempt < 2 and retry_after > 0:
-                wait = min(retry_after, 25)
-                _log.info("%s Sleeping %ds (retry-after) …", tag, wait)
+            # Strategy: only wait-and-retry within this key when the API gives
+            # a short retry-after (≤30s) — that signals transient throttling.
+            # A retry-after of 0 or >30s means a hard per-minute/per-day cap;
+            # mark the key immediately and bail so the caller can try the next key.
+            if attempt < 2 and 0 < retry_after <= 30:
+                wait = retry_after
+                _log.info("%s Transient throttle — sleeping %ds then retrying same key …", tag, wait)
                 await asyncio.sleep(wait)
                 continue
-            elif attempt < 2:
-                wait = 2 ** attempt * 3
-                _log.info("%s No retry-after header — exponential backoff %ds …", tag, wait)
-                await asyncio.sleep(wait)
-                continue
-            # Retries exhausted — mark key in cooldown and signal caller
-            import time as _t2
-            cooldown = max(retry_after, 60)
-            _key_rate_limited_until[mk] = _t2.time() + cooldown
-            _log.error("%s Key %s marked rate-limited for %ds", tag, mk, cooldown)
-            raise _RateLimitError(f"Key rate-limited on {stage}")
+            # Hard limit or no header — give up on this key right now
+            _mark_key_rate_limited(key, retry_after_secs=max(retry_after, 60))
+            raise _RateLimitError(
+                f"Key {mk} rate-limited (retry-after={retry_after}s) — trying next key"
+            )
 
         elif r.status_code in (401, 403):
             _log.error("%s INVALID/EXPIRED KEY — HTTP %d for key %s", tag, r.status_code, mk)
@@ -1581,9 +1573,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
         _log.error("[GenCV|%s] AI returned empty/unparseable response", provider_host)
         raise ValueError("AI returned empty response")
 
-    # ── Enforce minimum skill rules regardless of model compliance ────────────
-    # Small models (LLaMA-3 8B) often produce fewer categories / fewer items than
-    # the prompt demands. This layer fixes the output before it reaches the CV.
+    # Enforce minimum skill rules regardless of model compliance
     result = _enforce_skills(result, jd=req.job_description)
 
     _log.info("[GenCV|%s] AI response parsed — companies=%d projects=%d",
@@ -1718,36 +1708,54 @@ async def call_cerebras(req: CVRequest) -> tuple:
     errors_by_key = []
     rate_limited_count = 0
 
-    # read=300s: Qwen-235B on Cerebras can take up to ~4 min on large prompts
+    # Detect large models (≥70B params) — skip probe to conserve quota.
+    # The real generation call will fail fast on invalid/rate-limited keys anyway.
+    import re as _re_cb
+    _large_model = bool(_re_cb.search(r'(70b|120b|235b|180b|large)', model, _re_cb.IGNORECASE))
+    _log.info("[Cerebras] model=%s large_model=%s", model, _large_model)
+
+    # read=300s: Qwen-235B can take up to ~4-5 min on large prompts
     async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=300, write=15, pool=10)) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
-            # Quick probe to skip obviously bad/rate-limited keys
-            try:
-                probe = await client.post(
-                    CEREBRAS_URL,
-                    headers=headers,
-                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
-                    timeout=15,
-                )
-                if probe.status_code in (401, 403):
-                    errors_by_key.append(f"Key {i+1} ({mk}): invalid key")
-                    continue
-                if probe.status_code == 429:
-                    rate_limited_count += 1
-                    retry_after = int(probe.headers.get("retry-after", 60))
-                    _key_rate_limited_until[mk] = _t.time() + min(retry_after, 120)
-                    errors_by_key.append(f"Key {i+1} ({mk}): rate limited (retry-after {retry_after}s)")
-                    # Small gap before trying next key
-                    if i < len(sorted_keys) - 1:
-                        await asyncio.sleep(2)
-                    continue
-            except Exception as e:
-                errors_by_key.append(f"Key {i+1} ({mk}): probe failed - {str(e)[:50]}")
+            # ── Hard-skip keys already known to be rate-limited ───────────────
+            if _is_key_rate_limited(key):
+                _log.info("[Cerebras] Skipping key %s — still in cooldown window", mk)
+                rate_limited_count += 1
+                errors_by_key.append(f"Key {i+1} ({mk}): skipped — still rate-limited")
                 continue
 
+            # ── Probe (only for small/fast models — skip for large ones) ─────
+            # Large models have per-day token caps; every probe burns quota.
+            # Small models probe fine since they have generous per-minute limits.
+            if not _large_model:
+                try:
+                    probe = await client.post(
+                        CEREBRAS_URL,
+                        headers=headers,
+                        json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
+                        timeout=15,
+                    )
+                    if probe.status_code in (401, 403):
+                        errors_by_key.append(f"Key {i+1} ({mk}): invalid key")
+                        continue
+                    if probe.status_code == 429:
+                        rate_limited_count += 1
+                        retry_after = int(probe.headers.get("retry-after", 60))
+                        _mark_key_rate_limited(key, retry_after_secs=retry_after)
+                        errors_by_key.append(f"Key {i+1} ({mk}): probe rate-limited (retry-after {retry_after}s)")
+                        if i < len(sorted_keys) - 1:
+                            await asyncio.sleep(1)
+                        continue
+                except Exception as e:
+                    errors_by_key.append(f"Key {i+1} ({mk}): probe failed — {str(e)[:50]}")
+                    continue
+            else:
+                _log.info("[Cerebras] Skipping probe for large model %s key %s", model, mk)
+
+            # ── Actual CV generation ──────────────────────────────────────────
             try:
                 cv = await generate_cv_dynamic(req, client, key, model, CEREBRAS_URL, headers)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
@@ -1756,8 +1764,7 @@ async def call_cerebras(req: CVRequest) -> tuple:
             except _RateLimitError as e:
                 rate_limited_count += 1
                 errors_by_key.append(f"Key {i+1} ({mk}): {str(e)}")
-                if i < len(sorted_keys) - 1:
-                    await asyncio.sleep(3)
+                # No sleep — _RateLimitError means the key is already marked; move on fast
                 continue
             except Exception as e:
                 errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:100]}")
@@ -1892,20 +1899,20 @@ async def call_gemini(req: CVRequest) -> tuple:
                     continue
 
                 if r.status_code == 200:
-                    _g_resp        = r.json()
-                    _g_candidate   = _g_resp["candidates"][0]
-                    raw            = _g_candidate["content"]["parts"][0]["text"]
-                    _g_finish      = _g_candidate.get("finishReason", "")
+                    _g_resp      = r.json()
+                    _g_cand      = _g_resp["candidates"][0]
+                    raw          = _g_cand["content"]["parts"][0]["text"]
+                    _g_finish    = _g_cand.get("finishReason", "")
                     _log.info("[Gemini] response %d chars, finishReason=%r", len(raw), _g_finish)
                     if _g_finish in ("MAX_TOKENS", "LENGTH"):
                         errors_by_key.append(
-                            f"Key {i+1} ({mk}): Gemini output truncated (finishReason={_g_finish}). "
-                            "Try shortening the job description or switching to gemini-2.5-flash."
+                            f"Key {i+1} ({mk}): Gemini truncated (finishReason={_g_finish}). "
+                            "Shorten the JD or switch to gemini-2.5-flash."
                         )
                         continue
                     result = extract_json(raw)
 
-                    # Enforce minimum skill rules for Gemini too
+                    # Enforce minimum skill rules for Gemini output too
                     if isinstance(result, dict):
                         result = _enforce_skills(result, jd=(req.job_description or ""))
 
