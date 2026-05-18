@@ -2067,8 +2067,9 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
             # AND must have more than 4 digit characters
             import re as _re
             _digits_only = _re.sub(r"[^\d]", "", v)
+            _phone_digits = _re.sub(r"\s+", "", v)
             if _re.fullmatch(r"[\d\s\+\-\(\)\.]+", v) and len(_digits_only) > 4:
-                return f"tel:{_re.sub(r'\s+', '', v)}"
+                return "tel:" + _phone_digits
 
             # Case 4: bare URL — no spaces, contains a dot, looks like a domain/path
             # Must not contain spaces (rules out phrases like "Open to worldwide...")
