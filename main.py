@@ -2038,22 +2038,50 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         # ReportLab supports <a href="...">text</a> inside Paragraph XML markup.
         # We auto-prefix bare addresses so they become valid URIs.
         def _make_href(val: str) -> str:
-            """Return a valid URI for any link value the UI can produce."""
+            """Return a valid URI only when the value is genuinely linkable.
+
+            A value is treated as clickable if and only if it matches one of:
+              1. Already a full URI (https://, http://, mailto:, tel:)
+              2. Contains an @ symbol  → email  → mailto:
+              3. Contains https:// anywhere in the string → URL  → use as-is / prefix
+              4. Digits-only token with more than 4 digits → phone → tel:
+              5. Looks like a bare domain/URL (no spaces, contains a dot, no @,
+                 starts with a recognised domain-like pattern) → https://
+
+            Anything else (plain sentences, locations, freeform text) returns ""
+            so _link_xml renders it as plain coloured text, not a hyperlink.
+            """
             v = val.strip()
             if not v:
                 return ""
-            # Already a full URI
-            if v.startswith(("http://", "https://", "mailto:", "tel:")):
+
+            # Case 1: already a full URI — use directly
+            if v.startswith(("https://", "http://", "mailto:", "tel:")):
                 return v
-            # Email address
-            if "@" in v and "." in v and "/" not in v:
+
+            # Case 2: contains @ → treat as email address
+            if "@" in v:
                 return f"mailto:{v}"
-            # Phone number (digits, spaces, +, dashes, parentheses only)
+
+            # Case 3: phone number — digits, spaces, +, -, (, ) only
+            # AND must have more than 4 digit characters
             import re as _re
-            if _re.fullmatch(r"[\d\s\+\-\(\)]+", v):
-                return f"tel:{v.replace(' ', '')}"
-            # Everything else → assume a URL; add https:// if missing
-            return f"https://{v}"
+            _digits_only = _re.sub(r"[^\d]", "", v)
+            if _re.fullmatch(r"[\d\s\+\-\(\)\.]+", v) and len(_digits_only) > 4:
+                return f"tel:{_re.sub(r'\s+', '', v)}"
+
+            # Case 4: bare URL — no spaces, contains a dot, looks like a domain/path
+            # Must not contain spaces (rules out phrases like "Open to worldwide...")
+            # Must match a domain-like pattern: word.tld or word.tld/path
+            if (
+                " " not in v
+                and "." in v
+                and _re.search(r"[a-zA-Z0-9]\.[a-zA-Z]{2,}", v)
+            ):
+                return f"https://{v}"
+
+            # Everything else (plain text, sentences, freeform notes) → not a link
+            return ""
 
         def _link_xml(label: str, val: str, color: str = "#0057A8") -> str:
             """Return ReportLab XML markup for a single clickable link token.
