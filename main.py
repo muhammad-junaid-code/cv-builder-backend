@@ -1382,10 +1382,22 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             raise ValueError(f"Invalid/expired key on {stage} (HTTP {r.status_code})")
 
         elif r.status_code == 400:
-            # HTTP 400 often means max_tokens exceeds the model per-request cap.
-            # Retry once with a halved token budget before giving up.
-            err_body = r.text[:300]
+            err_body = r.text[:400]
             _log.warning("%s HTTP 400 on attempt %d — %s", tag, attempt_num, err_body)
+
+            # Detect non-retriable account-level errors (restriction, ban, billing).
+            # Retrying with fewer tokens won't fix these — fail fast with a clear message.
+            _err_lower = err_body.lower()
+            _fatal_phrases = ("restricted", "banned", "suspended", "billing", "quota exceeded",
+                              "account", "organization")
+            if any(p in _err_lower for p in _fatal_phrases):
+                _log.error("%s Non-retriable account error on key %s — %s", tag, mk, err_body[:200])
+                raise ValueError(
+                    f"Key {mk} is restricted or has a billing issue. "
+                    f"Please check your provider account. Detail: {err_body[:200]}"
+                )
+
+            # Otherwise (e.g. max_tokens cap): retry once with a halved token budget.
             if attempt == 0 and max_tokens > 4000:
                 reduced = max_tokens // 2
                 _log.info("%s Retrying with reduced max_tokens=%d (was %d)", tag, reduced, max_tokens)
