@@ -334,7 +334,7 @@ def _build_education_year(years_exp: str, profile_edu: list = None) -> dict:
             n      = int(float(years_exp.strip().replace("+", "")))
             degree = (profile_edu[0].get("degree") or "") if profile_edu else ""
             dur    = _infer_degree_duration(degree)
-            grad_year  = today.year - (max(n, 0) + 1)
+            grad_year  = today.year - max(n, 0) + 1
             start_year = grad_year - dur
             return {"start": str(start_year), "end": str(grad_year)}
         except (ValueError, TypeError):
@@ -343,7 +343,7 @@ def _build_education_year(years_exp: str, profile_edu: list = None) -> dict:
     # ── Priority 4: no info ───────────────────────────────────────────────────
     degree     = (profile_edu[0].get("degree") or "") if profile_edu else ""
     dur        = _infer_degree_duration(degree)
-    grad_year  = today.year - (3 + 1)
+    grad_year  = today.year - 3 + 1
     start_year = grad_year - dur
     return {"start": str(start_year), "end": str(grad_year)}
 
