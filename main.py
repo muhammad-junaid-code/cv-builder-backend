@@ -240,25 +240,77 @@ def _normalise_edu_entry(e: dict) -> dict:
     return out
 
 
+def _infer_degree_duration(degree_str: str) -> int:
+    """
+    Infer typical program duration in years from the degree name.
+    Fully dynamic — no hardcoded institution or country assumptions.
+    Scans for standard academic level keywords and returns the most
+    commonly accepted duration for that level worldwide.
+
+    Returns an integer number of years (default 4 if unrecognised).
+    """
+    d = (degree_str or "").lower()
+
+    # ── Doctoral / research doctorates (5–6 yrs, use 4 for CV purposes) ──────
+    if any(k in d for k in ("phd", "ph.d", "d.phil", "doctor of philosophy",
+                             "dphil", "dsc", "d.sc", "doctor of science")):
+        return 4
+
+    # ── Professional doctorates & long integrated masters (3–4 yrs post-grad) ─
+    if any(k in d for k in ("md", "m.d", "doctor of medicine", "mbbs", "bds",
+                             "llb", "l.l.b", "juris doctor", "j.d")):
+        return 5
+
+    # ── Masters / postgraduate taught (1–2 yrs) ──────────────────────────────
+    if any(k in d for k in ("m.phil", "mphil", "m phil",
+                             "master", "msc", "m.sc", "m.s.", " ms ",
+                             "mba", "m.b.a", "med", "m.ed",
+                             "meng", "m.eng", "mtech", "m.tech",
+                             "ma ", "m.a.", "mfa", "m.f.a",
+                             "postgrad", "post-grad", "pgd", "pg dip")):
+        return 2
+
+    # ── Bachelor / undergraduate (3–4 yrs; default 4) ────────────────────────
+    if any(k in d for k in ("bachelor", "bsc", "b.sc", "b.s.",
+                             "beng", "b.eng", "btech", "b.tech",
+                             "ba ", "b.a.", "bba", "b.b.a",
+                             "bcom", "b.com", "bca", "b.ca",
+                             "bcs", "b.cs", "bscs", "b.s.c.s",
+                             "bsit", "b.s.i.t", "bsee", "bsce",
+                             "undergraduate", "honours", "hons")):
+        return 4
+
+    # ── Associate / diploma / certificate (1–2 yrs) ──────────────────────────
+    if any(k in d for k in ("associate", "diploma", "dip.", "certificate",
+                             "hnd", "hnc", "technician", "vocational")):
+        return 2
+
+    # ── Default: 4-year program if unrecognised ───────────────────────────────
+    return 4
+
+
 def _build_education_year(years_exp: str, profile_edu: list = None) -> dict:
     """
-    Returns {"start": "YYYY", "end": "YYYY"} for the education block.
+    Returns {"start": "YYYY", "end": "YYYY"} for the FIRST education entry.
 
-    Priority:
-      1. Both dates explicit in profile_edu[0]  → use as-is.
-      2. Only one date in profile_edu[0]         → infer the other (4-year degree).
+    Priority (per entry):
+      1. Both dates explicit in profile_edu[0]  → use exactly as provided.
+      2. Only one date provided                  → infer the other using
+         _infer_degree_duration() on the degree name — fully dynamic.
       3. years_exp provided (UI input)           → graduation = current_year - years_exp + 1
-                                                   start      = graduation - 4
-      4. No info at all                          → graduation = current_year - 3 (assume ~3 yrs exp)
-                                                   start      = graduation - 4
+                                                   duration   = inferred from degree name
+      4. No info at all                          → graduation = current_year - 3,
+                                                   duration   = 4 years.
 
-    This ensures no hardcoded fallback dates ever appear in the output.
+    No hardcoded durations — duration is always derived from the degree string.
     """
     today = date.today()
 
     # ── Priority 1 & 2: profile data ─────────────────────────────────────────
     if profile_edu:
-        e = profile_edu[0]
+        e      = profile_edu[0]
+        degree = (e.get("degree") or "").strip()
+        dur    = _infer_degree_duration(degree)
         p_from = str(e.get("from", "") or "").strip()
         p_to   = str(e.get("to",   "") or "").strip()
         if p_from and p_to:
@@ -266,31 +318,33 @@ def _build_education_year(years_exp: str, profile_edu: list = None) -> dict:
         if p_to and not p_from:
             try:
                 end_yr = int(p_to[:4])
-                return {"start": str(end_yr - 4), "end": p_to}
+                return {"start": str(end_yr - dur), "end": p_to}
             except (ValueError, TypeError):
                 pass
         if p_from and not p_to:
             try:
                 start_yr = int(p_from[:4])
-                return {"start": p_from, "end": str(start_yr + 4)}
+                return {"start": p_from, "end": str(start_yr + dur)}
             except (ValueError, TypeError):
                 pass
 
     # ── Priority 3: years_exp from UI ────────────────────────────────────────
     if years_exp:
         try:
-            n = int(float(years_exp.strip().replace("+", "")))
-            # Graduation year = current year - experience + 1
-            # (person graduated ~1 year before finishing their first year of work)
+            n      = int(float(years_exp.strip().replace("+", "")))
+            degree = (profile_edu[0].get("degree") or "") if profile_edu else ""
+            dur    = _infer_degree_duration(degree)
             grad_year  = today.year - max(n, 0) + 1
-            start_year = grad_year - 4
+            start_year = grad_year - dur
             return {"start": str(start_year), "end": str(grad_year)}
         except (ValueError, TypeError):
             pass
 
-    # ── Priority 4: no info — assume ~3 years experience ─────────────────────
+    # ── Priority 4: no info ───────────────────────────────────────────────────
+    degree     = (profile_edu[0].get("degree") or "") if profile_edu else ""
+    dur        = _infer_degree_duration(degree)
     grad_year  = today.year - 3 + 1
-    start_year = grad_year - 4
+    start_year = grad_year - dur
     return {"start": str(start_year), "end": str(grad_year)}
 
 # ==============================================================================
@@ -520,28 +574,45 @@ Use your knowledge of this company to create relevant projects.
         company_context_block = "No target company provided."
 
     # ── Build education block for prompt — one entry per qualification ──────────
-    # Produces a JSON array so the AI carries ALL qualifications through unchanged.
+    # Uses the same UI-first, auto-sequencing logic as the post-AI merge so the
+    # AI sees the exact years that will appear in the final CV.
     import json as _json_mod
+
+    def _resolve_edu_yr_prompt(pe: dict, anchor_start_yr: int = None) -> str:
+        _ef  = str(pe.get("from") or "").strip()
+        _et  = str(pe.get("to")   or "").strip()
+        _deg = (pe.get("degree")  or "").strip()
+        _dur = _infer_degree_duration(_deg)
+        if _ef and _et:
+            return f"{_ef} - {_et}"
+        if _et and not _ef:
+            try:
+                return f"{int(_et[:4]) - _dur} - {_et}"
+            except (ValueError, TypeError):
+                pass
+        if _ef and not _et:
+            try:
+                return f"{_ef} - {int(_ef[:4]) + _dur}"
+            except (ValueError, TypeError):
+                pass
+        if anchor_start_yr is not None:
+            return f"{anchor_start_yr} - {anchor_start_yr + _dur}"
+        return f"{edu['start']} - {edu['end']}"
+
     _edu_entries_for_prompt = []
-    for _ei, _pe in enumerate(_p_edu_l):
-        _e_uni  = (_pe.get("institution") or "").strip()
-        _e_deg  = (_pe.get("degree")      or "").strip()
-        _e_cgpa = (_pe.get("cgpa")        or "").strip()
-        _e_ach  = (_pe.get("achievement") or "").strip()
-        # Use calculated years only for the first (most recent) entry;
-        # subsequent entries use their own stored from/to dates.
-        if _ei == 0:
-            _e_yr = f"{edu['start']} - {edu['end']}"
-        else:
-            _e_from = str(_pe.get("from") or "").strip()
-            _e_to   = str(_pe.get("to")   or "").strip()
-            _e_yr   = f"{_e_from} - {_e_to}" if (_e_from or _e_to) else ""
+    _prev_start_p = None
+    for _pe in _p_edu_l:
+        _e_yr = _resolve_edu_yr_prompt(_pe, anchor_start_yr=_prev_start_p)
+        try:
+            _prev_start_p = int(_e_yr.split("-")[-1].strip()[:4])
+        except (ValueError, TypeError, IndexError):
+            pass
         _edu_entries_for_prompt.append({
-            "university": _e_uni,
-            "degree":     _e_deg,
-            "cgpa":       _e_cgpa,
+            "university": (_pe.get("institution") or "").strip(),
+            "degree":     (_pe.get("degree")      or "").strip(),
+            "cgpa":       (_pe.get("cgpa")        or "").strip(),
             "years":      _e_yr,
-            "achievement":_e_ach,
+            "achievement":(_pe.get("achievement") or "").strip(),
         })
     if not _edu_entries_for_prompt:
         _edu_entries_for_prompt = [{
@@ -1386,36 +1457,72 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
     if "projects" not in result:
         result["projects"] = []
 
-    # Build education list: one entry per qualification — profile always wins over AI.
-    # The AI was given the full list in the prompt and should return it unchanged,
-    # but we always rebuild from profile data to be safe.
+    # ── Build education list — all entries, dates always UI-first ───────────────
+    # Priority per entry:
+    #   1. Both from/to in UI  → use exactly as provided.
+    #   2. One date missing     → infer from degree duration via _infer_degree_duration().
+    #   3. Both dates missing   → place immediately before the entry above it started,
+    #      using that entry's start year as the anchor (chronological auto-sequencing).
     _p_edu_list = profile_edu or []
 
-    def _build_edu_entry(pe: dict, edu_years: dict, use_calc_years: bool) -> dict:
-        """Merge one profile edu entry into a clean dict."""
-        if use_calc_years:
-            _yr = f"{edu_years['start']} - {edu_years['end']}"
-        else:
-            _ef = str(pe.get("from") or "").strip()
-            _et = str(pe.get("to")   or "").strip()
-            _yr = f"{_ef} - {_et}" if (_ef or _et) else ""
-        return {
-            "university":  (pe.get("institution") or "").strip(),
-            "degree":      (pe.get("degree")       or "").strip(),
-            "cgpa":        (pe.get("cgpa")         or "").strip(),
-            "years":       _yr,
-            "achievement": (pe.get("achievement")  or "").strip(),
-        }
+    def _resolve_edu_years(pe: dict, anchor_start_yr: int = None) -> str:
+        """
+        Return a "YYYY - YYYY" string for one education entry.
+        anchor_start_yr: the start year of the PREVIOUS (higher on CV) entry,
+        used as the upper bound when this entry has no dates at all.
+        """
+        _ef  = str(pe.get("from") or "").strip()
+        _et  = str(pe.get("to")   or "").strip()
+        _deg = (pe.get("degree")  or "").strip()
+        _dur = _infer_degree_duration(_deg)
+
+        # Case 1: both dates provided — use as-is
+        if _ef and _et:
+            return f"{_ef} - {_et}"
+
+        # Case 2: only end year provided — infer start from duration
+        if _et and not _ef:
+            try:
+                return f"{int(_et[:4]) - _dur} - {_et}"
+            except (ValueError, TypeError):
+                pass
+
+        # Case 3: only start year provided — infer end from duration
+        if _ef and not _et:
+            try:
+                return f"{_ef} - {int(_ef[:4]) + _dur}"
+            except (ValueError, TypeError):
+                pass
+
+        # Case 4: no dates at all — place this degree before the anchor entry
+        if anchor_start_yr is not None:
+            start_yr = anchor_start_yr      # begins right where the previous entry ended
+            end_yr   = start_yr + _dur
+            return f"{start_yr} - {end_yr}"
+
+        # Case 5: no anchor either — use calculated years from the first entry
+        return f"{edu['start']} - {edu['end']}"
 
     if _p_edu_list:
-        _merged_edu = [
-            _build_edu_entry(pe, edu, i == 0)
-            for i, pe in enumerate(_p_edu_list)
-        ]
+        _merged_edu = []
+        _prev_start_yr = None   # start year of the entry just added (for sequencing)
+        for _pe in _p_edu_list:
+            _yr_str = _resolve_edu_years(_pe, anchor_start_yr=_prev_start_yr)
+            # Extract the start year of THIS entry to anchor the next one
+            try:
+                _prev_start_yr = int(_yr_str.split("-")[-1].strip()[:4])
+            except (ValueError, TypeError, IndexError):
+                pass
+            _merged_edu.append({
+                "university":  (_pe.get("institution") or "").strip(),
+                "degree":      (_pe.get("degree")       or "").strip(),
+                "cgpa":        (_pe.get("cgpa")         or "").strip(),
+                "years":       _yr_str,
+                "achievement": (_pe.get("achievement")  or "").strip(),
+            })
     else:
         # No profile education — fall back to whatever the AI returned
         _ai_edu_raw = result.get("education") or {}
-        # AI may return a list or a single dict — normalise to list
         if isinstance(_ai_edu_raw, list):
             _merged_edu = _ai_edu_raw
         else:
@@ -1657,25 +1764,44 @@ async def call_gemini(req: CVRequest) -> tuple:
                             co["dateRange"] = f"{companies_list[j]['start']} - {companies_list[j]['end']}"
 
                     # Education: merge AI result with profile data; profile always wins
-                    def _build_edu_entry_g(pe: dict, edu_years: dict, use_calc: bool) -> dict:
-                        if use_calc:
-                            _yr = f"{edu_years['start']} - {edu_years['end']}"
-                        else:
-                            _ef = str(pe.get("from") or "").strip()
-                            _et = str(pe.get("to")   or "").strip()
-                            _yr = f"{_ef} - {_et}" if (_ef or _et) else ""
-                        return {
-                            "university":  (pe.get("institution") or "").strip(),
-                            "degree":      (pe.get("degree")       or "").strip(),
-                            "cgpa":        (pe.get("cgpa")         or "").strip(),
-                            "years":       _yr,
-                            "achievement": (pe.get("achievement")  or "").strip(),
-                        }
+                    # ── Gemini edu merge — same UI-first, auto-sequencing logic ──
+                    def _resolve_edu_years_g(pe: dict, anchor_start_yr: int = None) -> str:
+                        _ef  = str(pe.get("from") or "").strip()
+                        _et  = str(pe.get("to")   or "").strip()
+                        _deg = (pe.get("degree")  or "").strip()
+                        _dur = _infer_degree_duration(_deg)
+                        if _ef and _et:
+                            return f"{_ef} - {_et}"
+                        if _et and not _ef:
+                            try:
+                                return f"{int(_et[:4]) - _dur} - {_et}"
+                            except (ValueError, TypeError):
+                                pass
+                        if _ef and not _et:
+                            try:
+                                return f"{_ef} - {int(_ef[:4]) + _dur}"
+                            except (ValueError, TypeError):
+                                pass
+                        if anchor_start_yr is not None:
+                            return f"{anchor_start_yr} - {anchor_start_yr + _dur}"
+                        return f"{edu['start']} - {edu['end']}"
+
                     if profile_edu:
-                        _merged_edu_g = [
-                            _build_edu_entry_g(pe, edu, i == 0)
-                            for i, pe in enumerate(profile_edu)
-                        ]
+                        _merged_edu_g = []
+                        _prev_s_g = None
+                        for _pe_g in profile_edu:
+                            _yr_g = _resolve_edu_years_g(_pe_g, anchor_start_yr=_prev_s_g)
+                            try:
+                                _prev_s_g = int(_yr_g.split("-")[-1].strip()[:4])
+                            except (ValueError, TypeError, IndexError):
+                                pass
+                            _merged_edu_g.append({
+                                "university":  (_pe_g.get("institution") or "").strip(),
+                                "degree":      (_pe_g.get("degree")       or "").strip(),
+                                "cgpa":        (_pe_g.get("cgpa")         or "").strip(),
+                                "years":       _yr_g,
+                                "achievement": (_pe_g.get("achievement")  or "").strip(),
+                            })
                     else:
                         _ai_edu_g = result.get("education") or {}
                         if isinstance(_ai_edu_g, list):
@@ -2043,8 +2169,11 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
 
     # Merge with p_edu: p_edu entries are authoritative for their index.
     # If p_edu has more entries than the AI returned, use p_edu as the master list.
+    # Years are resolved using the same UI-first, auto-sequencing logic as the
+    # AI merge path — _infer_degree_duration() drives all duration inference.
     _n_edu = max(len(_edu_list_raw), len(p_edu))
     _edu_entries = []
+    _pdf_prev_start_yr = None   # start year of the entry above (for sequencing)
     for _ei in range(_n_edu):
         _cv_e  = _edu_list_raw[_ei] if _ei < len(_edu_list_raw) else {}
         _pr_e  = p_edu[_ei]         if _ei < len(p_edu)         else {}
@@ -2052,12 +2181,35 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         _deg   = (_pr_e.get("degree")      or _cv_e.get("degree")     or "").strip()
         _cgpa  = (_pr_e.get("cgpa")        or _cv_e.get("cgpa")       or "").strip()
         _ach   = (_pr_e.get("achievement") or "").strip()   # never AI-invented
-        _yr    = (_cv_e.get("years") or "").strip()
-        # Fallback years from profile dates
+
+        # Priority: years already resolved in cv["education"] (set by AI merge path)
+        # → UI from/to → infer from degree duration → auto-sequence from anchor
+        _yr = (_cv_e.get("years") or "").strip()
         if not _yr:
-            _ef = str(_pr_e.get("from") or "").strip()
-            _et = str(_pr_e.get("to")   or "").strip()
-            _yr = f"{_ef} - {_et}" if (_ef or _et) else ""
+            _ef  = str(_pr_e.get("from") or "").strip()
+            _et  = str(_pr_e.get("to")   or "").strip()
+            _dur = _infer_degree_duration(_deg)
+            if _ef and _et:
+                _yr = f"{_ef} - {_et}"
+            elif _et and not _ef:
+                try:
+                    _yr = f"{int(_et[:4]) - _dur} - {_et}"
+                except (ValueError, TypeError):
+                    _yr = ""
+            elif _ef and not _et:
+                try:
+                    _yr = f"{_ef} - {int(_ef[:4]) + _dur}"
+                except (ValueError, TypeError):
+                    _yr = ""
+            elif _pdf_prev_start_yr is not None:
+                _yr = f"{_pdf_prev_start_yr - _dur} - {_pdf_prev_start_yr}"
+
+        # Update anchor for the next entry
+        try:
+            _pdf_prev_start_yr = int(_yr.split("-")[-1].strip()[:4])
+        except (ValueError, TypeError, IndexError):
+            pass
+
         _edu_entries.append({
             "university": _uni, "degree": _deg,
             "cgpa": _cgpa, "years": _yr, "achievement": _ach,
