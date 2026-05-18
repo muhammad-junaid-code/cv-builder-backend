@@ -519,22 +519,38 @@ Use your knowledge of this company to create relevant projects.
     else:
         company_context_block = "No target company provided."
 
-    # ── Build education block for prompt from profile data (already extracted above) ──
-    # University — from profile if provided, else placeholder for AI
-    _prompt_uni    = (_p_edu0.get("institution") or "").strip()
-    _prompt_degree = (_p_edu0.get("degree")      or "").strip()
-    _prompt_cgpa   = (_p_edu0.get("cgpa")        or "").strip()
-    _prompt_ach    = (_p_edu0.get("achievement")  or "").strip()
-    _prompt_edu_yr = f"{edu['start']} - {edu['end']}"
-
-    # Only include education fields in the prompt that actually have values
-    _edu_json_lines = []
-    _edu_json_lines.append(f'    "university": "{_prompt_uni or ""}",')
-    _edu_json_lines.append(f'    "degree": "{_prompt_degree or ""}",')
-    _edu_json_lines.append(f'    "cgpa": "{_prompt_cgpa}",')
-    _edu_json_lines.append(f'    "years": "{_prompt_edu_yr}",')
-    _edu_json_lines.append(f'    "achievement": "{_prompt_ach}"')
-    _edu_json_block = "\n".join(_edu_json_lines)
+    # ── Build education block for prompt — one entry per qualification ──────────
+    # Produces a JSON array so the AI carries ALL qualifications through unchanged.
+    import json as _json_mod
+    _edu_entries_for_prompt = []
+    for _ei, _pe in enumerate(_p_edu_l):
+        _e_uni  = (_pe.get("institution") or "").strip()
+        _e_deg  = (_pe.get("degree")      or "").strip()
+        _e_cgpa = (_pe.get("cgpa")        or "").strip()
+        _e_ach  = (_pe.get("achievement") or "").strip()
+        # Use calculated years only for the first (most recent) entry;
+        # subsequent entries use their own stored from/to dates.
+        if _ei == 0:
+            _e_yr = f"{edu['start']} - {edu['end']}"
+        else:
+            _e_from = str(_pe.get("from") or "").strip()
+            _e_to   = str(_pe.get("to")   or "").strip()
+            _e_yr   = f"{_e_from} - {_e_to}" if (_e_from or _e_to) else ""
+        _edu_entries_for_prompt.append({
+            "university": _e_uni,
+            "degree":     _e_deg,
+            "cgpa":       _e_cgpa,
+            "years":      _e_yr,
+            "achievement":_e_ach,
+        })
+    if not _edu_entries_for_prompt:
+        _edu_entries_for_prompt = [{
+            "university": "", "degree": "", "cgpa": "",
+            "years": f"{edu['start']} - {edu['end']}", "achievement": ""
+        }]
+    _edu_json_block = _json_mod.dumps(_edu_entries_for_prompt, indent=4)
+    # Keep backward-compat alias for single-entry references still in scope
+    _p_edu0 = _p_edu_l[0] if _p_edu_l else {}
 
     # Build work history context from profile work entries if provided
     _work_ctx_lines = []
@@ -737,10 +753,11 @@ SECTION-BY-SECTION INSTRUCTIONS
 ⑨ relatedTech  [5 category objects, 5 items each — all from JD]
 
 ⑩ education
-   Copy the education values EXACTLY as pre-filled in the JSON template below.
-   Do NOT invent or change university, degree, cgpa, years, or achievement.
+   Copy ALL education entries EXACTLY as pre-filled in the JSON array below.
+   The array may contain one or more entries — preserve every entry unchanged.
+   Do NOT invent, merge, or remove any entry. Do NOT change any field values.
    If a field is empty in the template, leave it empty — do not fill it in.
-   Only the "years" field was calculated dynamically; use it as-is.
+   Only the "years" field of the first entry was calculated dynamically; use it as-is.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 JSON OUTPUT — no markdown, no code fences, no explanation text
@@ -807,9 +824,7 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
       "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
     }}
   ],
-  "education": {{
-{_edu_json_block}
-  }},
+  "education": {_edu_json_block},
   "relatedTech": [
     {{"category": "JD Category 1", "items": ["t1","t2","t3","t4","t5"]}},
     {{"category": "JD Category 2", "items": ["t1","t2","t3","t4","t5"]}},
@@ -1013,7 +1028,17 @@ def sanitise_cv(cv: dict) -> dict:
             "niceToHave": [str(t).strip() for t in (techs.get("niceToHave") or []) if t],
             "additional": [str(t).strip() for t in (techs.get("additional") or []) if t],
         }
-    
+
+    # education: normalise to a list of dicts regardless of what came in
+    raw_edu = cv.get("education")
+    if isinstance(raw_edu, dict):
+        # Legacy single-dict — wrap in a list
+        cv["education"] = [raw_edu]
+    elif isinstance(raw_edu, list):
+        cv["education"] = [e for e in raw_edu if isinstance(e, dict)]
+    else:
+        cv["education"] = []
+
     return cv
 
 def final_polish(cv: dict, years_exp: str = "") -> dict:
@@ -1171,95 +1196,6 @@ def fix_companies(cv: dict, companies_list: list = None) -> dict:
     return cv
 
 # ==============================================================================
-# CV COMPLETENESS CHECK + CONTINUATION
-# ==============================================================================
-_CV_REQUIRED_SECTIONS = ("companies", "projects", "skills", "competencies", "relatedTech")
-
-def _is_cv_complete(result: dict) -> bool:
-    """
-    Return True only when all major sections are present and non-empty.
-    Provider-agnostic: used after every AI call regardless of where it came from.
-    """
-    for key in _CV_REQUIRED_SECTIONS:
-        val = result.get(key)
-        if not val:                        # missing or empty list/string
-            return False
-        if isinstance(val, list) and len(val) == 0:
-            return False
-    return True
-
-def _missing_sections(result: dict) -> list:
-    """Return list of section names that are absent or empty in result."""
-    missing = []
-    for key in _CV_REQUIRED_SECTIONS:
-        val = result.get(key)
-        if not val or (isinstance(val, list) and len(val) == 0):
-            missing.append(key)
-    return missing
-
-async def _complete_cv_via_continuation(
-    partial: dict, missing: list,
-    client, key: str, model: str, url: str, headers: dict,
-    req, companies_list: list, edu: dict
-) -> dict:
-    """
-    Make a second LLM call to supply only the missing CV sections.
-    Merges the continuation response into the partial result.
-    Fully provider-agnostic — works for any OpenAI-compatible endpoint.
-    """
-    import json as _json
-
-    already_have = {k: v for k, v in partial.items() if k not in missing}
-    partial_json_str = _json.dumps(already_have, ensure_ascii=False)[:3000]
-
-    co_lines = "\n".join(
-        'Company {}: "{}" (Dates: {} - {})'.format(i + 1, c["name"], c["start"], c["end"])
-        for i, c in enumerate(companies_list)
-    )
-
-    system = (
-        "You are a world-class CV writer continuing an incomplete CV JSON generation. "
-        "The previous response was cut off before it could finish all sections. "
-        "Output ONLY raw JSON — no markdown fences, no explanation. "
-        "The JSON must contain ONLY the missing sections listed below as top-level keys. "
-        "Do NOT repeat sections that are already complete."
-    )
-
-    user = "\n".join([
-        "JOB TITLE: " + req.job_title,
-        "JOB DESCRIPTION (excerpt):",
-        req.job_description[:1500],
-        "",
-        "WORK HISTORY:",
-        co_lines,
-        "",
-        "ALREADY GENERATED (do NOT repeat these):",
-        partial_json_str,
-        "",
-        "MISSING SECTIONS TO GENERATE NOW: " + ", ".join(missing),
-        "",
-        "Generate a JSON object containing ONLY the missing sections. "
-        "Follow the same format and quality as the already-generated sections above. "
-        "Output raw JSON only — no markdown, no preamble, no explanation.",
-    ])
-
-    _log.info("[ContinuationCall] Requesting missing sections: %s", missing)
-    try:
-        continuation = await call_llm_atomic(
-            client, key, model, url, system, user,
-            "Continuation", headers, max_tokens=6000
-        )
-        for k in missing:
-            if k in continuation and continuation[k]:
-                partial[k] = continuation[k]
-        _log.info("[ContinuationCall] Merged — still missing: %s", _missing_sections(partial))
-    except Exception as e:
-        _log.warning("[ContinuationCall] Failed: %s — returning partial CV", e)
-
-    return partial
-
-
-# ==============================================================================
 # UNIVERSAL LLM CALLER
 # ==============================================================================
 
@@ -1381,31 +1317,6 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             _log.error("%s INVALID/EXPIRED KEY — HTTP %d for key %s", tag, r.status_code, mk)
             raise ValueError(f"Invalid/expired key on {stage} (HTTP {r.status_code})")
 
-        elif r.status_code == 400:
-            err_body = r.text[:400]
-            _log.warning("%s HTTP 400 on attempt %d — %s", tag, attempt_num, err_body)
-
-            # Detect non-retriable account-level errors (restriction, ban, billing).
-            # Retrying with fewer tokens won't fix these — fail fast with a clear message.
-            _err_lower = err_body.lower()
-            _fatal_phrases = ("restricted", "banned", "suspended", "billing", "quota exceeded",
-                              "account", "organization")
-            if any(p in _err_lower for p in _fatal_phrases):
-                _log.error("%s Non-retriable account error on key %s — %s", tag, mk, err_body[:200])
-                raise ValueError(
-                    f"Key {mk} is restricted or has a billing issue. "
-                    f"Please check your provider account. Detail: {err_body[:200]}"
-                )
-
-            # Otherwise (e.g. max_tokens cap): retry once with a halved token budget.
-            if attempt == 0 and max_tokens > 4000:
-                reduced = max_tokens // 2
-                _log.info("%s Retrying with reduced max_tokens=%d (was %d)", tag, reduced, max_tokens)
-                max_tokens = reduced
-                await asyncio.sleep(2)
-                continue
-            raise ValueError(f"HTTP 400 on {stage}: {err_body}")
-
         else:
             last_error = f"HTTP {r.status_code} on {stage}"
             _log.warning("%s Unexpected status %d on attempt %d — %s",
@@ -1464,16 +1375,6 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
               len(result.get("companies", [])),
               len(result.get("projects",  [])))
 
-    # ── Completeness check: if the model truncated, request the missing sections ──
-    missing = _missing_sections(result)
-    if missing:
-        _log.warning("[GenCV|%s] Incomplete CV — missing: %s — requesting continuation",
-                     provider_host, missing)
-        result = await _complete_cv_via_continuation(
-            result, missing, client, key, model, url, headers,
-            req, companies_list, edu
-        )
-
     if "companies" not in result:
         result["companies"] = []
 
@@ -1485,23 +1386,46 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
     if "projects" not in result:
         result["projects"] = []
 
-    # Build education block: profile data always wins over AI-generated values
+    # Build education list: one entry per qualification — profile always wins over AI.
+    # The AI was given the full list in the prompt and should return it unchanged,
+    # but we always rebuild from profile data to be safe.
     _p_edu_list = profile_edu or []
-    _p_edu0     = _p_edu_list[0] if _p_edu_list else {}
 
-    # Start with whatever the AI returned
-    _ai_edu = result.get("education") or {}
+    def _build_edu_entry(pe: dict, edu_years: dict, use_calc_years: bool) -> dict:
+        """Merge one profile edu entry into a clean dict."""
+        if use_calc_years:
+            _yr = f"{edu_years['start']} - {edu_years['end']}"
+        else:
+            _ef = str(pe.get("from") or "").strip()
+            _et = str(pe.get("to")   or "").strip()
+            _yr = f"{_ef} - {_et}" if (_ef or _et) else ""
+        return {
+            "university":  (pe.get("institution") or "").strip(),
+            "degree":      (pe.get("degree")       or "").strip(),
+            "cgpa":        (pe.get("cgpa")         or "").strip(),
+            "years":       _yr,
+            "achievement": (pe.get("achievement")  or "").strip(),
+        }
 
-    # Profile fields override AI fields when provided
-    _merged_edu = {
-        "university":  (_p_edu0.get("institution") or _ai_edu.get("university") or "").strip(),
-        "degree":      (_p_edu0.get("degree")      or _ai_edu.get("degree")     or "").strip(),
-        "cgpa":        (_p_edu0.get("cgpa")        or _ai_edu.get("cgpa")       or "").strip(),
-        "years":       f"{edu['start']} - {edu['end']}",   # always calculated
-        # Achievement ONLY from profile — never AI-invented
-        "achievement": (_p_edu0.get("achievement") or "").strip(),
-    }
-    # Override the AI's education with the merged version
+    if _p_edu_list:
+        _merged_edu = [
+            _build_edu_entry(pe, edu, i == 0)
+            for i, pe in enumerate(_p_edu_list)
+        ]
+    else:
+        # No profile education — fall back to whatever the AI returned
+        _ai_edu_raw = result.get("education") or {}
+        # AI may return a list or a single dict — normalise to list
+        if isinstance(_ai_edu_raw, list):
+            _merged_edu = _ai_edu_raw
+        else:
+            _merged_edu = [{
+                "university":  (_ai_edu_raw.get("university") or "").strip(),
+                "degree":      (_ai_edu_raw.get("degree")     or "").strip(),
+                "cgpa":        (_ai_edu_raw.get("cgpa")       or "").strip(),
+                "years":       f"{edu['start']} - {edu['end']}",
+                "achievement": "",
+            }]
     result["education"] = _merged_edu
 
     cv = {
@@ -1727,78 +1651,43 @@ async def call_gemini(req: CVRequest) -> tuple:
                     profile_edu = [_normalise_edu_entry(e) for e in _raw_g_edu] if _raw_g_edu else []
                     edu = _build_education_year(years_exp_clean, profile_edu=profile_edu or None)
 
-                    # ── Completeness check (provider-agnostic) ────────────────
-                    _g_missing = _missing_sections(result)
-                    if _g_missing:
-                        _log.warning("[Gemini|%s] Incomplete CV — missing: %s — requesting continuation",
-                                     mk, _g_missing)
-                        import json as _jmod
-                        _already = {k: v for k, v in result.items() if k not in _g_missing}
-                        _partial_str = _jmod.dumps(_already, ensure_ascii=False)[:3000]
-                        _co_lines_g = "\n".join(
-                            'Company {}: "{}" (Dates: {} - {})'.format(_ci+1, _cc["name"], _cc["start"], _cc["end"])
-                            for _ci, _cc in enumerate(companies_list)
-                        )
-                        _g_system = (
-                            "You are a world-class CV writer continuing an incomplete CV JSON generation. "
-                            "The previous response was cut off. "
-                            "Output ONLY raw JSON with the missing sections as top-level keys."
-                        )
-                        _g_user = (
-                            "JOB TITLE: {}\n"
-                            "JOB DESCRIPTION (excerpt):\n{}\n\n"
-                            "WORK HISTORY:\n{}\n\n"
-                            "ALREADY GENERATED (do NOT repeat):\n{}\n\n"
-                            "MISSING SECTIONS: {}\n"
-                            "Generate ONLY the missing sections as a JSON object. Raw JSON only."
-                        ).format(
-                            req.job_title,
-                            req.job_description[:1500],
-                            _co_lines_g,
-                            _partial_str,
-                            ", ".join(_g_missing)
-                        )
-                        try:
-                            _g_cont_url = "{}{}:generateContent?key={}".format(GEMINI_URL, model, key)
-                            _g_cont_payload = {
-                                "systemInstruction": {"parts": [{"text": _g_system}]},
-                                "contents": [{"role": "user", "parts": [{"text": _g_user}]}],
-                                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 6000},
-                            }
-                            _g_cont_r = await client.post(
-                                _g_cont_url,
-                                headers={"Content-Type": "application/json"},
-                                json=_g_cont_payload,
-                                timeout=120,
-                            )
-                            if _g_cont_r.status_code == 200:
-                                _g_cont_raw = _g_cont_r.json()["candidates"][0]["content"]["parts"][0]["text"]
-                                _g_cont_parsed = extract_json(_g_cont_raw)
-                                for _gmk in _g_missing:
-                                    if _gmk in _g_cont_parsed and _g_cont_parsed[_gmk]:
-                                        result[_gmk] = _g_cont_parsed[_gmk]
-                                _log.info("[Gemini|%s] Continuation merged — still missing: %s",
-                                          mk, _missing_sections(result))
-                            else:
-                                _log.warning("[Gemini|%s] Continuation HTTP %d", mk, _g_cont_r.status_code)
-                        except Exception as _ge:
-                            _log.warning("[Gemini|%s] Continuation failed: %s", mk, _ge)
-
                     for j, co in enumerate(result.get("companies", [])):
                         if j < len(companies_list):
                             co["company"] = companies_list[j]["name"]
                             co["dateRange"] = f"{companies_list[j]['start']} - {companies_list[j]['end']}"
 
                     # Education: merge AI result with profile data; profile always wins
-                    _p_edu0_g  = profile_edu[0] if profile_edu else {}
-                    _ai_edu_g  = result.get("education") or {}
-                    _merged_edu_g = {
-                        "university":  (_p_edu0_g.get("institution") or _ai_edu_g.get("university") or "").strip(),
-                        "degree":      (_p_edu0_g.get("degree")      or _ai_edu_g.get("degree")     or "").strip(),
-                        "cgpa":        (_p_edu0_g.get("cgpa")        or _ai_edu_g.get("cgpa")       or "").strip(),
-                        "years":       f"{edu['start']} - {edu['end']}",
-                        "achievement": (_p_edu0_g.get("achievement") or "").strip(),  # never AI-invented
-                    }
+                    def _build_edu_entry_g(pe: dict, edu_years: dict, use_calc: bool) -> dict:
+                        if use_calc:
+                            _yr = f"{edu_years['start']} - {edu_years['end']}"
+                        else:
+                            _ef = str(pe.get("from") or "").strip()
+                            _et = str(pe.get("to")   or "").strip()
+                            _yr = f"{_ef} - {_et}" if (_ef or _et) else ""
+                        return {
+                            "university":  (pe.get("institution") or "").strip(),
+                            "degree":      (pe.get("degree")       or "").strip(),
+                            "cgpa":        (pe.get("cgpa")         or "").strip(),
+                            "years":       _yr,
+                            "achievement": (pe.get("achievement")  or "").strip(),
+                        }
+                    if profile_edu:
+                        _merged_edu_g = [
+                            _build_edu_entry_g(pe, edu, i == 0)
+                            for i, pe in enumerate(profile_edu)
+                        ]
+                    else:
+                        _ai_edu_g = result.get("education") or {}
+                        if isinstance(_ai_edu_g, list):
+                            _merged_edu_g = _ai_edu_g
+                        else:
+                            _merged_edu_g = [{
+                                "university":  (_ai_edu_g.get("university") or "").strip(),
+                                "degree":      (_ai_edu_g.get("degree")     or "").strip(),
+                                "cgpa":        (_ai_edu_g.get("cgpa")       or "").strip(),
+                                "years":       f"{edu['start']} - {edu['end']}",
+                                "achievement": "",
+                            }]
 
                     cv = {
                         "totalYears":   total_years,
@@ -2143,68 +2032,94 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         story.append(Spacer(1, 2 * mm))
     
     # Education — only render when actual data is available
-    # Priority: AI-generated edu (which itself was seeded from profile) → profile raw data
-    edu = cv.get("education", {})
-    uni         = (edu.get("university") or "").strip()
-    degree      = (edu.get("degree")     or "").strip()
-    years       = (edu.get("years")      or "").strip()
-    achievement = (edu.get("achievement") or "").strip()
-    cgpa        = (edu.get("cgpa")        or "").strip()
+    # ── Education section — render ALL qualifications from the list ─────────────
+    # cv["education"] is now always a list (sanitise_cv guarantees this).
+    # p_edu (from profile_data) is the authoritative source; cv["education"] is
+    # the AI-passed-through copy — we prefer p_edu when available.
+    _edu_list_raw = cv.get("education") or []
+    # Normalise: if somehow still a plain dict, wrap it
+    if isinstance(_edu_list_raw, dict):
+        _edu_list_raw = [_edu_list_raw]
 
-    # Profile education takes precedence for university/degree if AI left them blank
-    if not uni and p_edu:
-        uni = (p_edu[0].get("institution") or "").strip()
-    if not degree and p_edu:
-        degree = (p_edu[0].get("degree") or "").strip()
-    # Achievement: only from profile — never show AI-invented medals
-    if not achievement and p_edu:
-        achievement = (p_edu[0].get("achievement") or "").strip()
-    # CGPA: only from profile
-    if not cgpa and p_edu:
-        cgpa = (p_edu[0].get("cgpa") or "").strip()
+    # Merge with p_edu: p_edu entries are authoritative for their index.
+    # If p_edu has more entries than the AI returned, use p_edu as the master list.
+    _n_edu = max(len(_edu_list_raw), len(p_edu))
+    _edu_entries = []
+    for _ei in range(_n_edu):
+        _cv_e  = _edu_list_raw[_ei] if _ei < len(_edu_list_raw) else {}
+        _pr_e  = p_edu[_ei]         if _ei < len(p_edu)         else {}
+        _uni   = (_pr_e.get("institution") or _cv_e.get("university") or "").strip()
+        _deg   = (_pr_e.get("degree")      or _cv_e.get("degree")     or "").strip()
+        _cgpa  = (_pr_e.get("cgpa")        or _cv_e.get("cgpa")       or "").strip()
+        _ach   = (_pr_e.get("achievement") or "").strip()   # never AI-invented
+        _yr    = (_cv_e.get("years") or "").strip()
+        # Fallback years from profile dates
+        if not _yr:
+            _ef = str(_pr_e.get("from") or "").strip()
+            _et = str(_pr_e.get("to")   or "").strip()
+            _yr = f"{_ef} - {_et}" if (_ef or _et) else ""
+        _edu_entries.append({
+            "university": _uni, "degree": _deg,
+            "cgpa": _cgpa, "years": _yr, "achievement": _ach,
+        })
 
-    # Only render the Education section if there is something to show
-    _has_edu = any([uni, degree, years, cgpa])
-    if _has_edu:
+    _has_any_edu = any(
+        any([e["university"], e["degree"], e["years"], e["cgpa"]])
+        for e in _edu_entries
+    )
+    if _has_any_edu:
         story.append(Paragraph("EDUCATION", S["sec_title_center"]))
 
-        # ── University name (left) with years aligned to the right ───────────
-        if uni:
-            edu_date_style = ps("edu_dr",
-                fontName="Helvetica", fontSize=10,
-                alignment=TA_RIGHT,
-                textColor=colors.HexColor("#666666")
-            )
-            uni_para   = Paragraph(uni.upper(), S["edu_uni"])
-            years_para = Paragraph(years, edu_date_style) if years else Paragraph("", edu_date_style)
-            edu_header_row = [[uni_para, years_para]]
-            edu_header_tbl = Table(edu_header_row, colWidths=[TW * 0.65, TW * 0.35])
-            edu_header_tbl.setStyle(TableStyle([
-                ("VALIGN",        (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING",   (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
-                ("TOPPADDING",    (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-            ]))
-            story.append(edu_header_tbl)
-        elif years:
-            # No university name but years exist — show years on its own
-            story.append(Paragraph(years, S["edu_deg"]))
+        edu_date_style = ps("edu_dr",
+            fontName="Helvetica", fontSize=10,
+            alignment=TA_RIGHT,
+            textColor=colors.HexColor("#666666")
+        )
 
-        # ── Degree + CGPA line ────────────────────────────────────────────────
-        deg_parts = [x for x in [degree] if x]
-        if cgpa:
-            deg_parts.append(f"CGPA: {cgpa}")
-        deg_text = " | ".join(deg_parts)
-        if deg_text:
-            story.append(Paragraph(deg_text, S["edu_deg"]))
+        for _ei, _entry in enumerate(_edu_entries):
+            uni         = _entry["university"]
+            degree      = _entry["degree"]
+            years       = _entry["years"]
+            cgpa        = _entry["cgpa"]
+            achievement = _entry["achievement"]
 
-        # ── Achievement — only if explicitly in profile data ──────────────────
-        if achievement:
-            if "gold" in achievement.lower():
-                story.append(Paragraph(f"🏅 {achievement}", S["edu_medal"]))
-            else:
-                story.append(Paragraph(f"✓ {achievement}", S["edu_deg"]))
+            if not any([uni, degree, years, cgpa]):
+                continue  # skip completely empty entries
+
+            # Small gap between qualifications (not before the first)
+            if _ei > 0:
+                story.append(Spacer(1, 3 * mm))
+
+            # ── University name (left) with years aligned to the right ───────
+            if uni:
+                uni_para   = Paragraph(uni.upper(), S["edu_uni"])
+                years_para = Paragraph(years, edu_date_style) if years else Paragraph("", edu_date_style)
+                edu_header_tbl = Table([[uni_para, years_para]], colWidths=[TW * 0.65, TW * 0.35])
+                edu_header_tbl.setStyle(TableStyle([
+                    ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                    ("TOPPADDING",    (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ]))
+                story.append(edu_header_tbl)
+            elif years:
+                story.append(Paragraph(years, S["edu_deg"]))
+
+            # ── Degree + CGPA line ───────────────────────────────────────────
+            deg_parts = [x for x in [degree] if x]
+            if cgpa:
+                deg_parts.append(f"CGPA: {cgpa}")
+            deg_text = " | ".join(deg_parts)
+            if deg_text:
+                story.append(Paragraph(deg_text, S["edu_deg"]))
+
+            # ── Achievement — only from profile, never AI-invented ───────────
+            if achievement:
+                if "gold" in achievement.lower():
+                    story.append(Paragraph(f"🏅 {achievement}", S["edu_medal"]))
+                else:
+                    story.append(Paragraph(f"✓ {achievement}", S["edu_deg"]))
     
     # Build PDF
     doc.build(story)
