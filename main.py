@@ -199,9 +199,9 @@ def _build_dynamic_companies(years_exp: str, num_companies: int = 0,
         # Name: profile_work name → CANDIDATE_COMPANIES name → generic
         if profile_names and i < len(profile_names):
             name = profile_names[i]
-        elif i < len(CANDIDATE_COMPANIES):
-            name = CANDIDATE_COMPANIES[i]["name"]
         else:
+            # No profile-supplied name — use a generic placeholder so the system
+            # works for any user/field without carrying hardcoded company names.
             name = f"Company {i + 1}"
         result.append({"name": name, "start": fmt(co_start), "end": co_end})
         cursor   = co_start
@@ -513,6 +513,7 @@ class CVRequest(BaseModel):
     static_data: Optional[dict] = None
     company_name: Optional[str] = ""
     company_context: Optional[str] = ""
+    ui_template: Optional[str] = "ui1"   # "ui1" | "ui2" | "ui3"
 
 # ==============================================================================
 # DYNAMIC PROMPT BUILDER - EVERYTHING FROM JD ONLY
@@ -1955,6 +1956,7 @@ async def generate_cv(req: CVRequest):
             "model": req.model,
             "key_used": key_used,
             "key_index": key_idx,
+            "ui_template": req.ui_template or "ui1",
         }
     except asyncio.TimeoutError:
         raise HTTPException(504, "CV generation timed out (> 5 minutes). Try again or switch provider.")
@@ -1970,6 +1972,46 @@ class PDFRequest(BaseModel):
     cv: dict
     filename: str = "CV.pdf"
     profileData: Optional[dict] = None
+    ui_template: Optional[str] = "ui1"   # "ui1" | "ui2" | "ui3"
+
+# ==============================================================================
+# SHARED CONTACT LINK HELPER — used by UI1, UI2, and UI3
+# Detects phone numbers (any value with more than 4 digit characters) and
+# returns a tel: URI. Also handles email (mailto:) and URLs (https://).
+# ==============================================================================
+import re as _contact_re
+
+def _contact_href(val: str) -> str:
+    """Return a clickable URI for a contact value, or '' if not linkable.
+
+    Rules (applied in order):
+      1. Already a full URI (https://, http://, mailto:, tel:) → use as-is.
+      2. Contains @ → email → mailto:
+      3. Contains more than 4 digit characters → phone → tel:
+         Accepts any formatting: +92 318 4885878, (021) 1234-5678, etc.
+      4. No spaces, contains a dot, looks like a domain → https://
+      5. Anything else (location, freeform text) → '' (render as plain text).
+    """
+    v = (val or "").strip()
+    if not v:
+        return ""
+    # Case 1: already a full URI
+    if v.startswith(("https://", "http://", "mailto:", "tel:")):
+        return v
+    # Case 2: email
+    if "@" in v:
+        return f"mailto:{v}"
+    # Case 3: phone — strip everything except digits, check count > 4
+    _digits = _contact_re.sub(r"[^\d]", "", v)
+    if len(_digits) > 4:
+        # Keep +, digits, spaces, dashes, parens for the tel: value
+        _tel_val = _contact_re.sub(r"\s+", "", v)
+        return f"tel:{_tel_val}"
+    # Case 4: bare URL
+    if " " not in v and "." in v and _contact_re.search(r"[a-zA-Z0-9]\.[a-zA-Z]{2,}", v):
+        return f"https://{v}"
+    return ""
+
 
 def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     """Build PDF from CV JSON - preserves all dynamic content with green medal"""
@@ -2038,51 +2080,9 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         # ReportLab supports <a href="...">text</a> inside Paragraph XML markup.
         # We auto-prefix bare addresses so they become valid URIs.
         def _make_href(val: str) -> str:
-            """Return a valid URI only when the value is genuinely linkable.
-
-            A value is treated as clickable if and only if it matches one of:
-              1. Already a full URI (https://, http://, mailto:, tel:)
-              2. Contains an @ symbol  → email  → mailto:
-              3. Contains https:// anywhere in the string → URL  → use as-is / prefix
-              4. Digits-only token with more than 4 digits → phone → tel:
-              5. Looks like a bare domain/URL (no spaces, contains a dot, no @,
-                 starts with a recognised domain-like pattern) → https://
-
-            Anything else (plain sentences, locations, freeform text) returns ""
-            so _link_xml renders it as plain coloured text, not a hyperlink.
-            """
-            v = val.strip()
-            if not v:
-                return ""
-
-            # Case 1: already a full URI — use directly
-            if v.startswith(("https://", "http://", "mailto:", "tel:")):
-                return v
-
-            # Case 2: contains @ → treat as email address
-            if "@" in v:
-                return f"mailto:{v}"
-
-            # Case 3: phone number — digits, spaces, +, -, (, ) only
-            # AND must have more than 4 digit characters
-            import re as _re
-            _digits_only = _re.sub(r"[^\d]", "", v)
-            _phone_digits = _re.sub(r"\s+", "", v)
-            if _re.fullmatch(r"[\d\s\+\-\(\)\.]+", v) and len(_digits_only) > 4:
-                return "tel:" + _phone_digits
-
-            # Case 4: bare URL — no spaces, contains a dot, looks like a domain/path
-            # Must not contain spaces (rules out phrases like "Open to worldwide...")
-            # Must match a domain-like pattern: word.tld or word.tld/path
-            if (
-                " " not in v
-                and "." in v
-                and _re.search(r"[a-zA-Z0-9]\.[a-zA-Z]{2,}", v)
-            ):
-                return f"https://{v}"
-
-            # Everything else (plain text, sentences, freeform notes) → not a link
-            return ""
+            """Delegates to the shared _contact_href helper (defined above all builders).
+            Consistent phone/email/URL detection across UI1, UI2, and UI3."""
+            return _contact_href(val)
 
         def _link_xml(label: str, val: str, color: str = "#0057A8") -> str:
             """Return ReportLab XML markup for a single clickable link token.
@@ -2331,10 +2331,875 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     out.seek(0)
     return out.read()
 
+    out = io.BytesIO()
+    writer.write(out)
+    out.seek(0)
+    return out.read()
+
+
+# ==============================================================================
+# PDF BUILDER — UI2 (Modern Sidebar: teal left column, white right column)
+# Distinct from UI1: two-column ReportLab table, teal header block, no uppercase sections
+# ==============================================================================
+def build_cv_pdf_ui2(cv: dict, profile_data: dict = None) -> bytes:
+    """UI2 — Modern two-column sidebar layout rendered with ReportLab."""
+    from reportlab.platypus import KeepTogether
+
+    _pd       = profile_data or {}
+    p_name    = (_pd.get("name") or "").strip() or "CANDIDATE"
+    p_links   = _pd.get("links") or []
+    p_work    = _pd.get("work")  or []
+    p_edu     = [_normalise_edu_entry(e) for e in (_pd.get("edu") or [])]
+
+    TEAL      = colors.HexColor("#1a5276")
+    LTEAL     = colors.HexColor("#d6eaf8")
+    TEAL_DARK = colors.HexColor("#154360")
+    SIDEBAR_W_MM = 62 * mm   # sidebar column width
+
+    buf  = io.BytesIO()
+    PAGE_W, _ = A4
+    ML, MR, MT, MB = 0, 0, 0, 0
+    # 4.0× A4 height — tall enough that Frame.addFromList() never silently
+    # drops overflowing content (projects, skills, final sections).
+    PAGE_H_SINGLE = 841.89 * 4.0
+
+    doc = SimpleDocTemplate(
+        buf, pagesize=(PAGE_W, PAGE_H_SINGLE),
+        leftMargin=ML, rightMargin=MR, topMargin=MT, bottomMargin=MB,
+        title=f"{p_name} CV", author=p_name,
+    )
+    TW = PAGE_W  # full width; columns handled via Table
+
+    def ps2(name, **kw):
+        d = dict(fontName="Helvetica", fontSize=10, leading=14, spaceAfter=0,
+                 spaceBefore=0, textColor=colors.HexColor("#111111"))
+        d.update(kw)
+        return ParagraphStyle(name, **d)
+
+    # ── Styles ────────────────────────────────────────────────────────────────
+    S = {
+        # Sidebar styles (white/light text on teal)
+        "sb_name_first": ps2("s_nf", fontName="Helvetica", fontSize=16, leading=20,
+                              textColor=colors.HexColor("#cce5f5"), spaceBefore=0),
+        "sb_name_last":  ps2("s_nl", fontName="Helvetica-Bold", fontSize=18, leading=22,
+                              textColor=colors.white, spaceBefore=0),
+        "sb_jobtitle":   ps2("s_jt", fontName="Helvetica", fontSize=8, leading=11,
+                              textColor=colors.HexColor("#7fb3d3"), spaceBefore=4),
+        "sb_sec":        ps2("s_sec", fontName="Helvetica-Bold", fontSize=7.5, leading=11,
+                              textColor=colors.HexColor("#7fb3d3"), spaceBefore=14, spaceAfter=4),
+        "sb_lbl":        ps2("s_lbl", fontName="Helvetica-Bold", fontSize=7, leading=9,
+                              textColor=colors.HexColor("#7fb3d3")),
+        "sb_val":        ps2("s_val", fontName="Helvetica", fontSize=8.5, leading=12,
+                              textColor=colors.white),
+        "sb_skill":      ps2("s_sk",  fontName="Helvetica", fontSize=8, leading=11.5,
+                              textColor=colors.HexColor("#ddeeff")),
+        "sb_uni":        ps2("s_uni", fontName="Helvetica-Bold", fontSize=9, leading=12,
+                              textColor=colors.white, spaceBefore=6),
+        "sb_deg":        ps2("s_deg", fontName="Helvetica", fontSize=8, leading=11,
+                              textColor=colors.HexColor("#a8d8ea")),
+        "sb_note":       ps2("s_nt",  fontName="Helvetica-Oblique", fontSize=7.5, leading=10,
+                              textColor=colors.HexColor("#7fb3d3")),
+        # Main panel styles — badge-style section headers, distinct from UI1
+        "m_sec":         ps2("m_sec", fontName="Helvetica-Bold", fontSize=8.5, leading=12,
+                              textColor=colors.white, spaceBefore=14, spaceAfter=6),
+        "m_company":     ps2("m_co",  fontName="Helvetica-Bold", fontSize=11.5, leading=15,
+                              textColor=colors.HexColor("#0d2b45"), spaceBefore=4),
+        "m_role":        ps2("m_rl",  fontName="Helvetica", fontSize=9.5, leading=13,
+                              textColor=TEAL, spaceAfter=3),
+        "m_date":        ps2("m_dt",  fontName="Helvetica-Bold", fontSize=8.5, leading=11,
+                              textColor=TEAL_DARK, alignment=TA_RIGHT),
+        "m_bullet":      ps2("m_bul", fontName="Helvetica", fontSize=9.5, leading=13.5,
+                              leftIndent=10, spaceAfter=2,
+                              textColor=colors.HexColor("#222222")),
+        "m_tech":        ps2("m_tch", fontName="Helvetica-Bold", fontSize=8, leading=11,
+                              leftIndent=10, textColor=TEAL),
+        "m_summary":     ps2("m_sum", fontName="Helvetica", fontSize=9.5, leading=15,
+                              textColor=colors.HexColor("#2c2c2c")),
+        "m_proj_name":   ps2("m_pn",  fontName="Helvetica-Bold", fontSize=10.5, leading=14,
+                              textColor=colors.HexColor("#0d2b45"), spaceBefore=4),
+        "m_proj_body":   ps2("m_pb",  fontName="Helvetica", fontSize=9, leading=13,
+                              textColor=colors.HexColor("#444444")),
+        "m_proj_bullet": ps2("m_pbl", fontName="Helvetica", fontSize=9, leading=12.5,
+                              leftIndent=10, spaceAfter=2),
+        "m_proj_stack":  ps2("m_ps",  fontName="Helvetica-Bold", fontSize=8, leading=10,
+                              textColor=TEAL_DARK),
+        "m_comp":        ps2("m_cp",  fontName="Helvetica", fontSize=9, leading=13,
+                              textColor=colors.HexColor("#333333")),
+    }
+
+    def esc(s):
+        return (s or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+
+    # ── Build sidebar flowable list ────────────────────────────────────────────
+    name_parts = p_name.strip().split()
+    first_name = " ".join(name_parts[:-1]) if len(name_parts) > 1 else p_name
+    last_name  = name_parts[-1] if len(name_parts) > 1 else ""
+
+    sidebar_items = [
+        Paragraph(esc(first_name), S["sb_name_first"]),
+        Paragraph(esc(last_name),  S["sb_name_last"]),
+        Paragraph(esc(cv.get("title","") or ""), S["sb_jobtitle"]),
+        HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#2e6a9e"),
+                   spaceBefore=10, spaceAfter=4),
+    ]
+
+    # Contact — phone numbers (>4 digits) become tel: links, emails → mailto:, URLs → https:
+    sidebar_items.append(Paragraph("CONTACT", S["sb_sec"]))
+    for lnk in p_links:
+        sidebar_items.append(Paragraph(esc(lnk.get("label","")), S["sb_lbl"]))
+        _cv = (lnk.get("value") or "").strip()
+        _href = _contact_href(_cv)
+        _safe = esc(_cv)
+        if _href and lnk.get("label","").strip().lower() != "location":
+            _val_para = Paragraph(f'<a href="{_href}" color="#cce5f5">{_safe}</a>', S["sb_val"])
+        else:
+            _val_para = Paragraph(_safe, S["sb_val"])
+        sidebar_items.append(_val_para)
+        sidebar_items.append(Spacer(1, 4))
+
+    # Core Competencies (in sidebar; Skills already shown in main panel)
+    comp_sidebar = (cv.get("competencies") or "").strip()
+    if comp_sidebar:
+        sidebar_items.append(Paragraph("CORE COMPETENCIES", S["sb_sec"]))
+        # Split on * separator (same as competencies format) and render each pill
+        comp_pills = [c.strip() for c in comp_sidebar.replace(" * ", "*").split("*") if c.strip()]
+        for pill in comp_pills:
+            sidebar_items.append(Paragraph(f"• {esc(pill)}", S["sb_skill"]))
+            sidebar_items.append(Spacer(1, 2))
+
+    # Education — prefer profile edu; fall back to cv["education"].
+    # Pre-merge cv["education"] years into profile entries that lack from/to
+    # (same logic as UI3) so dates always display correctly.
+    _ui2_cv_edu = cv.get("education") or []
+    if isinstance(_ui2_cv_edu, dict):
+        _ui2_cv_edu = [_ui2_cv_edu]
+
+    if p_edu:
+        _ui2_edu_list = []
+        for _i2, _pe2 in enumerate(p_edu):
+            _e2 = dict(_pe2)
+            _ef2 = str(_pe2.get("from") or "").strip()
+            _et2 = str(_pe2.get("to")   or "").strip()
+            if not _ef2 and not _et2 and _i2 < len(_ui2_cv_edu):
+                _yr2 = str(_ui2_cv_edu[_i2].get("years") or "").strip()
+                if _yr2:
+                    _e2["years"] = _yr2
+            _ui2_edu_list.append(_e2)
+    else:
+        _ui2_edu_list = []
+        for _uce in _ui2_cv_edu:
+            _yr_raw = str(_uce.get("years","") or "").strip()
+            _ef2 = _yr_raw.split("-")[0].strip() if "-" in _yr_raw else ""
+            _et2 = _yr_raw.split("-")[-1].strip() if "-" in _yr_raw else ""
+            _ui2_edu_list.append({
+                "institution": (_uce.get("university") or _uce.get("institution") or "").strip(),
+                "degree":      (_uce.get("degree") or "").strip(),
+                "cgpa":        (_uce.get("cgpa") or "").strip(),
+                "from": _ef2, "to": _et2,
+                "note":        (_uce.get("achievement") or "").strip(),
+            })
+
+    sidebar_items.append(Paragraph("EDUCATION", S["sb_sec"]))
+    for e in _ui2_edu_list:
+        ef = str(e.get("from") or "").strip()
+        et = str(e.get("to")   or "").strip()
+        # Fall back to years field when from/to absent
+        if not ef and not et:
+            _yr_fb = str(e.get("years") or "").strip()
+            _sep_fb = "–" if "–" in _yr_fb else "-"
+            if _yr_fb and _sep_fb in _yr_fb:
+                _pts = [p.strip() for p in _yr_fb.split(_sep_fb, 1)]
+                ef, et = _pts[0], _pts[-1]
+        dr = f"{ef}–{et}" if ef and et else (ef + "–Present" if ef else et)
+        sidebar_items.append(Paragraph(esc(e.get("institution") or ""), S["sb_uni"]))
+        sidebar_items.append(Paragraph(esc(e.get("degree") or ""), S["sb_deg"]))
+        _note = (e.get("note") or e.get("cgpa") or "").strip()
+        if _note:
+            sidebar_items.append(Paragraph(esc(_note), S["sb_note"]))
+        if dr:
+            sidebar_items.append(Paragraph(dr, S["sb_note"]))
+        sidebar_items.append(Spacer(1, 4))
+
+    # ── Build main panel flowable list ────────────────────────────────────────
+    main_items = [Spacer(1, 8)]
+    MAIN_PAD = 20  # define here so main_sec closure can reference it
+
+    def main_sec(title):
+        # Badge-style: full-width teal rectangle with white uppercase text
+        badge_w = PAGE_W - SIDEBAR_W_MM - 2 * MAIN_PAD
+        badge = Table(
+            [[Paragraph(esc(title.upper()), S["m_sec"])]],
+            colWidths=[badge_w],
+            style=TableStyle([
+                ("BACKGROUND",    (0,0),(-1,-1), TEAL_DARK),
+                ("LEFTPADDING",   (0,0),(-1,-1), 8),
+                ("RIGHTPADDING",  (0,0),(-1,-1), 8),
+                ("TOPPADDING",    (0,0),(-1,-1), 4),
+                ("BOTTOMPADDING", (0,0),(-1,-1), 4),
+            ])
+        )
+        main_items.append(Spacer(1, 6))
+        main_items.append(badge)
+        main_items.append(Spacer(1, 5))
+
+    # Summary
+    main_sec("Professional Summary")
+    main_items.append(Paragraph(esc(cv.get("summary") or ""), S["m_summary"]))
+    main_items.append(Spacer(1, 8))
+
+    # Experience — unified loop: merges profile work + AI companies by index
+    # so ALL companies always render with their date range and bullets.
+    main_sec("Work Experience")
+    ai_cos = cv.get("companies") or []
+    _ui2_num_entries = max(len(ai_cos), len(p_work))
+    for i in range(_ui2_num_entries):
+        w  = p_work[i]  if i < len(p_work)  else {}
+        ai = ai_cos[i]  if i < len(ai_cos)  else {}
+        company = (w.get("company") or "").strip() or ai.get("company","")
+        role    = (w.get("role")    or "").strip() or ai.get("role","")
+        wf, wt  = str(w.get("from") or "").strip(), str(w.get("to") or "").strip()
+        if wf and wt: dr = f"{wf} – {wt}"
+        elif wf:      dr = f"{wf} – Present"
+        else:         dr = ai.get("dateRange","")
+        # Use absolute widths — percentage strings can be unreliable inside
+        # a Frame context and the 30% col (~114pt) is too narrow for long dates
+        # like "January 2023 - September 2024" (~127pt). Fixed 140pt date col.
+        _mn_w = PAGE_W - SIDEBAR_W_MM - 2 * MAIN_PAD
+        main_items.append(Table(
+            [[Paragraph(esc(company), S["m_company"]), Paragraph(esc(dr), S["m_date"])]],
+            colWidths=[_mn_w - 140, 140],
+            style=TableStyle([("VALIGN", (0,0), (-1,-1), "TOP"),
+                              ("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),
+                              ("TOPPADDING",(0,0),(-1,-1),0),("BOTTOMPADDING",(0,0),(-1,-1),2),
+                              ("ALIGN",(1,0),(1,-1),"RIGHT")])
+        ))
+        main_items.append(Paragraph(esc(role), S["m_role"]))
+        bullets = ai.get("bullets") or []
+        if not bullets and w.get("bullets"):
+            bullets = [b.strip() for b in str(w.get("bullets","")).split("\n") if b.strip()]
+        for b in bullets:
+            b_clean = b.lstrip("•·▸–▪●◦ ").strip()
+            main_items.append(Paragraph('<font size="7">▸</font> ' + esc(b_clean), S["m_bullet"]))
+        tech_raw = ai.get("tech","")
+        if tech_raw:
+            sep = "|" if "|" in tech_raw else ","
+            tags = " · ".join(t.strip() for t in tech_raw.split(sep) if t.strip())
+            main_items.append(Paragraph(tags, S["m_tech"]))
+        main_items.append(Spacer(1, 8))
+
+    # Projects
+    # ── Technical Skills ─────────────────────────────────────────────────────
+    ui2_skills = cv.get("skills") or []
+    if ui2_skills:
+        main_sec("Technical Skills")
+        # Add two styles needed for the skills cards
+        sk_cat_s = ps2("u2_skc", fontName="Helvetica-Bold", fontSize=8.5, leading=12,
+                        textColor=colors.white)
+        sk_val_s = ps2("u2_skv", fontName="Helvetica", fontSize=9, leading=13,
+                        textColor=colors.HexColor("#2c2c2c"))
+        main_col_inner = PAGE_W - SIDEBAR_W_MM - 2 * MAIN_PAD
+        cat_w = main_col_inner * 0.30
+        val_w = main_col_inner * 0.70
+        for idx, sk in enumerate(ui2_skills):
+            colon = sk.find(":")
+            if colon > 0:
+                cat = sk[:colon].strip()
+                val = sk[colon+1:].strip()
+            else:
+                cat, val = "Skills", sk
+            # Alternating row tint for visual rhythm
+            row_bg = colors.HexColor("#f0f5fb") if idx % 2 == 0 else colors.white
+            skill_row = Table(
+                [[Paragraph(esc(cat.upper()), sk_cat_s),
+                  Paragraph(esc(val), sk_val_s)]],
+                colWidths=[cat_w, val_w],
+                style=TableStyle([
+                    ("BACKGROUND",    (0, 0), (0, -1), TEAL_DARK),
+                    ("BACKGROUND",    (1, 0), (1, -1), row_bg),
+                    ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING",   (0, 0), (0, -1), 6),
+                    ("RIGHTPADDING",  (0, 0), (0, -1), 4),
+                    ("LEFTPADDING",   (1, 0), (1, -1), 8),
+                    ("RIGHTPADDING",  (1, 0), (1, -1), 4),
+                    ("TOPPADDING",    (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                    ("LINEBELOW",     (0, 0), (-1, -1), 0.5, colors.HexColor("#d0dce8")),
+                ])
+            )
+            main_items.append(skill_row)
+        main_items.append(Spacer(1, 8))
+
+    # Projects
+    main_sec("Key Projects")
+    for p in (cv.get("projects") or []):
+        raw_name = (p.get("name") or "").strip()
+        import re as _re2
+        name = _re2.sub(r'\s*\[[^\]]*\]\s*$', '', raw_name)
+        name = _re2.sub(r'^[A-Z][A-Z\s&\-]{2,}:\s*', '', name).strip()
+        main_items.append(Paragraph(esc(name), S["m_proj_name"]))
+        if p.get("overview"):
+            main_items.append(Paragraph(esc(p["overview"]), S["m_proj_body"]))
+        for b in (p.get("bullets") or []):
+            b_clean = b.lstrip("•·▸– ").strip()
+            main_items.append(Paragraph('<font size="7">▸</font> ' + esc(b_clean), S["m_proj_bullet"]))
+        tech_t = p.get("techTags") or []
+        if not tech_t and p.get("tech"):
+            sep = "|" if "|" in p["tech"] else ","
+            tech_t = [t.strip() for t in p["tech"].split(sep) if t.strip()]
+        if tech_t:
+            main_items.append(Paragraph(" · ".join(esc(t) for t in tech_t), S["m_proj_stack"]))
+        main_items.append(Spacer(1, 6))
+
+    # Core Competencies moved to sidebar — no duplicate in main panel
+
+    # ── Render UI2 two-column layout via low-level Frame/Canvas drawing ──────
+    # A single-row ReportLab Table whose cell content is taller than the page
+    # frame raises "Flowable … too large on page".  Fix: draw each column
+    # directly into its own Frame on a raw canvas — no Table flowable needed.
+    SIDEBAR_PAD = 16
+    sidebar_col_w = SIDEBAR_W_MM
+    main_col_w    = PAGE_W - sidebar_col_w
+
+    from reportlab.pdfgen import canvas as _rl_canvas
+    from reportlab.platypus.frames import Frame as _Frame
+
+    buf2 = io.BytesIO()
+    c2   = _rl_canvas.Canvas(buf2, pagesize=(PAGE_W, PAGE_H_SINGLE))
+
+    # Background fills (draw bottom→top so teal sidebar is underneath content)
+    c2.setFillColor(TEAL)
+    c2.rect(0, 0, sidebar_col_w, PAGE_H_SINGLE, fill=1, stroke=0)
+    c2.setFillColor(colors.white)
+    c2.rect(sidebar_col_w, 0, main_col_w, PAGE_H_SINGLE, fill=1, stroke=0)
+
+    # Sidebar Frame — padded inside the teal column, top-aligned
+    sb_inner_w = sidebar_col_w - 2 * SIDEBAR_PAD
+    sb_inner_h = PAGE_H_SINGLE - 2 * SIDEBAR_PAD
+    # ReportLab y-origin is bottom-left; content starts near the top.
+    sb_frame = _Frame(
+        SIDEBAR_PAD,                        # x (from left)
+        SIDEBAR_PAD,                        # y (from bottom) — content grows upward
+        sb_inner_w, sb_inner_h,
+        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+        showBoundary=0,
+    )
+    sb_frame.addFromList(list(sidebar_items), c2)
+
+    # Main-panel Frame — padded inside the right column
+    mn_inner_w = main_col_w - 2 * MAIN_PAD
+    mn_inner_h = PAGE_H_SINGLE - 8 - MAIN_PAD   # 8pt top gap, MAIN_PAD bottom gap
+    mn_frame = _Frame(
+        sidebar_col_w + MAIN_PAD,           # x
+        MAIN_PAD,                           # y
+        mn_inner_w, mn_inner_h,
+        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+        showBoundary=0,
+    )
+    mn_frame.addFromList(list(main_items), c2)
+
+    c2.save()
+    buf2.seek(0)
+
+    # Crop to actual content — use the lowest frame cursor as the content bottom
+    lowest_y = min(
+        sb_frame._y if hasattr(sb_frame, '_y') else 0,
+        mn_frame._y if hasattr(mn_frame, '_y') else 0,
+    )
+    tight_h = PAGE_H_SINGLE - lowest_y + 8 * mm
+    tight_h = max(tight_h, 100 * mm)
+    crop_bottom = PAGE_H_SINGLE - tight_h
+
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except ImportError:
+        import subprocess, sys
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "pypdf", "--quiet"])
+        from pypdf import PdfReader, PdfWriter
+
+    reader = PdfReader(buf2)
+    writer = PdfWriter()
+    writer.add_page(reader.pages[0])
+    page = writer.pages[0]
+    page.mediabox.lower_left  = (0, crop_bottom)
+    page.mediabox.upper_right = (PAGE_W, PAGE_H_SINGLE)
+
+    out = io.BytesIO()
+    writer.write(out)
+    out.seek(0)
+    return out.read()
+
+
+# ==============================================================================
+# PDF BUILDER — UI3 (Contemporary Card: centered header, icon-style sections, warm palette)
+# Distinct from UI1 (classic centered) and UI2 (sidebar teal):
+#   • Header: CENTERED name + role + contact
+#   • Section titles: colored filled square icon + bold text (no HR lines)
+#   • Dates positioned LEFT of company name (reversed from UI1/UI2)
+#   • Bullets: em-dash (–) style, no large black dots
+#   • Skills: two-column grid layout
+#   • Accent color: deep slate-blue (#2c3e6b) with warm gold (#c8962a)
+# ==============================================================================
+def build_cv_pdf_ui3(cv: dict, profile_data: dict = None) -> bytes:
+    """UI3 — Contemporary card layout: centered header, icon sections, reversed date layout."""
+    import re as _re3
+
+    _pd     = profile_data or {}
+    p_name  = (_pd.get("name") or "").strip() or "CANDIDATE"
+    p_links = _pd.get("links") or []
+    p_work  = _pd.get("work")  or []
+    p_edu   = [_normalise_edu_entry(e) for e in (_pd.get("edu") or [])]
+
+    NAVY     = colors.HexColor("#2c3e6b")   # deep slate-blue
+    GOLD     = colors.HexColor("#c8962a")   # warm gold accent
+    DARK     = colors.HexColor("#1c1c1c")
+    MID      = colors.HexColor("#4a4a4a")
+    LIGHT    = colors.HexColor("#888888")
+    BG_RULE  = colors.HexColor("#e4e8f0")   # light blue-grey for dividers
+
+    buf = io.BytesIO()
+    PAGE_W, _ = A4
+    ML, MR, MT, MB = 15*mm, 15*mm, 14*mm, 14*mm
+    # 5.0× A4 height — tall enough that no realistic CV ever triggers a page
+    # break on this single canvas. A page break would reset frame._y and cause
+    # later content to overwrite earlier content at the same canvas coordinates,
+    # making sections like Core Competencies and Education disappear.
+    PAGE_H_SINGLE = 841.89 * 5.0
+
+    doc = SimpleDocTemplate(
+        buf, pagesize=(PAGE_W, PAGE_H_SINGLE),
+        leftMargin=ML, rightMargin=MR, topMargin=MT, bottomMargin=MB,
+        title=f"{p_name} CV", author=p_name,
+    )
+    TW = PAGE_W - ML - MR
+
+    def ps3(name, **kw):
+        d = dict(fontName="Helvetica", fontSize=10, leading=14, spaceAfter=0,
+                 spaceBefore=0, textColor=DARK)
+        d.update(kw)
+        return ParagraphStyle(name, **d)
+
+    S = {
+        # ── Centered header block ─────────────────────────────────────────────
+        "name":      ps3("u3_nm", fontName="Helvetica-Bold", fontSize=22, leading=28,
+                         textColor=NAVY, alignment=TA_CENTER, spaceBefore=0, spaceAfter=2),
+        "subtitle":  ps3("u3_st", fontName="Helvetica", fontSize=9.5, leading=13,
+                         textColor=MID, alignment=TA_CENTER, spaceAfter=3),
+        "contact":   ps3("u3_ct", fontName="Helvetica", fontSize=8.5, leading=12,
+                         textColor=colors.HexColor("#0057a8"), alignment=TA_CENTER),
+        # ── Section icon-style title ──────────────────────────────────────────
+        "sec_icon":  ps3("u3_si", fontName="Helvetica-Bold", fontSize=10.5, leading=14,
+                         textColor=colors.white, spaceBefore=0, spaceAfter=0),
+        "sec_label": ps3("u3_sl", fontName="Helvetica-Bold", fontSize=11, leading=15,
+                         textColor=NAVY, spaceBefore=12, spaceAfter=5),
+        # ── Experience entries ────────────────────────────────────────────────
+        "date":      ps3("u3_dt", fontName="Helvetica-Bold", fontSize=8.5, leading=12,
+                         textColor=GOLD, alignment=TA_RIGHT),
+        "company":   ps3("u3_co", fontName="Helvetica-Bold", fontSize=11.5, leading=15,
+                         textColor=DARK),
+        "role":      ps3("u3_rl", fontName="Helvetica-Oblique", fontSize=10, leading=13,
+                         textColor=colors.HexColor("#3a5080"), spaceAfter=4),
+        "bullet":    ps3("u3_bul", fontName="Helvetica", fontSize=9.5, leading=14,
+                         leftIndent=12, textColor=MID, spaceAfter=3),
+        "tech":      ps3("u3_tch", fontName="Helvetica-Bold", fontSize=8, leading=11,
+                         leftIndent=12, textColor=GOLD),
+        # ── Skills two-column ────────────────────────────────────────────────
+        "sk_cat":    ps3("u3_skc", fontName="Helvetica-Bold", fontSize=9.5, leading=13,
+                         textColor=NAVY),
+        "sk_val":    ps3("u3_skv", fontName="Helvetica", fontSize=9.5, leading=13,
+                         textColor=MID),
+        # ── Projects ─────────────────────────────────────────────────────────
+        "proj_name": ps3("u3_pn", fontName="Helvetica-Bold", fontSize=10.5, leading=14,
+                         textColor=DARK, spaceBefore=3),
+        "proj_body": ps3("u3_pb", fontName="Helvetica", fontSize=9, leading=13,
+                         textColor=MID),
+        "proj_bul":  ps3("u3_pbl", fontName="Helvetica", fontSize=9, leading=12.5,
+                         leftIndent=10, textColor=MID, spaceAfter=2),
+        "proj_tech": ps3("u3_pt", fontName="Helvetica-Bold", fontSize=8, leading=11,
+                         textColor=GOLD),
+        # ── Competencies + Education ─────────────────────────────────────────
+        "comp":      ps3("u3_cmp", fontName="Helvetica", fontSize=9.5, leading=13.5,
+                         textColor=MID),
+        "edu_uni":   ps3("u3_eu", fontName="Helvetica-Bold", fontSize=11, leading=14,
+                         textColor=DARK),
+        "edu_deg":   ps3("u3_ed", fontName="Helvetica", fontSize=9.5, leading=13,
+                         textColor=MID),
+        "edu_note":  ps3("u3_en", fontName="Helvetica-Oblique", fontSize=9, leading=12,
+                         textColor=GOLD),
+        "edu_date":  ps3("u3_edt", fontName="Helvetica-Bold", fontSize=8.5, leading=12,
+                         textColor=GOLD, alignment=TA_RIGHT),
+        # ── Summary ──────────────────────────────────────────────────────────
+        "summary":   ps3("u3_sum", fontName="Helvetica", fontSize=9.5, leading=15.5,
+                         textColor=MID, spaceAfter=2),
+    }
+
+    def esc(s):
+        return (s or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+
+    def section_title(text):
+        """Icon-style header: filled navy square + bold label on same line via Table."""
+        icon_cell  = Table(
+            [[Paragraph(esc("  "), S["sec_icon"])]],
+            colWidths=[10],
+            style=TableStyle([
+                ("BACKGROUND",    (0,0),(-1,-1), NAVY),
+                ("TOPPADDING",    (0,0),(-1,-1), 3),
+                ("BOTTOMPADDING", (0,0),(-1,-1), 3),
+                ("LEFTPADDING",   (0,0),(-1,-1), 0),
+                ("RIGHTPADDING",  (0,0),(-1,-1), 0),
+            ])
+        )
+        label_cell = Paragraph(esc(text.upper()), S["sec_label"])
+        row = Table(
+            [[icon_cell, label_cell]],
+            colWidths=[12, TW - 12],
+            style=TableStyle([
+                ("VALIGN",       (0,0),(-1,-1), "MIDDLE"),
+                ("LEFTPADDING",  (0,0),(-1,-1), 0),
+                ("RIGHTPADDING", (0,0),(-1,-1), 0),
+                ("TOPPADDING",   (0,0),(-1,-1), 8),
+                ("BOTTOMPADDING",(0,0),(-1,-1), 0),
+            ])
+        )
+        divider = HRFlowable(width="100%", thickness=1, color=BG_RULE,
+                             spaceBefore=3, spaceAfter=6)
+        return [row, divider]
+
+    story = []
+
+    # ── Centered header ────────────────────────────────────────────────────────
+    story.append(Paragraph(esc(p_name), S["name"]))
+    title_str = (cv.get("title") or "").strip()
+    if title_str:
+        story.append(Paragraph(esc(title_str), S["subtitle"]))
+
+    # Contact line (centered, pipe-separated)
+    if p_links:
+        contact_parts = []
+        for lnk in p_links:
+            v    = (lnk.get("value") or "").strip()
+            lbl  = (lnk.get("label") or "").strip().lower()
+            href = "" if lbl == "location" else _contact_href(v)
+            _sv  = esc(v)
+            if href:
+                contact_parts.append(f'<a href="{esc(href)}" color="#0057a8">{_sv}</a>')
+            else:
+                contact_parts.append(_sv)
+        if contact_parts:
+            story.append(Paragraph("  |  ".join(contact_parts), S["contact"]))
+
+    story.append(HRFlowable(width="100%", thickness=3, color=NAVY,
+                             spaceBefore=8, spaceAfter=4))
+    story.append(HRFlowable(width="100%", thickness=1, color=GOLD,
+                             spaceBefore=2, spaceAfter=10))
+
+    # ── Profile Summary ────────────────────────────────────────────────────────
+    summary_text = (cv.get("summary") or "").strip()
+    if summary_text:
+        story += section_title("Professional Summary")
+        story.append(Paragraph(esc(summary_text), S["summary"]))
+        story.append(Spacer(1, 4))
+
+    # ── Work Experience ────────────────────────────────────────────────────────
+    ai_cos = cv.get("companies") or []
+    # Build a unified list: for each AI company entry, merge in the matching
+    # profile work entry (by index) so dates/company names from the profile
+    # always take precedence while AI-generated bullets are always used.
+    # This ensures ALL companies render — regardless of how many p_work entries exist.
+    num_entries = max(len(ai_cos), len(p_work))
+    if num_entries > 0:
+        story += section_title("Work Experience")
+        for i in range(num_entries):
+            w  = p_work[i]   if i < len(p_work)  else {}
+            ai = ai_cos[i]   if i < len(ai_cos)   else {}
+
+            company = (w.get("company") or "").strip() or ai.get("company","")
+            role    = (w.get("role")    or "").strip() or ai.get("role","")
+            wf      = str(w.get("from") or "").strip()
+            wt      = str(w.get("to")   or "").strip()
+            if wf and wt:
+                dr = f"{wf} – {wt}"
+            elif wf:
+                dr = f"{wf} – Present"
+            else:
+                dr = ai.get("dateRange","")
+
+            # Company LEFT, date RIGHT — clean aligned layout
+            story.append(Table(
+                [[Paragraph(esc(company), S["company"]), Paragraph(esc(dr), S["date"])]],
+                colWidths=[TW * 0.73, TW * 0.27],
+                style=TableStyle([("VALIGN",(0,0),(-1,-1),"BOTTOM"),
+                                  ("LEFTPADDING",(0,0),(-1,-1),0),
+                                  ("RIGHTPADDING",(0,0),(-1,-1),0),
+                                  ("TOPPADDING",(0,0),(-1,-1),6),
+                                  ("BOTTOMPADDING",(0,0),(-1,-1),2),
+                                  ("ALIGN",(1,0),(1,-1),"RIGHT")])
+            ))
+            if role:
+                story.append(Paragraph(esc(role), S["role"]))
+
+            # Prefer AI bullets (rich, JD-tailored); fall back to profile bullets
+            bullets = ai.get("bullets") or []
+            if not bullets and w.get("bullets"):
+                bullets = [b.strip() for b in str(w["bullets"]).split("\n") if b.strip()]
+            for b in bullets:
+                b_clean = b.lstrip("•·▸–▪● ").strip()
+                story.append(Paragraph('<font size="7">•</font> ' + esc(b_clean), S["bullet"]))
+
+            tech_raw = ai.get("tech","")
+            if tech_raw:
+                sep  = "|" if "|" in tech_raw else ","
+                tags = "  ·  ".join(t.strip() for t in tech_raw.split(sep) if t.strip())
+                story.append(Paragraph(esc(tags), S["tech"]))
+            story.append(Spacer(1, 10))
+
+    # ── Technical Skills — two-column grid ────────────────────────────────────
+    skills = cv.get("skills") or []
+    if skills:
+        story += section_title("Technical Skills")
+        col_data = []
+        for sk in skills[:5]:   # UI3 shows up to 5 skill categories
+            colon = sk.find(":")
+            if colon > 0:
+                cat = sk[:colon].strip()
+                val = sk[colon+1:].strip()
+            else:
+                cat, val = "", sk
+            col_data.append((cat, val))
+        # Arrange in two columns
+        half = math.ceil(len(col_data) / 2)
+        left_col  = col_data[:half]
+        right_col = col_data[half:]
+        while len(right_col) < len(left_col):
+            right_col.append(("",""))
+
+        def _sk_cell(cat, val):
+            items = []
+            if cat:
+                items.append(Paragraph(f"<b>{esc(cat)}</b>", S["sk_cat"]))
+            if val:
+                items.append(Paragraph(esc(val), S["sk_val"]))
+            return items
+
+        col_w = (TW - 8) / 2
+        for (lc, lv), (rc, rv) in zip(left_col, right_col):
+            grid = Table(
+                [[_sk_cell(lc, lv), _sk_cell(rc, rv)]],
+                colWidths=[col_w, col_w],
+                style=TableStyle([
+                    ("VALIGN",       (0,0),(-1,-1),"TOP"),
+                    ("LEFTPADDING",  (0,0),(-1,-1),0),
+                    ("RIGHTPADDING", (0,0),(-1,-1),4),
+                    ("TOPPADDING",   (0,0),(-1,-1),2),
+                    ("BOTTOMPADDING",(0,0),(-1,-1),4),
+                    ("LINEBELOW",    (0,0),(-1,-1),0.4,BG_RULE),
+                ])
+            )
+            story.append(grid)
+        story.append(Spacer(1, 4))
+
+    # ── Selected Projects ──────────────────────────────────────────────────────
+    projects = cv.get("projects") or []
+    if projects:
+        story += section_title("Projects")
+        for p in projects:
+            raw_name = (p.get("name") or "").strip()
+            name = _re3.sub(r'\s*\[[^\]]*\]\s*$', '', raw_name)
+            name = _re3.sub(r'^[A-Z][A-Z\s&\-]{2,}:\s*', '', name).strip()
+            if name:
+                story.append(Paragraph(esc(name), S["proj_name"]))
+            if p.get("overview"):
+                story.append(Paragraph(esc(p["overview"]), S["proj_body"]))
+            for b in (p.get("bullets") or []):
+                b_clean = b.lstrip("•·▸–▪● ").strip()
+                story.append(Paragraph('<font size="7">•</font> ' + esc(b_clean), S["proj_bul"]))
+            tech_t = p.get("techTags") or []
+            if not tech_t and p.get("tech"):
+                sep = "|" if "|" in p["tech"] else ","
+                tech_t = [t.strip() for t in p["tech"].split(sep) if t.strip()]
+            if tech_t:
+                story.append(Paragraph("  ·  ".join(esc(t) for t in tech_t), S["proj_tech"]))
+            story.append(Spacer(1, 7))
+
+    # ── Core Competencies ─────────────────────────────────────────────────────
+    comp_str = (cv.get("competencies") or "").strip()
+    if comp_str:
+        story += section_title("Core Competencies")
+        # Display as comma-separated inline list
+        pills = [c.strip() for c in comp_str.replace("*","•").split("•") if c.strip()]
+        story.append(Paragraph("  ·  ".join(esc(c) for c in pills), S["comp"]))
+        story.append(Spacer(1, 4))
+
+    # ── Education ─────────────────────────────────────────────────────────────
+    # Build the render list: p_edu (profile) is authoritative for names/degree/cgpa.
+    # cv["education"] (AI-merged) is authoritative for the "years" field when the
+    # profile entry has no from/to — this mirrors UI1's resolution logic exactly.
+    _cv_edu_raw = cv.get("education") or []
+    if isinstance(_cv_edu_raw, dict):
+        _cv_edu_raw = [_cv_edu_raw]
+
+    if p_edu:
+        _edu_render_list = []
+        for _i, _pe in enumerate(p_edu):
+            _entry = dict(_pe)   # copy — never mutate original
+            # If this profile entry lacks from/to, pull years from cv["education"]
+            _ef = str(_pe.get("from") or "").strip()
+            _et = str(_pe.get("to")   or "").strip()
+            if not _ef and not _et and _i < len(_cv_edu_raw):
+                _yr = str(_cv_edu_raw[_i].get("years") or "").strip()
+                if _yr:
+                    _entry["years"] = _yr
+            _edu_render_list.append(_entry)
+    else:
+        # No profile edu — use cv["education"] entirely
+        _edu_render_list = []
+        for _ce in _cv_edu_raw:
+            _edu_render_list.append({
+                "institution": (_ce.get("university") or _ce.get("institution") or "").strip(),
+                "degree":      (_ce.get("degree") or "").strip(),
+                "cgpa":        (_ce.get("cgpa") or "").strip(),
+                "years":       str(_ce.get("years") or "").strip(),
+                "achievement": (_ce.get("achievement") or "").strip(),
+            })
+
+    if _edu_render_list:
+        story += section_title("Education")
+        _u3_prev_start_yr = None   # anchor for auto-sequencing multiple qualifications
+        for e in _edu_render_list:
+            ef  = str(e.get("from") or "").strip()
+            et  = str(e.get("to")   or "").strip()
+            deg = (e.get("degree") or "").strip()
+            uni = (e.get("institution") or "").strip()
+            cgpa = (e.get("cgpa") or "").strip()
+            ach  = (e.get("achievement") or "").strip()
+
+            # ── Resolve date range — same priority chain as UI1 ────────────────
+            # 1. Explicit from + to in entry
+            if ef and et:
+                dr = f"{ef}–{et}"
+            else:
+                # 2. "years" field (e.g. "2016-2020" stored by cv["education"])
+                _yr_raw = str(e.get("years") or "").strip()
+                _sep = "–" if "–" in _yr_raw else "-"
+                if _yr_raw and _sep in _yr_raw:
+                    _yp = [p.strip() for p in _yr_raw.split(_sep, 1)]
+                    ef, et = _yp[0], _yp[-1]
+                    dr = f"{ef}–{et}"
+                elif et and not ef:
+                    # 3a. Only end year — infer start from degree duration
+                    _dur = _infer_degree_duration(deg)
+                    try: ef = str(int(et[:4]) - _dur)
+                    except (ValueError, TypeError): pass
+                    dr = f"{ef}–{et}" if ef else et
+                elif ef and not et:
+                    # 3b. Only start year — infer end from degree duration
+                    _dur = _infer_degree_duration(deg)
+                    try: et = str(int(ef[:4]) + _dur)
+                    except (ValueError, TypeError): pass
+                    dr = f"{ef}–{et}" if et else ef
+                elif _u3_prev_start_yr is not None:
+                    # 4. No dates at all — sequence backwards from previous entry
+                    _dur = _infer_degree_duration(deg)
+                    et = str(_u3_prev_start_yr)
+                    ef = str(_u3_prev_start_yr - _dur)
+                    dr = f"{ef}–{et}"
+                else:
+                    dr = ""
+            # Update anchor for the next entry
+            try: _u3_prev_start_yr = int(str(ef)[:4]) if ef else _u3_prev_start_yr
+            except (ValueError, TypeError): pass
+
+            if uni:
+                # Use absolute colWidths (same unit as work experience) for
+                # consistent right-alignment regardless of institution name length.
+                story.append(Table(
+                    [[Paragraph(esc(uni), S["edu_uni"]),
+                      Paragraph(esc(dr),  S["edu_date"])]],
+                    colWidths=[TW * 0.68, TW * 0.32],
+                    style=TableStyle([("VALIGN",        (0,0),(-1,-1),"BOTTOM"),
+                                      ("LEFTPADDING",   (0,0),(-1,-1),0),
+                                      ("RIGHTPADDING",  (0,0),(-1,-1),0),
+                                      ("TOPPADDING",    (0,0),(-1,-1),0),
+                                      ("BOTTOMPADDING", (0,0),(-1,-1),2),
+                                      ("ALIGN",         (1,0),(1,-1),"RIGHT")])
+                ))
+            deg_parts = [deg] if deg else []
+            if cgpa:
+                deg_parts.append(f"CGPA: {cgpa}")
+            if deg_parts:
+                story.append(Paragraph(esc(" | ".join(deg_parts)), S["edu_deg"]))
+            if ach:
+                # Use only Helvetica-supported characters — emoji glyphs render
+                # as black squares (■) in standard PDF fonts.
+                prefix = "★ " if "gold" in ach.lower() else "✓ "
+                story.append(Paragraph(prefix + esc(ach), S["edu_note"]))
+            story.append(Spacer(1, 6))
+
+    # ── Build PDF ──────────────────────────────────────────────────────────────
+    # Track page count via onPage callback so we can compute the true content
+    # height even when content overflows onto a second (or third) "page" of the
+    # tall single-page canvas.
+    _page_count = [0]
+
+    def _count_page(canvas, doc):
+        _page_count[0] += 1
+
+    doc.build(story, onFirstPage=_count_page, onLaterPages=_count_page)
+
+    # Crop the canvas down to actual content height.
+    # With PAGE_H_SINGLE = 841.89 * 5.0, no realistic CV triggers a page break,
+    # so frame._y is always the absolute canvas y where the last content ended.
+    # If somehow a page break did occur (extremely dense CV), fall back to showing
+    # the full canvas (crop_bottom = 0) to ensure no content is ever hidden.
+    last_y = doc.frame._y if hasattr(doc, 'frame') and doc.frame else MB
+    n_pages = max(_page_count[0], 1)
+
+    if n_pages == 1:
+        # Normal case: frame._y is the absolute bottom of content on the canvas.
+        tight_h = PAGE_H_SINGLE - last_y + MB + 1 * mm
+    else:
+        # Fallback: page break occurred (unexpectedly dense content).
+        # Show the full canvas to guarantee nothing is cropped out.
+        tight_h = PAGE_H_SINGLE
+
+    tight_h = max(tight_h, 60 * mm)
+    crop_bottom = PAGE_H_SINGLE - tight_h
+
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except ImportError:
+        import subprocess, sys
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "pypdf", "--quiet"])
+        from pypdf import PdfReader, PdfWriter
+
+    buf.seek(0)
+    reader = PdfReader(buf)
+    writer = PdfWriter()
+    writer.add_page(reader.pages[0])
+    page = writer.pages[0]
+    page.mediabox.lower_left  = (0, crop_bottom)
+    page.mediabox.upper_right = (PAGE_W, PAGE_H_SINGLE)
+
+    out = io.BytesIO()
+    writer.write(out)
+    out.seek(0)
+    return out.read()
+
+
+# ==============================================================================
+# PDF BUILDER REGISTRY — add new templates here only
+# ==============================================================================
+_PDF_BUILDERS = {
+    "ui1": build_cv_pdf,       # Classic Executive (original)
+    "ui2": build_cv_pdf_ui2,   # Modern Sidebar (teal two-column)
+    "ui3": build_cv_pdf_ui3,   # Minimalist Serif (burnt-orange accent)
+}
+
+
 @app.post("/generate-pdf")
 async def generate_pdf(req: PDFRequest):
     try:
-        pdf_bytes = build_cv_pdf(req.cv, profile_data=req.profileData)
+        builder = _PDF_BUILDERS.get(req.ui_template or "ui1", build_cv_pdf)
+        pdf_bytes = builder(req.cv, profile_data=req.profileData)
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
