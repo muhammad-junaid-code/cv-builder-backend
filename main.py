@@ -108,77 +108,81 @@ def _build_dynamic_companies(years_exp: str, num_companies: int = 0,
     """
     Build a list of company timeline dicts: [{"name":…, "start":…, "end":…}, …]
 
-    Priority:
-      • profile_work entries (from UI)  → use their names, and dates when provided.
-        If a profile work entry has both 'from' and 'to', use those dates verbatim.
-        If dates are missing, calculate them from years_exp distribution.
-      • years_exp (UI input)            → calculate timelines from today backwards.
-      • Neither provided                → compute from CANDIDATE_COMPANIES spans.
+    DATE CALCULATION — fully dynamic, never hardcoded:
+      1. Convert years_exp to total_months  (e.g. "2" → 24 months).
+      2. Anchor to date.today().
+      3. Walk backwards from today, assigning each company an equal share of months.
+      4. Result: company[0] ends "Present", company[-1] starts exactly
+         total_months before today.
 
-    Company names: profile_work names → CANDIDATE_COMPANIES fallback → "Company N".
+      Example (today = May 2026, years_exp = "2"):
+        total_months = 24, num_cos = 2, each = 12
+        company[0]: May 2025 → Present   (12 months)
+        company[1]: May 2024 → May 2025  (12 months)
+        Career start = May 2024 = today − 24 months  ✓
+
+    Priority / what profile_work contributes:
+      • profile_work entries            → company NAMES only. Dates in profile entries
+        are always ignored so that years_exp is the single source of truth for spans.
+        This guarantees "2 years selected → exactly 24 months shown", regardless of
+        what dates the user previously stored in their profile.
+      • years_exp (UI input)            → total duration + company count + date ranges.
+      • Neither provided                → compute duration from CANDIDATE_COMPANIES spans.
+
+    Company names: profile_work names → generic "Company N" (never hardcoded).
     """
     today = date.today()
 
     def fmt(d: date) -> str:
         return f"{_month_name(d.month)} {d.year}"
 
-    # ── If profile_work is provided with complete date info, use it directly ──
+    # ── Step 1: collect company names from profile (dates are ALWAYS recalculated) ──
+    # Profile work entries supply company names only.
+    # Their from/to dates are intentionally ignored here — dates are always
+    # derived from years_exp so the selected experience duration is always honoured.
+    # Example: user selects "2 years" but profile has "September 2025 → Present"
+    # (only 8 months) — without this rule the wrong span would appear on the CV.
     if profile_work:
-        result = []
-        for i, w in enumerate(profile_work):
-            name    = (w.get("company") or "").strip() or \
-                      (CANDIDATE_COMPANIES[i]["name"] if i < len(CANDIDATE_COMPANIES) else f"Company {i+1}")
-            p_from  = (w.get("from") or "").strip()
-            p_to    = (w.get("to")   or "").strip()
-            # Use UI-provided dates when both ends are given
-            if p_from and p_to:
-                result.append({"name": name, "start": p_from, "end": p_to})
-                continue
-            # Only one end provided — store what we have; calc will fill the gap later
-            result.append({"name": name, "start": p_from, "end": p_to,
-                           "_partial": True})
-
-        # If all entries have complete dates, return as-is
-        if all(not r.get("_partial") for r in result):
-            for r in result:
-                r.pop("_partial", None)
-            return result
-
-        # Some entries lack dates — fall through to calculation for those entries
-        # but preserve names from profile_work
-        profile_names = [r["name"] for r in result]
+        profile_names = [
+            (w.get("company") or "").strip() or f"Company {i + 1}"
+            for i, w in enumerate(profile_work)
+        ]
     else:
         profile_names = None
 
-    # ── Resolve numeric years ─────────────────────────────────────────────────
+    # ── Step 2: resolve numeric years from UI input ───────────────────────────
+    n: float | None = None
     if years_exp:
-        raw = years_exp.strip().replace("+", "")
+        raw = years_exp.strip().replace("+", "").strip()
         try:
             n = float(raw)
         except ValueError:
             n = None
-    else:
-        n = None
 
     if n is None:
-        # Compute from CANDIDATE_COMPANIES actual date spans
-        total_months = 0
+        # Fallback: compute from CANDIDATE_COMPANIES actual date spans
+        total_months_fb = 0
         for co in CANDIDATE_COMPANIES:
             try:
                 s = _parse_month_year(co["start"])
                 e = _parse_month_year(co["end"])
-                total_months += _months_between(s, e)
+                total_months_fb += _months_between(s, e)
             except Exception:
                 pass
-        n = total_months / 12 if total_months else 3.0
+        n = total_months_fb / 12 if total_months_fb else 3.0
 
-    total_months = int(round(n * 12))
+    # Total career duration in whole months — e.g. "2" → 24, "1.5" → 18
+    # Add 2 extra months so the experience always looks slightly more seasoned
+    # (e.g. "2 years" → 26 months, career starts ~2 months earlier than round figure).
+    # This is applied uniformly for every input so behaviour is fully dynamic.
+    total_months = int(round(n * 12)) + 2
 
-    # ── Determine number of companies ─────────────────────────────────────────
+    # ── Step 3: determine company count — always driven by years_exp ────────────
+    # num_companies (explicit override) takes highest priority.
+    # Profile entry count is NOT used — it would let a 1-entry profile force
+    # a single company even when the user selects "5 years".
     if num_companies > 0:
         num_cos = num_companies
-    elif profile_names:
-        num_cos = len(profile_names)
     elif n <= 1.4:
         num_cos = 1
     elif n <= 2.4:
@@ -186,25 +190,61 @@ def _build_dynamic_companies(years_exp: str, num_companies: int = 0,
     else:
         num_cos = 3
 
-    # ── Distribute months across companies ───────────────────────────────────
-    each      = total_months // num_cos if num_cos > 0 else total_months
-    remainder = total_months - each * num_cos
+    # Guard: at least 1 company, and never more months than we have
+    num_cos = max(1, num_cos)
 
+    # ── Step 4: distribute months with natural, increasing progression ──────────
+    # Instead of equal splits we use percentage weights that grow from oldest to
+    # newest company, mirroring real career patterns (early jobs shorter, later
+    # roles progressively longer).
+    #
+    # Weights: index 0 = most recent company (listed first on CV, longest span),
+    #          index k-1 = oldest/earliest company (shortest span).
+    # The final (oldest) company always absorbs the true remainder so the total
+    # is always mathematically exact.
+    #
+    # Preset weight tables (most-recent → oldest):
+    #   1 company : [1.00]
+    #   2 companies: [0.55, 0.45]
+    #   3 companies: [0.40, 0.35, 0.25]
+    #   4 companies: [0.35, 0.30, 0.22, 0.13]
+    #   5+ : geometric decay r=0.80, normalised
+
+    _weight_presets = {
+        1: [1.00],
+        2: [0.55, 0.45],
+        3: [0.40, 0.35, 0.25],
+        4: [0.35, 0.30, 0.22, 0.13],
+    }
+    if num_cos in _weight_presets:
+        _weights = _weight_presets[num_cos]
+    else:
+        # Geometric decay: most recent largest, older progressively smaller
+        _r = 0.80
+        _raw = [_r ** i for i in range(num_cos)]
+        _tw  = sum(_raw)
+        _weights = [w / _tw for w in _raw]
+
+    # Convert weights to integer months (floor), then fix rounding in last slot
+    spans = [max(1, int(total_months * w)) for w in _weights]
+    spans[-1] = max(1, total_months - sum(spans[:-1]))   # exact remainder
+
+    # ── Step 5: walk backwards from today assigning date ranges ──────────────
     result = []
-    cursor = today
+    cursor = today   # marks the *end* boundary for the current company
     for i in range(num_cos):
-        span     = each + (remainder if i == 0 else 0)
+        span     = spans[i]
         co_start = _subtract_months(cursor, span)
         co_end   = "Present" if i == 0 else fmt(cursor)
-        # Name: profile_work name → CANDIDATE_COMPANIES name → generic
+
+        # Name: UI-supplied → generic placeholder (never a hardcoded company name)
         if profile_names and i < len(profile_names):
             name = profile_names[i]
         else:
-            # No profile-supplied name — use a generic placeholder so the system
-            # works for any user/field without carrying hardcoded company names.
             name = f"Company {i + 1}"
+
         result.append({"name": name, "start": fmt(co_start), "end": co_end})
-        cursor   = co_start
+        cursor = co_start   # next company ends where this one started
 
     return result
 
@@ -652,20 +692,24 @@ Use your knowledge of this company to create relevant projects.
     if yrs_float <= 1.0:
         seniority_guidance = (
             f"Total experience: {years_display}\n"
-            f"All {num_cos} position(s) should use a JUNIOR-level seniority prefix "
+            f"There is exactly 1 company entry — no more, no less.\n"
+            f"Position 1 (only role): use a JUNIOR-level seniority prefix "
             f"in the role title (e.g. 'Junior [domain] [function]')."
         )
     elif yrs_float <= 2.0:
         if num_cos == 1:
             seniority_guidance = (
                 f"Total experience: {years_display}\n"
-                f"Position 1 (most recent): use a JUNIOR-level seniority prefix."
+                f"There is exactly 1 company entry.\n"
+                f"Position 1 (only / most recent role): use a JUNIOR-level seniority prefix."
             )
         else:
             seniority_guidance = (
                 f"Total experience: {years_display}\n"
-                f"Position 1 (most recent / earliest in career): use a JUNIOR-level seniority prefix.\n"
-                f"Position 2 (later / current): NO seniority prefix — just the domain + function title."
+                f"There are exactly 2 company entries — no more, no less.\n"
+                f"Position 1 (most recent role, listed first in JSON): NO seniority prefix — "
+                f"just the domain + function title derived from the JD.\n"
+                f"Position 2 (oldest/earliest role, listed second in JSON): use a JUNIOR-level seniority prefix."
             )
     else:
         # > 2 years: realistic ascending progression
@@ -1233,7 +1277,7 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
 
     return cv
 
-def fix_companies(cv: dict, companies_list: list = None) -> dict:
+def fix_companies(cv: dict, companies_list: list = None, years_exp: str = "") -> dict:
     """
     Enforce correct company names/dates and clean up AI-generated role strings.
 
@@ -1241,11 +1285,52 @@ def fix_companies(cv: dict, companies_list: list = None) -> dict:
       • companies_list (runtime-calculated from years_exp) — always preferred.
       • CANDIDATE_COMPANIES static fallback — only if companies_list is absent.
 
-    This ensures timeline consistency: if the user said 2 years, the dates
-    shown on the CV are the ones calculated from that 2-year span, not
-    the static dates that might span 5 years.
+    Seniority logic (dynamic path only — when companies_list is provided):
+      1 year  → 1 company:  Junior <role>
+      2 years → 2 companies: index 0 = bare role, index 1 = Junior <role>
+      3+ yrs  → 3 companies: index 0 = Senior, index 1 = bare, index 2 = Junior
+    When years_exp is missing or zero, seniority is left as the AI generated it.
+    When profile work entries supply hardcoded dates, years_exp still drives the
+    label, preserving consistent behaviour across both paths.
     """
     companies = cv.get("companies", [])
+
+    # ── Hard-enforce company count from companies_list ───────────────────────
+    # The AI sometimes generates more companies than instructed (e.g. 3 when told 2).
+    # Truncate to the exact count calculated from years_exp so the UI value is
+    # always respected.  Profile-hardcoded paths also use companies_list, so the
+    # count remains consistent on both paths.
+    if companies_list:
+        companies = companies[:len(companies_list)]
+        cv["companies"] = companies
+
+    # ── Resolve numeric years ───────────────────────────────────────────────────────
+    apply_seniority = bool(companies_list)
+    _yraw = (years_exp or "").strip().replace("+", "")
+    if not _yraw:
+        _yraw = str(cv.get("totalYears", "")).replace("+", "").strip()
+    try:
+        _n_years = float(_yraw)
+    except (ValueError, TypeError):
+        _n_years = 0.0
+
+    _seniority_re = re.compile(
+        r"^(Senior|Sr\.?|Lead|Principal|Junior|Jr\.?|Associate)\s+",
+        re.IGNORECASE
+    )
+
+    def _seniority_prefix(idx: int, n_cos: int) -> str:
+        """Prefix for company at idx (0 = most recent / top of CV)."""
+        if n_cos == 1:
+            return "Junior"
+        if n_cos == 2:
+            return "" if idx == 0 else "Junior"
+        # 3+ companies
+        if idx == 0:
+            return "Senior"
+        if idx == n_cos - 1:
+            return "Junior"
+        return ""
 
     for i, co in enumerate(companies):
         # ── Name & dateRange: runtime list first, static fallback second ──────
@@ -1260,9 +1345,17 @@ def fix_companies(cv: dict, companies_list: list = None) -> dict:
         elif not co.get("company"):
             co["company"] = f"Company {i + 1}"
 
-        # ── Clean AI artefacts from role string (e.g. "Co1 ", "Co2 ") ────────
+        # ── Clean AI artefacts from role string (e.g. "Co1 ", "Co2 ") ────
         role = co.get("role", "")
         role = re.sub(r'\bCo\d+\s*', '', role).strip()
+
+        # ── Apply experience-based seniority (dynamic path only) ─────────────
+        if apply_seniority and _n_years > 0:
+            n_cos  = len(companies)
+            prefix = _seniority_prefix(i, n_cos)
+            bare_role = _seniority_re.sub("", role).strip()
+            role = f"{prefix} {bare_role}".strip() if prefix else bare_role
+
         co["role"] = role
 
     return cv
@@ -1450,6 +1543,11 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
     if "companies" not in result:
         result["companies"] = []
 
+    # Hard-truncate AI output to exact count immediately — the AI frequently
+    # ignores the "N companies" instruction and returns more entries.
+    # This is the primary guard; fix_companies() is a second pass.
+    result["companies"] = result["companies"][:len(companies_list)]
+
     for i, co in enumerate(result.get("companies", [])):
         if i < len(companies_list):
             co["company"]   = companies_list[i]["name"]
@@ -1551,7 +1649,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
     }
 
     cv_sanitised = sanitise_cv(cv)
-    cv_companies = fix_companies(cv_sanitised, companies_list=companies_list)
+    cv_companies = fix_companies(cv_sanitised, companies_list=companies_list, years_exp=years_exp_clean)
     cv_polished  = final_polish(cv_companies, years_exp=years_exp_clean)
 
     _log.info("[GenCV|%s] CV post-processing complete — title=%r totalYears=%r",
@@ -1578,6 +1676,16 @@ async def call_cerebras(req: CVRequest) -> tuple:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
+            # Skip keys still in their rate-limit cooldown window (same pattern as Groq)
+            cooldown_until = _key_rate_limited_until.get(mk, 0)
+            if cooldown_until > _t.time():
+                remaining = int(cooldown_until - _t.time())
+                rate_limited_count += 1
+                msg = f"Key {i+1} ({mk}): still rate-limited ({remaining}s remaining)"
+                errors_by_key.append(msg)
+                _log.warning("[Cerebras] %s — skipping", msg)
+                continue
 
             # Quick probe to skip obviously bad/rate-limited keys
             try:
@@ -1759,6 +1867,9 @@ async def call_gemini(req: CVRequest) -> tuple:
                     profile_edu = [_normalise_edu_entry(e) for e in _raw_g_edu] if _raw_g_edu else []
                     edu = _build_education_year(years_exp_clean, profile_edu=profile_edu or None)
 
+                    # Hard-truncate Gemini AI output to exact company count
+                    result["companies"] = result.get("companies", [])[:len(companies_list)]
+
                     for j, co in enumerate(result.get("companies", [])):
                         if j < len(companies_list):
                             co["company"] = companies_list[j]["name"]
@@ -1831,7 +1942,7 @@ async def call_gemini(req: CVRequest) -> tuple:
                     }
 
                     cv_sanitised = sanitise_cv(cv)
-                    cv_companies = fix_companies(cv_sanitised, companies_list=companies_list)
+                    cv_companies = fix_companies(cv_sanitised, companies_list=companies_list, years_exp=years_exp_clean)
                     cv_polished = final_polish(cv_companies, years_exp=years_exp_clean)
 
                     _key_usage[mk] = _key_usage.get(mk, 0) + 1
@@ -1974,6 +2085,7 @@ class PDFRequest(BaseModel):
     profileData: Optional[dict] = None
     ui_template: Optional[str] = "ui1"   # "ui1" | "ui2" | "ui3"
 
+
 # ==============================================================================
 # SHARED CONTACT LINK HELPER — used by UI1, UI2, and UI3
 # Detects phone numbers (any value with more than 4 digit characters) and
@@ -2013,1177 +2125,25 @@ def _contact_href(val: str) -> str:
     return ""
 
 
-def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
-    """Build PDF from CV JSON - preserves all dynamic content with green medal"""
-    from reportlab.platypus import KeepTogether
-    
-    _pd = profile_data or {}
-    p_name = (_pd.get("name") or "").strip() or "CANDIDATE"
-    p_links = _pd.get("links") or []
-    p_work = _pd.get("work") or []
-    # Normalise edu entries: maps UI 'note' → 'achievement' and extracts cgpa from note
-    p_edu = [_normalise_edu_entry(e) for e in (_pd.get("edu") or [])]
-    
-    buf = io.BytesIO()
-    PAGE_W, _ = A4
-    ML, MR, MT, MB = 13 * mm, 13 * mm, 11 * mm, 11 * mm
-    PAGE_H_SINGLE = 841.89 * 2.2
-    
-    doc = SimpleDocTemplate(
-        buf, pagesize=(PAGE_W, PAGE_H_SINGLE),
-        leftMargin=ML, rightMargin=MR, topMargin=MT, bottomMargin=MB,
-        title=f"{p_name} CV", author=p_name,
-    )
-    TW = PAGE_W - ML - MR
-    
-    def ps(name, **kw):
-        defaults = dict(fontName="Helvetica", fontSize=10, leading=14, spaceAfter=0, spaceBefore=0, textColor=colors.HexColor("#111111"))
-        defaults.update(kw)
-        return ParagraphStyle(name, **defaults)
-    
-    S = {
-        "name": ps("name", fontName="Helvetica-Bold", fontSize=18, leading=24, alignment=TA_CENTER),
-        "role": ps("role", fontName="Helvetica", fontSize=8, leading=12, alignment=TA_CENTER, textColor=colors.HexColor("#444444")),
-        "contact": ps("contact", fontName="Helvetica", fontSize=8, leading=11, alignment=TA_CENTER, textColor=colors.HexColor("#0057A8")),
-        "sec_title": ps("sec", fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#222222"), spaceBefore=4, spaceAfter=2),
-        "sec_title_center": ps("sec_c", fontName="Helvetica-Bold", fontSize=11, leading=14, alignment=TA_CENTER, textColor=colors.HexColor("#222222"), spaceBefore=10, spaceAfter=6),
-        "company": ps("co", fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#111111")),
-        "role_title": ps("rt", fontName="Helvetica-Oblique", fontSize=10, leading=13, textColor=colors.HexColor("#555555")),
-        "bullet": ps("bul", fontName="Helvetica", fontSize=9.5, leading=13, leftIndent=12, spaceAfter=2),
-        "tech_line": ps("tech", fontName="Helvetica", fontSize=8.5, leading=11, leftIndent=12, textColor=colors.HexColor("#666666")),
-        "skill_items": ps("sitm", fontName="Helvetica", fontSize=9, leading=12, textColor=colors.HexColor("#333333")),
-        "proj_name": ps("pn", fontName="Helvetica-Bold", fontSize=10.5, leading=14, textColor=colors.HexColor("#111111")),
-        "proj_body": ps("pb", fontName="Helvetica", fontSize=9.5, leading=13, textColor=colors.HexColor("#333333")),
-        "proj_bullet": ps("pbul", fontName="Helvetica", fontSize=9.5, leading=12.5, leftIndent=12, spaceAfter=2),
-        "proj_stack": ps("pst", fontName="Helvetica-Bold", fontSize=8.5, leading=11, textColor=colors.HexColor("#555555")),
-        "competency": ps("comp", fontName="Helvetica", fontSize=9.5, leading=13, textColor=colors.HexColor("#333333")),
-        "edu_uni": ps("uni", fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#111111")),
-        "edu_deg": ps("deg", fontName="Helvetica", fontSize=10, leading=13, textColor=colors.HexColor("#444444")),
-        "edu_medal": ps("med", fontName="Helvetica-Bold", fontSize=10, leading=13, textColor=colors.HexColor("#166534")),  # Green color for medal
-    }
-    
-    def HR():
-        return HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc"), spaceAfter=3, spaceBefore=1)
-    
-    story = []
-    
-    # Header
-    story.append(Paragraph(p_name.upper(), S["name"]))
-    title = cv.get("title", "")
-    if title:
-        story.append(Paragraph(title.upper(), S["role"]))
-    story.append(HR())
-    
-    # Contact strip
-    if p_links:
-        # ── Build a clickable token for every link ────────────────────────────
-        # ReportLab supports <a href="...">text</a> inside Paragraph XML markup.
-        # We auto-prefix bare addresses so they become valid URIs.
-        def _make_href(val: str) -> str:
-            """Delegates to the shared _contact_href helper (defined above all builders).
-            Consistent phone/email/URL detection across UI1, UI2, and UI3."""
-            return _contact_href(val)
-
-        def _link_xml(label: str, val: str, color: str = "#0057A8") -> str:
-            """Return ReportLab XML markup for a single clickable link token.
-            Location is rendered in blue but NOT as a hyperlink.
-            All other links are rendered as PDF hyperlinks (open in the system browser)."""
-            safe_val = val.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            # Location: blue-coloured text, no hyperlink behaviour
-            if label.strip().lower() == "location":
-                return f'<font color="{color}">{safe_val}</font>'
-            href = _make_href(val)
-            if href:
-                return f'<a href="{href}" color="{color}">{safe_val}</a>'
-            return safe_val
-
-        # Collect all non-empty link tokens
-        contact_tokens = []
-        for lnk in p_links:
-            val = (lnk.get("value") or "").strip()
-            if val:
-                contact_tokens.append(_link_xml(lnk.get("label", ""), val))
-
-        if contact_tokens:
-            # Single centered paragraph — ReportLab wraps naturally at page width.
-            # Center alignment (already set on S["contact"]) keeps every wrapped
-            # line centered, producing the balanced layout shown in the mockup.
-            SEP = ' <font color="#aaaaaa">|</font> '
-            story.append(Paragraph(SEP.join(contact_tokens), S["contact"]))
-    story.append(HR())
-    
-    # Summary
-    summary = cv.get("summary", "")
-    if summary:
-        story.append(Paragraph("PROFESSIONAL SUMMARY", S["sec_title"]))
-        story.append(Paragraph(summary, S["bullet"]))
-        story.append(Spacer(1, 3 * mm))
-    
-    # Experience
-    companies = cv.get("companies", [])
-    if companies:
-        story.append(Paragraph("WORK EXPERIENCE", S["sec_title_center"]))
-        for co in companies:
-            company = co.get("company", "")
-            role = co.get("role", "")
-            date_range = co.get("dateRange", "")
-            bullets = co.get("bullets", [])
-            tech = co.get("tech", "")
-            
-            row = [[Paragraph(company.upper(), S["company"]), Paragraph(date_range, ps("dr", fontName="Helvetica", fontSize=10, alignment=TA_RIGHT, textColor=colors.HexColor("#666666")))]]
-            t = Table(row, colWidths=[TW * 0.65, TW * 0.35])
-            t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
-            story.append(t)
-            if role:
-                story.append(Paragraph(role, S["role_title"]))
-            for b in bullets[:4]:
-                story.append(Paragraph(f"\u2022 {b}", S["bullet"]))
-            if tech:
-                story.append(Paragraph(f"Technologies: {tech}", S["tech_line"]))
-            story.append(Spacer(1, 4 * mm))
-    
-    # Skills
-    skills = cv.get("skills", [])
-    if skills:
-        story.append(Paragraph("TECHNICAL SKILLS", S["sec_title"]))
-        for s in skills[:5]:
-            colon = s.find(":")
-            if colon > 0:
-                category = s[:colon].strip()
-                items    = s[colon + 1:].strip()
-                # Bold the subheading, regular weight for items — ReportLab inline markup
-                skill_html = f"<b>{category}:</b> {items}"
-            else:
-                skill_html = s
-            story.append(Paragraph(skill_html, S["skill_items"]))
-            story.append(Spacer(1, 2 * mm))
-    
-    # Projects
-    projects = cv.get("projects", [])
-    if projects:
-        story.append(Paragraph("KEY PROJECTS", S["sec_title_center"]))
-        for p in projects[:4]:
-            name = p.get("name", "")
-            overview = p.get("overview", "")
-            bullets = p.get("bullets", [])
-            tech_tags = p.get("techTags", [])
-            
-            if name:
-                story.append(Paragraph(name, S["proj_name"]))
-            if overview:
-                story.append(Paragraph(overview, S["proj_body"]))
-            for b in bullets[:3]:
-                story.append(Paragraph(f"\u2022 {b}", S["proj_bullet"]))
-            if tech_tags:
-                story.append(Paragraph(f"Stack: {', '.join(tech_tags[:6])}", S["proj_stack"]))
-            story.append(Spacer(1, 4 * mm))
-    
-    # Competencies
-    competencies = cv.get("competencies", "")
-    if competencies:
-        story.append(Paragraph("KEY COMPETENCIES", S["sec_title"]))
-        comp_display = competencies.replace(" * ", ", ").replace("* ", ", ").replace(" *", ", ")
-        story.append(Paragraph(comp_display, S["competency"]))
-        story.append(Spacer(1, 2 * mm))
-    
-    # Education — only render when actual data is available
-    # ── Education section — render ALL qualifications from the list ─────────────
-    # cv["education"] is now always a list (sanitise_cv guarantees this).
-    # p_edu (from profile_data) is the authoritative source; cv["education"] is
-    # the AI-passed-through copy — we prefer p_edu when available.
-    _edu_list_raw = cv.get("education") or []
-    # Normalise: if somehow still a plain dict, wrap it
-    if isinstance(_edu_list_raw, dict):
-        _edu_list_raw = [_edu_list_raw]
-
-    # Merge with p_edu: p_edu entries are authoritative for their index.
-    # If p_edu has more entries than the AI returned, use p_edu as the master list.
-    # Years are resolved using the same UI-first, auto-sequencing logic as the
-    # AI merge path — _infer_degree_duration() drives all duration inference.
-    _n_edu = max(len(_edu_list_raw), len(p_edu))
-    _edu_entries = []
-    _pdf_prev_start_yr = None   # start year of the entry above (for sequencing)
-    for _ei in range(_n_edu):
-        _cv_e  = _edu_list_raw[_ei] if _ei < len(_edu_list_raw) else {}
-        _pr_e  = p_edu[_ei]         if _ei < len(p_edu)         else {}
-        _uni   = (_pr_e.get("institution") or _cv_e.get("university") or "").strip()
-        _deg   = (_pr_e.get("degree")      or _cv_e.get("degree")     or "").strip()
-        _cgpa  = (_pr_e.get("cgpa")        or _cv_e.get("cgpa")       or "").strip()
-        _ach   = (_pr_e.get("achievement") or "").strip()   # never AI-invented
-
-        # Priority: years already resolved in cv["education"] (set by AI merge path)
-        # → UI from/to → infer from degree duration → auto-sequence from anchor
-        _yr = (_cv_e.get("years") or "").strip()
-        if not _yr:
-            _ef  = str(_pr_e.get("from") or "").strip()
-            _et  = str(_pr_e.get("to")   or "").strip()
-            _dur = _infer_degree_duration(_deg)
-            if _ef and _et:
-                _yr = f"{_ef} - {_et}"
-            elif _et and not _ef:
-                try:
-                    _yr = f"{int(_et[:4]) - _dur} - {_et}"
-                except (ValueError, TypeError):
-                    _yr = ""
-            elif _ef and not _et:
-                try:
-                    _yr = f"{_ef} - {int(_ef[:4]) + _dur}"
-                except (ValueError, TypeError):
-                    _yr = ""
-            elif _pdf_prev_start_yr is not None:
-                _yr = f"{_pdf_prev_start_yr - _dur} - {_pdf_prev_start_yr}"
-
-        # Update anchor for the next entry
-        try:
-            _pdf_prev_start_yr = int(_yr.split("-")[0].strip()[:4])
-        except (ValueError, TypeError, IndexError):
-            pass
-
-        _edu_entries.append({
-            "university": _uni, "degree": _deg,
-            "cgpa": _cgpa, "years": _yr, "achievement": _ach,
-        })
-
-    _has_any_edu = any(
-        any([e["university"], e["degree"], e["years"], e["cgpa"]])
-        for e in _edu_entries
-    )
-    if _has_any_edu:
-        story.append(Paragraph("EDUCATION", S["sec_title_center"]))
-
-        edu_date_style = ps("edu_dr",
-            fontName="Helvetica", fontSize=10,
-            alignment=TA_RIGHT,
-            textColor=colors.HexColor("#666666")
-        )
-
-        for _ei, _entry in enumerate(_edu_entries):
-            uni         = _entry["university"]
-            degree      = _entry["degree"]
-            years       = _entry["years"]
-            cgpa        = _entry["cgpa"]
-            achievement = _entry["achievement"]
-
-            if not any([uni, degree, years, cgpa]):
-                continue  # skip completely empty entries
-
-            # Small gap between qualifications (not before the first)
-            if _ei > 0:
-                story.append(Spacer(1, 3 * mm))
-
-            # ── University name (left) with years aligned to the right ───────
-            if uni:
-                uni_para   = Paragraph(uni.upper(), S["edu_uni"])
-                years_para = Paragraph(years, edu_date_style) if years else Paragraph("", edu_date_style)
-                edu_header_tbl = Table([[uni_para, years_para]], colWidths=[TW * 0.65, TW * 0.35])
-                edu_header_tbl.setStyle(TableStyle([
-                    ("VALIGN",        (0, 0), (-1, -1), "TOP"),
-                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
-                    ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
-                    ("TOPPADDING",    (0, 0), (-1, -1), 0),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-                ]))
-                story.append(edu_header_tbl)
-            elif years:
-                story.append(Paragraph(years, S["edu_deg"]))
-
-            # ── Degree + CGPA line ───────────────────────────────────────────
-            deg_parts = [x for x in [degree] if x]
-            if cgpa:
-                deg_parts.append(f"CGPA: {cgpa}")
-            deg_text = " | ".join(deg_parts)
-            if deg_text:
-                story.append(Paragraph(deg_text, S["edu_deg"]))
-
-            # ── Achievement — only from profile, never AI-invented ───────────
-            if achievement:
-                if "gold" in achievement.lower():
-                    story.append(Paragraph(f"🏅 {achievement}", S["edu_medal"]))
-                else:
-                    story.append(Paragraph(f"✓ {achievement}", S["edu_deg"]))
-    
-    # Build PDF
-    doc.build(story)
-    
-    # Crop to content
-    last_y = doc.frame._y
-    tight_h = (PAGE_H_SINGLE - MT) - last_y + MT + MB + 4 * mm
-    tight_h = max(tight_h, 100 * mm)
-    crop_bottom = PAGE_H_SINGLE - tight_h
-    
-    try:
-        from pypdf import PdfReader, PdfWriter
-    except ImportError:
-        import subprocess, sys
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pypdf", "--quiet"])
-        from pypdf import PdfReader, PdfWriter
-    
-    buf.seek(0)
-    reader = PdfReader(buf)
-    writer = PdfWriter()
-    writer.add_page(reader.pages[0])
-    page = writer.pages[0]
-    page.mediabox.lower_left = (0, crop_bottom)
-    page.mediabox.upper_right = (PAGE_W, PAGE_H_SINGLE)
-    
-    out = io.BytesIO()
-    writer.write(out)
-    out.seek(0)
-    return out.read()
-
-    out = io.BytesIO()
-    writer.write(out)
-    out.seek(0)
-    return out.read()
-
-
 # ==============================================================================
-# PDF BUILDER — UI2 (Modern Sidebar: teal left column, white right column)
-# Distinct from UI1: two-column ReportLab table, teal header block, no uppercase sections
+# UI PDF BUILDERS — imported from UI/ package
+# To add a new template: create UI/UI4.py with a build_cv_pdf_ui4 function,
+# then register it in _PDF_BUILDERS below.
 # ==============================================================================
-def build_cv_pdf_ui2(cv: dict, profile_data: dict = None) -> bytes:
-    """UI2 — Modern two-column sidebar layout rendered with ReportLab."""
-    from reportlab.platypus import KeepTogether
 
-    _pd       = profile_data or {}
-    p_name    = (_pd.get("name") or "").strip() or "CANDIDATE"
-    p_links   = _pd.get("links") or []
-    p_work    = _pd.get("work")  or []
-    p_edu     = [_normalise_edu_entry(e) for e in (_pd.get("edu") or [])]
-
-    TEAL      = colors.HexColor("#1a5276")
-    LTEAL     = colors.HexColor("#d6eaf8")
-    TEAL_DARK = colors.HexColor("#154360")
-    SIDEBAR_W_MM = 62 * mm   # sidebar column width
-
-    buf  = io.BytesIO()
-    PAGE_W, _ = A4
-    ML, MR, MT, MB = 0, 0, 0, 0
-    # 4.0× A4 height — tall enough that Frame.addFromList() never silently
-    # drops overflowing content (projects, skills, final sections).
-    PAGE_H_SINGLE = 841.89 * 4.0
-
-    doc = SimpleDocTemplate(
-        buf, pagesize=(PAGE_W, PAGE_H_SINGLE),
-        leftMargin=ML, rightMargin=MR, topMargin=MT, bottomMargin=MB,
-        title=f"{p_name} CV", author=p_name,
-    )
-    TW = PAGE_W  # full width; columns handled via Table
-
-    def ps2(name, **kw):
-        d = dict(fontName="Helvetica", fontSize=10, leading=14, spaceAfter=0,
-                 spaceBefore=0, textColor=colors.HexColor("#111111"))
-        d.update(kw)
-        return ParagraphStyle(name, **d)
-
-    # ── Styles ────────────────────────────────────────────────────────────────
-    S = {
-        # Sidebar styles (white/light text on teal)
-        "sb_name_first": ps2("s_nf", fontName="Helvetica", fontSize=16, leading=20,
-                              textColor=colors.HexColor("#cce5f5"), spaceBefore=0),
-        "sb_name_last":  ps2("s_nl", fontName="Helvetica-Bold", fontSize=18, leading=22,
-                              textColor=colors.white, spaceBefore=0),
-        "sb_jobtitle":   ps2("s_jt", fontName="Helvetica", fontSize=8, leading=11,
-                              textColor=colors.HexColor("#7fb3d3"), spaceBefore=4),
-        "sb_sec":        ps2("s_sec", fontName="Helvetica-Bold", fontSize=7.5, leading=11,
-                              textColor=colors.HexColor("#7fb3d3"), spaceBefore=14, spaceAfter=4),
-        "sb_lbl":        ps2("s_lbl", fontName="Helvetica-Bold", fontSize=7, leading=9,
-                              textColor=colors.HexColor("#7fb3d3")),
-        "sb_val":        ps2("s_val", fontName="Helvetica", fontSize=8.5, leading=12,
-                              textColor=colors.white),
-        "sb_skill":      ps2("s_sk",  fontName="Helvetica", fontSize=8, leading=11.5,
-                              textColor=colors.HexColor("#ddeeff")),
-        "sb_uni":        ps2("s_uni", fontName="Helvetica-Bold", fontSize=9, leading=12,
-                              textColor=colors.white, spaceBefore=6),
-        "sb_deg":        ps2("s_deg", fontName="Helvetica", fontSize=8, leading=11,
-                              textColor=colors.HexColor("#a8d8ea")),
-        "sb_note":       ps2("s_nt",  fontName="Helvetica-Oblique", fontSize=7.5, leading=10,
-                              textColor=colors.HexColor("#7fb3d3")),
-        # Main panel styles — badge-style section headers, distinct from UI1
-        "m_sec":         ps2("m_sec", fontName="Helvetica-Bold", fontSize=8.5, leading=12,
-                              textColor=colors.white, spaceBefore=14, spaceAfter=6),
-        "m_company":     ps2("m_co",  fontName="Helvetica-Bold", fontSize=11.5, leading=15,
-                              textColor=colors.HexColor("#0d2b45"), spaceBefore=4),
-        "m_role":        ps2("m_rl",  fontName="Helvetica", fontSize=9.5, leading=13,
-                              textColor=TEAL, spaceAfter=3),
-        "m_date":        ps2("m_dt",  fontName="Helvetica-Bold", fontSize=8.5, leading=11,
-                              textColor=TEAL_DARK, alignment=TA_RIGHT),
-        "m_bullet":      ps2("m_bul", fontName="Helvetica", fontSize=9.5, leading=13.5,
-                              leftIndent=10, spaceAfter=2,
-                              textColor=colors.HexColor("#222222")),
-        "m_tech":        ps2("m_tch", fontName="Helvetica-Bold", fontSize=8, leading=11,
-                              leftIndent=10, textColor=TEAL),
-        "m_summary":     ps2("m_sum", fontName="Helvetica", fontSize=9.5, leading=15,
-                              textColor=colors.HexColor("#2c2c2c")),
-        "m_proj_name":   ps2("m_pn",  fontName="Helvetica-Bold", fontSize=10.5, leading=14,
-                              textColor=colors.HexColor("#0d2b45"), spaceBefore=4),
-        "m_proj_body":   ps2("m_pb",  fontName="Helvetica", fontSize=9, leading=13,
-                              textColor=colors.HexColor("#444444")),
-        "m_proj_bullet": ps2("m_pbl", fontName="Helvetica", fontSize=9, leading=12.5,
-                              leftIndent=10, spaceAfter=2),
-        "m_proj_stack":  ps2("m_ps",  fontName="Helvetica-Bold", fontSize=8, leading=10,
-                              textColor=TEAL_DARK),
-        "m_comp":        ps2("m_cp",  fontName="Helvetica", fontSize=9, leading=13,
-                              textColor=colors.HexColor("#333333")),
-    }
-
-    def esc(s):
-        return (s or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
-
-    # ── Build sidebar flowable list ────────────────────────────────────────────
-    name_parts = p_name.strip().split()
-    first_name = " ".join(name_parts[:-1]) if len(name_parts) > 1 else p_name
-    last_name  = name_parts[-1] if len(name_parts) > 1 else ""
-
-    sidebar_items = [
-        Paragraph(esc(first_name), S["sb_name_first"]),
-        Paragraph(esc(last_name),  S["sb_name_last"]),
-        Paragraph(esc(cv.get("title","") or ""), S["sb_jobtitle"]),
-        HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#2e6a9e"),
-                   spaceBefore=10, spaceAfter=4),
-    ]
-
-    # Contact — phone numbers (>4 digits) become tel: links, emails → mailto:, URLs → https:
-    sidebar_items.append(Paragraph("CONTACT", S["sb_sec"]))
-    for lnk in p_links:
-        sidebar_items.append(Paragraph(esc(lnk.get("label","")), S["sb_lbl"]))
-        _cv = (lnk.get("value") or "").strip()
-        _href = _contact_href(_cv)
-        _safe = esc(_cv)
-        if _href and lnk.get("label","").strip().lower() != "location":
-            _val_para = Paragraph(f'<a href="{_href}" color="#cce5f5">{_safe}</a>', S["sb_val"])
-        else:
-            _val_para = Paragraph(_safe, S["sb_val"])
-        sidebar_items.append(_val_para)
-        sidebar_items.append(Spacer(1, 4))
-
-    # Core Competencies (in sidebar; Skills already shown in main panel)
-    comp_sidebar = (cv.get("competencies") or "").strip()
-    if comp_sidebar:
-        sidebar_items.append(Paragraph("CORE COMPETENCIES", S["sb_sec"]))
-        # Split on * separator (same as competencies format) and render each pill
-        comp_pills = [c.strip() for c in comp_sidebar.replace(" * ", "*").split("*") if c.strip()]
-        for pill in comp_pills:
-            sidebar_items.append(Paragraph(f"• {esc(pill)}", S["sb_skill"]))
-            sidebar_items.append(Spacer(1, 2))
-
-    # Education — prefer profile edu; fall back to cv["education"].
-    # Pre-merge cv["education"] years into profile entries that lack from/to
-    # (same logic as UI3) so dates always display correctly.
-    _ui2_cv_edu = cv.get("education") or []
-    if isinstance(_ui2_cv_edu, dict):
-        _ui2_cv_edu = [_ui2_cv_edu]
-
-    if p_edu:
-        _ui2_edu_list = []
-        for _i2, _pe2 in enumerate(p_edu):
-            _e2 = dict(_pe2)
-            _ef2 = str(_pe2.get("from") or "").strip()
-            _et2 = str(_pe2.get("to")   or "").strip()
-            if not _ef2 and not _et2 and _i2 < len(_ui2_cv_edu):
-                _yr2 = str(_ui2_cv_edu[_i2].get("years") or "").strip()
-                if _yr2:
-                    _e2["years"] = _yr2
-            _ui2_edu_list.append(_e2)
-    else:
-        _ui2_edu_list = []
-        for _uce in _ui2_cv_edu:
-            _yr_raw = str(_uce.get("years","") or "").strip()
-            _ef2 = _yr_raw.split("-")[0].strip() if "-" in _yr_raw else ""
-            _et2 = _yr_raw.split("-")[-1].strip() if "-" in _yr_raw else ""
-            _ui2_edu_list.append({
-                "institution": (_uce.get("university") or _uce.get("institution") or "").strip(),
-                "degree":      (_uce.get("degree") or "").strip(),
-                "cgpa":        (_uce.get("cgpa") or "").strip(),
-                "from": _ef2, "to": _et2,
-                "note":        (_uce.get("achievement") or "").strip(),
-            })
-
-    sidebar_items.append(Paragraph("EDUCATION", S["sb_sec"]))
-    for e in _ui2_edu_list:
-        ef = str(e.get("from") or "").strip()
-        et = str(e.get("to")   or "").strip()
-        # Fall back to years field when from/to absent
-        if not ef and not et:
-            _yr_fb = str(e.get("years") or "").strip()
-            _sep_fb = "–" if "–" in _yr_fb else "-"
-            if _yr_fb and _sep_fb in _yr_fb:
-                _pts = [p.strip() for p in _yr_fb.split(_sep_fb, 1)]
-                ef, et = _pts[0], _pts[-1]
-        dr = f"{ef}–{et}" if ef and et else (ef + "–Present" if ef else et)
-        sidebar_items.append(Paragraph(esc(e.get("institution") or ""), S["sb_uni"]))
-        sidebar_items.append(Paragraph(esc(e.get("degree") or ""), S["sb_deg"]))
-        _note = (e.get("note") or e.get("cgpa") or "").strip()
-        if _note:
-            sidebar_items.append(Paragraph(esc(_note), S["sb_note"]))
-        if dr:
-            sidebar_items.append(Paragraph(dr, S["sb_note"]))
-        sidebar_items.append(Spacer(1, 4))
-
-    # ── Build main panel flowable list ────────────────────────────────────────
-    main_items = [Spacer(1, 8)]
-    MAIN_PAD = 20  # define here so main_sec closure can reference it
-
-    def main_sec(title):
-        # Badge-style: full-width teal rectangle with white uppercase text
-        badge_w = PAGE_W - SIDEBAR_W_MM - 2 * MAIN_PAD
-        badge = Table(
-            [[Paragraph(esc(title.upper()), S["m_sec"])]],
-            colWidths=[badge_w],
-            style=TableStyle([
-                ("BACKGROUND",    (0,0),(-1,-1), TEAL_DARK),
-                ("LEFTPADDING",   (0,0),(-1,-1), 8),
-                ("RIGHTPADDING",  (0,0),(-1,-1), 8),
-                ("TOPPADDING",    (0,0),(-1,-1), 4),
-                ("BOTTOMPADDING", (0,0),(-1,-1), 4),
-            ])
-        )
-        main_items.append(Spacer(1, 6))
-        main_items.append(badge)
-        main_items.append(Spacer(1, 5))
-
-    # Summary
-    main_sec("Professional Summary")
-    main_items.append(Paragraph(esc(cv.get("summary") or ""), S["m_summary"]))
-    main_items.append(Spacer(1, 8))
-
-    # Experience — unified loop: merges profile work + AI companies by index
-    # so ALL companies always render with their date range and bullets.
-    main_sec("Work Experience")
-    ai_cos = cv.get("companies") or []
-    _ui2_num_entries = max(len(ai_cos), len(p_work))
-    for i in range(_ui2_num_entries):
-        w  = p_work[i]  if i < len(p_work)  else {}
-        ai = ai_cos[i]  if i < len(ai_cos)  else {}
-        company = (w.get("company") or "").strip() or ai.get("company","")
-        role    = (w.get("role")    or "").strip() or ai.get("role","")
-        wf, wt  = str(w.get("from") or "").strip(), str(w.get("to") or "").strip()
-        if wf and wt: dr = f"{wf} – {wt}"
-        elif wf:      dr = f"{wf} – Present"
-        else:         dr = ai.get("dateRange","")
-        # Use absolute widths — percentage strings can be unreliable inside
-        # a Frame context and the 30% col (~114pt) is too narrow for long dates
-        # like "January 2023 - September 2024" (~127pt). Fixed 140pt date col.
-        _mn_w = PAGE_W - SIDEBAR_W_MM - 2 * MAIN_PAD
-        main_items.append(Table(
-            [[Paragraph(esc(company), S["m_company"]), Paragraph(esc(dr), S["m_date"])]],
-            colWidths=[_mn_w - 140, 140],
-            style=TableStyle([("VALIGN", (0,0), (-1,-1), "TOP"),
-                              ("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),
-                              ("TOPPADDING",(0,0),(-1,-1),0),("BOTTOMPADDING",(0,0),(-1,-1),2),
-                              ("ALIGN",(1,0),(1,-1),"RIGHT")])
-        ))
-        main_items.append(Paragraph(esc(role), S["m_role"]))
-        bullets = ai.get("bullets") or []
-        if not bullets and w.get("bullets"):
-            bullets = [b.strip() for b in str(w.get("bullets","")).split("\n") if b.strip()]
-        for b in bullets:
-            b_clean = b.lstrip("•·▸–▪●◦ ").strip()
-            main_items.append(Paragraph('<font size="7">▸</font> ' + esc(b_clean), S["m_bullet"]))
-        tech_raw = ai.get("tech","")
-        if tech_raw:
-            sep = "|" if "|" in tech_raw else ","
-            tags = " · ".join(t.strip() for t in tech_raw.split(sep) if t.strip())
-            main_items.append(Paragraph(tags, S["m_tech"]))
-        main_items.append(Spacer(1, 8))
-
-    # Projects
-    # ── Technical Skills ─────────────────────────────────────────────────────
-    ui2_skills = cv.get("skills") or []
-    if ui2_skills:
-        main_sec("Technical Skills")
-        # Add two styles needed for the skills cards
-        sk_cat_s = ps2("u2_skc", fontName="Helvetica-Bold", fontSize=8.5, leading=12,
-                        textColor=colors.white)
-        sk_val_s = ps2("u2_skv", fontName="Helvetica", fontSize=9, leading=13,
-                        textColor=colors.HexColor("#2c2c2c"))
-        main_col_inner = PAGE_W - SIDEBAR_W_MM - 2 * MAIN_PAD
-        cat_w = main_col_inner * 0.30
-        val_w = main_col_inner * 0.70
-        for idx, sk in enumerate(ui2_skills):
-            colon = sk.find(":")
-            if colon > 0:
-                cat = sk[:colon].strip()
-                val = sk[colon+1:].strip()
-            else:
-                cat, val = "Skills", sk
-            # Alternating row tint for visual rhythm
-            row_bg = colors.HexColor("#f0f5fb") if idx % 2 == 0 else colors.white
-            skill_row = Table(
-                [[Paragraph(esc(cat.upper()), sk_cat_s),
-                  Paragraph(esc(val), sk_val_s)]],
-                colWidths=[cat_w, val_w],
-                style=TableStyle([
-                    ("BACKGROUND",    (0, 0), (0, -1), TEAL_DARK),
-                    ("BACKGROUND",    (1, 0), (1, -1), row_bg),
-                    ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
-                    ("LEFTPADDING",   (0, 0), (0, -1), 6),
-                    ("RIGHTPADDING",  (0, 0), (0, -1), 4),
-                    ("LEFTPADDING",   (1, 0), (1, -1), 8),
-                    ("RIGHTPADDING",  (1, 0), (1, -1), 4),
-                    ("TOPPADDING",    (0, 0), (-1, -1), 5),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                    ("LINEBELOW",     (0, 0), (-1, -1), 0.5, colors.HexColor("#d0dce8")),
-                ])
-            )
-            main_items.append(skill_row)
-        main_items.append(Spacer(1, 8))
-
-    # Projects
-    main_sec("Key Projects")
-    for p in (cv.get("projects") or []):
-        raw_name = (p.get("name") or "").strip()
-        import re as _re2
-        name = _re2.sub(r'\s*\[[^\]]*\]\s*$', '', raw_name)
-        name = _re2.sub(r'^[A-Z][A-Z\s&\-]{2,}:\s*', '', name).strip()
-        main_items.append(Paragraph(esc(name), S["m_proj_name"]))
-        if p.get("overview"):
-            main_items.append(Paragraph(esc(p["overview"]), S["m_proj_body"]))
-        for b in (p.get("bullets") or []):
-            b_clean = b.lstrip("•·▸– ").strip()
-            main_items.append(Paragraph('<font size="7">▸</font> ' + esc(b_clean), S["m_proj_bullet"]))
-        tech_t = p.get("techTags") or []
-        if not tech_t and p.get("tech"):
-            sep = "|" if "|" in p["tech"] else ","
-            tech_t = [t.strip() for t in p["tech"].split(sep) if t.strip()]
-        if tech_t:
-            main_items.append(Paragraph(" · ".join(esc(t) for t in tech_t), S["m_proj_stack"]))
-        main_items.append(Spacer(1, 6))
-
-    # Core Competencies moved to sidebar — no duplicate in main panel
-
-    # ── Render UI2 two-column layout via low-level Frame/Canvas drawing ──────
-    # A single-row ReportLab Table whose cell content is taller than the page
-    # frame raises "Flowable … too large on page".  Fix: draw each column
-    # directly into its own Frame on a raw canvas — no Table flowable needed.
-    SIDEBAR_PAD = 16
-    sidebar_col_w = SIDEBAR_W_MM
-    main_col_w    = PAGE_W - sidebar_col_w
-
-    from reportlab.pdfgen import canvas as _rl_canvas
-    from reportlab.platypus.frames import Frame as _Frame
-
-    buf2 = io.BytesIO()
-    c2   = _rl_canvas.Canvas(buf2, pagesize=(PAGE_W, PAGE_H_SINGLE))
-
-    # Background fills (draw bottom→top so teal sidebar is underneath content)
-    c2.setFillColor(TEAL)
-    c2.rect(0, 0, sidebar_col_w, PAGE_H_SINGLE, fill=1, stroke=0)
-    c2.setFillColor(colors.white)
-    c2.rect(sidebar_col_w, 0, main_col_w, PAGE_H_SINGLE, fill=1, stroke=0)
-
-    # Sidebar Frame — padded inside the teal column, top-aligned
-    sb_inner_w = sidebar_col_w - 2 * SIDEBAR_PAD
-    sb_inner_h = PAGE_H_SINGLE - 2 * SIDEBAR_PAD
-    # ReportLab y-origin is bottom-left; content starts near the top.
-    sb_frame = _Frame(
-        SIDEBAR_PAD,                        # x (from left)
-        SIDEBAR_PAD,                        # y (from bottom) — content grows upward
-        sb_inner_w, sb_inner_h,
-        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
-        showBoundary=0,
-    )
-    sb_frame.addFromList(list(sidebar_items), c2)
-
-    # Main-panel Frame — padded inside the right column
-    mn_inner_w = main_col_w - 2 * MAIN_PAD
-    mn_inner_h = PAGE_H_SINGLE - 8 - MAIN_PAD   # 8pt top gap, MAIN_PAD bottom gap
-    mn_frame = _Frame(
-        sidebar_col_w + MAIN_PAD,           # x
-        MAIN_PAD,                           # y
-        mn_inner_w, mn_inner_h,
-        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
-        showBoundary=0,
-    )
-    mn_frame.addFromList(list(main_items), c2)
-
-    c2.save()
-    buf2.seek(0)
-
-    # Crop to actual content — use the lowest frame cursor as the content bottom
-    lowest_y = min(
-        sb_frame._y if hasattr(sb_frame, '_y') else 0,
-        mn_frame._y if hasattr(mn_frame, '_y') else 0,
-    )
-    tight_h = PAGE_H_SINGLE - lowest_y + 8 * mm
-    tight_h = max(tight_h, 100 * mm)
-    crop_bottom = PAGE_H_SINGLE - tight_h
-
-    try:
-        from pypdf import PdfReader, PdfWriter
-    except ImportError:
-        import subprocess, sys
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pypdf", "--quiet"])
-        from pypdf import PdfReader, PdfWriter
-
-    reader = PdfReader(buf2)
-    writer = PdfWriter()
-    writer.add_page(reader.pages[0])
-    page = writer.pages[0]
-    page.mediabox.lower_left  = (0, crop_bottom)
-    page.mediabox.upper_right = (PAGE_W, PAGE_H_SINGLE)
-
-    out = io.BytesIO()
-    writer.write(out)
-    out.seek(0)
-    return out.read()
-
-
-# ==============================================================================
-# PDF BUILDER — UI3 (Contemporary Card: centered header, icon-style sections, warm palette)
-# Distinct from UI1 (classic centered) and UI2 (sidebar teal):
-#   • Header: CENTERED name + role + contact
-#   • Section titles: colored filled square icon + bold text (no HR lines)
-#   • Dates positioned LEFT of company name (reversed from UI1/UI2)
-#   • Bullets: em-dash (–) style, no large black dots
-#   • Skills: two-column grid layout
-#   • Accent color: deep slate-blue (#2c3e6b) with warm gold (#c8962a)
-# ==============================================================================
-def build_cv_pdf_ui3(cv: dict, profile_data: dict = None) -> bytes:
-    """UI3 — Contemporary card layout: centered header, icon sections, reversed date layout."""
-    import re as _re3
-
-    _pd     = profile_data or {}
-    p_name  = (_pd.get("name") or "").strip() or "CANDIDATE"
-    p_links = _pd.get("links") or []
-    p_work  = _pd.get("work")  or []
-    p_edu   = [_normalise_edu_entry(e) for e in (_pd.get("edu") or [])]
-
-    NAVY     = colors.HexColor("#2c3e6b")   # deep slate-blue
-    GOLD     = colors.HexColor("#c8962a")   # warm gold accent
-    DARK     = colors.HexColor("#1c1c1c")
-    MID      = colors.HexColor("#4a4a4a")
-    LIGHT    = colors.HexColor("#888888")
-    BG_RULE  = colors.HexColor("#e4e8f0")   # light blue-grey for dividers
-
-    buf = io.BytesIO()
-    PAGE_W, _ = A4
-    ML, MR, MT, MB = 15*mm, 15*mm, 14*mm, 14*mm
-    # 5.0× A4 height — tall enough that no realistic CV ever triggers a page
-    # break on this single canvas. A page break would reset frame._y and cause
-    # later content to overwrite earlier content at the same canvas coordinates,
-    # making sections like Core Competencies and Education disappear.
-    PAGE_H_SINGLE = 841.89 * 5.0
-
-    doc = SimpleDocTemplate(
-        buf, pagesize=(PAGE_W, PAGE_H_SINGLE),
-        leftMargin=ML, rightMargin=MR, topMargin=MT, bottomMargin=MB,
-        title=f"{p_name} CV", author=p_name,
-    )
-    TW = PAGE_W - ML - MR
-
-    def ps3(name, **kw):
-        d = dict(fontName="Helvetica", fontSize=10, leading=14, spaceAfter=0,
-                 spaceBefore=0, textColor=DARK)
-        d.update(kw)
-        return ParagraphStyle(name, **d)
-
-    S = {
-        # ── Centered header block ─────────────────────────────────────────────
-        "name":      ps3("u3_nm", fontName="Helvetica-Bold", fontSize=22, leading=28,
-                         textColor=NAVY, alignment=TA_CENTER, spaceBefore=0, spaceAfter=2),
-        "subtitle":  ps3("u3_st", fontName="Helvetica", fontSize=9.5, leading=13,
-                         textColor=MID, alignment=TA_CENTER, spaceAfter=3),
-        "contact":   ps3("u3_ct", fontName="Helvetica", fontSize=8.5, leading=12,
-                         textColor=colors.HexColor("#0057a8"), alignment=TA_CENTER),
-        # ── Section icon-style title ──────────────────────────────────────────
-        "sec_icon":  ps3("u3_si", fontName="Helvetica-Bold", fontSize=10.5, leading=14,
-                         textColor=colors.white, spaceBefore=0, spaceAfter=0),
-        "sec_label": ps3("u3_sl", fontName="Helvetica-Bold", fontSize=11, leading=15,
-                         textColor=NAVY, spaceBefore=12, spaceAfter=5),
-        # ── Experience entries ────────────────────────────────────────────────
-        "date":      ps3("u3_dt", fontName="Helvetica-Bold", fontSize=8.5, leading=12,
-                         textColor=GOLD, alignment=TA_RIGHT),
-        "company":   ps3("u3_co", fontName="Helvetica-Bold", fontSize=11.5, leading=15,
-                         textColor=DARK),
-        "role":      ps3("u3_rl", fontName="Helvetica-Oblique", fontSize=10, leading=13,
-                         textColor=colors.HexColor("#3a5080"), spaceAfter=4),
-        "bullet":    ps3("u3_bul", fontName="Helvetica", fontSize=9.5, leading=14,
-                         leftIndent=12, textColor=MID, spaceAfter=3),
-        "tech":      ps3("u3_tch", fontName="Helvetica-Bold", fontSize=8, leading=11,
-                         leftIndent=12, textColor=GOLD),
-        # ── Skills two-column ────────────────────────────────────────────────
-        "sk_cat":    ps3("u3_skc", fontName="Helvetica-Bold", fontSize=9.5, leading=13,
-                         textColor=NAVY),
-        "sk_val":    ps3("u3_skv", fontName="Helvetica", fontSize=9.5, leading=13,
-                         textColor=MID),
-        # ── Projects ─────────────────────────────────────────────────────────
-        "proj_name": ps3("u3_pn", fontName="Helvetica-Bold", fontSize=10.5, leading=14,
-                         textColor=DARK, spaceBefore=3),
-        "proj_body": ps3("u3_pb", fontName="Helvetica", fontSize=9, leading=13,
-                         textColor=MID),
-        "proj_bul":  ps3("u3_pbl", fontName="Helvetica", fontSize=9, leading=12.5,
-                         leftIndent=10, textColor=MID, spaceAfter=2),
-        "proj_tech": ps3("u3_pt", fontName="Helvetica-Bold", fontSize=8, leading=11,
-                         textColor=GOLD),
-        # ── Competencies + Education ─────────────────────────────────────────
-        "comp":      ps3("u3_cmp", fontName="Helvetica", fontSize=9.5, leading=13.5,
-                         textColor=MID),
-        "edu_uni":   ps3("u3_eu", fontName="Helvetica-Bold", fontSize=11, leading=14,
-                         textColor=DARK),
-        "edu_deg":   ps3("u3_ed", fontName="Helvetica", fontSize=9.5, leading=13,
-                         textColor=MID),
-        "edu_note":  ps3("u3_en", fontName="Helvetica-Oblique", fontSize=9, leading=12,
-                         textColor=GOLD),
-        "edu_date":  ps3("u3_edt", fontName="Helvetica-Bold", fontSize=8.5, leading=12,
-                         textColor=GOLD, alignment=TA_RIGHT),
-        # ── Summary ──────────────────────────────────────────────────────────
-        "summary":   ps3("u3_sum", fontName="Helvetica", fontSize=9.5, leading=15.5,
-                         textColor=MID, spaceAfter=2),
-    }
-
-    def esc(s):
-        return (s or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
-
-    def section_title(text):
-        """Icon-style header: filled navy square + bold label on same line via Table."""
-        icon_cell  = Table(
-            [[Paragraph(esc("  "), S["sec_icon"])]],
-            colWidths=[10],
-            style=TableStyle([
-                ("BACKGROUND",    (0,0),(-1,-1), NAVY),
-                ("TOPPADDING",    (0,0),(-1,-1), 3),
-                ("BOTTOMPADDING", (0,0),(-1,-1), 3),
-                ("LEFTPADDING",   (0,0),(-1,-1), 0),
-                ("RIGHTPADDING",  (0,0),(-1,-1), 0),
-            ])
-        )
-        label_cell = Paragraph(esc(text.upper()), S["sec_label"])
-        row = Table(
-            [[icon_cell, label_cell]],
-            colWidths=[12, TW - 12],
-            style=TableStyle([
-                ("VALIGN",       (0,0),(-1,-1), "MIDDLE"),
-                ("LEFTPADDING",  (0,0),(-1,-1), 0),
-                ("RIGHTPADDING", (0,0),(-1,-1), 0),
-                ("TOPPADDING",   (0,0),(-1,-1), 8),
-                ("BOTTOMPADDING",(0,0),(-1,-1), 0),
-            ])
-        )
-        divider = HRFlowable(width="100%", thickness=1, color=BG_RULE,
-                             spaceBefore=3, spaceAfter=6)
-        return [row, divider]
-
-    story = []
-
-    # ── Centered header ────────────────────────────────────────────────────────
-    story.append(Paragraph(esc(p_name), S["name"]))
-    title_str = (cv.get("title") or "").strip()
-    if title_str:
-        story.append(Paragraph(esc(title_str), S["subtitle"]))
-
-    # Contact line (centered, pipe-separated)
-    if p_links:
-        contact_parts = []
-        for lnk in p_links:
-            v    = (lnk.get("value") or "").strip()
-            lbl  = (lnk.get("label") or "").strip().lower()
-            href = "" if lbl == "location" else _contact_href(v)
-            _sv  = esc(v)
-            if href:
-                contact_parts.append(f'<a href="{esc(href)}" color="#0057a8">{_sv}</a>')
-            else:
-                contact_parts.append(_sv)
-        if contact_parts:
-            story.append(Paragraph("  |  ".join(contact_parts), S["contact"]))
-
-    story.append(HRFlowable(width="100%", thickness=3, color=NAVY,
-                             spaceBefore=8, spaceAfter=4))
-    story.append(HRFlowable(width="100%", thickness=1, color=GOLD,
-                             spaceBefore=2, spaceAfter=10))
-
-    # ── Profile Summary ────────────────────────────────────────────────────────
-    summary_text = (cv.get("summary") or "").strip()
-    if summary_text:
-        story += section_title("Professional Summary")
-        story.append(Paragraph(esc(summary_text), S["summary"]))
-        story.append(Spacer(1, 4))
-
-    # ── Work Experience ────────────────────────────────────────────────────────
-    ai_cos = cv.get("companies") or []
-    # Build a unified list: for each AI company entry, merge in the matching
-    # profile work entry (by index) so dates/company names from the profile
-    # always take precedence while AI-generated bullets are always used.
-    # This ensures ALL companies render — regardless of how many p_work entries exist.
-    num_entries = max(len(ai_cos), len(p_work))
-    if num_entries > 0:
-        story += section_title("Work Experience")
-        for i in range(num_entries):
-            w  = p_work[i]   if i < len(p_work)  else {}
-            ai = ai_cos[i]   if i < len(ai_cos)   else {}
-
-            company = (w.get("company") or "").strip() or ai.get("company","")
-            role    = (w.get("role")    or "").strip() or ai.get("role","")
-            wf      = str(w.get("from") or "").strip()
-            wt      = str(w.get("to")   or "").strip()
-            if wf and wt:
-                dr = f"{wf} – {wt}"
-            elif wf:
-                dr = f"{wf} – Present"
-            else:
-                dr = ai.get("dateRange","")
-
-            # Company LEFT, date RIGHT — clean aligned layout
-            story.append(Table(
-                [[Paragraph(esc(company), S["company"]), Paragraph(esc(dr), S["date"])]],
-                colWidths=[TW * 0.73, TW * 0.27],
-                style=TableStyle([("VALIGN",(0,0),(-1,-1),"BOTTOM"),
-                                  ("LEFTPADDING",(0,0),(-1,-1),0),
-                                  ("RIGHTPADDING",(0,0),(-1,-1),0),
-                                  ("TOPPADDING",(0,0),(-1,-1),6),
-                                  ("BOTTOMPADDING",(0,0),(-1,-1),2),
-                                  ("ALIGN",(1,0),(1,-1),"RIGHT")])
-            ))
-            if role:
-                story.append(Paragraph(esc(role), S["role"]))
-
-            # Prefer AI bullets (rich, JD-tailored); fall back to profile bullets
-            bullets = ai.get("bullets") or []
-            if not bullets and w.get("bullets"):
-                bullets = [b.strip() for b in str(w["bullets"]).split("\n") if b.strip()]
-            for b in bullets:
-                b_clean = b.lstrip("•·▸–▪● ").strip()
-                story.append(Paragraph('<font size="7">•</font> ' + esc(b_clean), S["bullet"]))
-
-            tech_raw = ai.get("tech","")
-            if tech_raw:
-                sep  = "|" if "|" in tech_raw else ","
-                tags = "  ·  ".join(t.strip() for t in tech_raw.split(sep) if t.strip())
-                story.append(Paragraph(esc(tags), S["tech"]))
-            story.append(Spacer(1, 10))
-
-    # ── Technical Skills — two-column grid ────────────────────────────────────
-    skills = cv.get("skills") or []
-    if skills:
-        story += section_title("Technical Skills")
-        col_data = []
-        for sk in skills[:5]:   # UI3 shows up to 5 skill categories
-            colon = sk.find(":")
-            if colon > 0:
-                cat = sk[:colon].strip()
-                val = sk[colon+1:].strip()
-            else:
-                cat, val = "", sk
-            col_data.append((cat, val))
-        # Arrange in two columns
-        half = math.ceil(len(col_data) / 2)
-        left_col  = col_data[:half]
-        right_col = col_data[half:]
-        while len(right_col) < len(left_col):
-            right_col.append(("",""))
-
-        def _sk_cell(cat, val):
-            items = []
-            if cat:
-                items.append(Paragraph(f"<b>{esc(cat)}</b>", S["sk_cat"]))
-            if val:
-                items.append(Paragraph(esc(val), S["sk_val"]))
-            return items
-
-        col_w = (TW - 8) / 2
-        for (lc, lv), (rc, rv) in zip(left_col, right_col):
-            grid = Table(
-                [[_sk_cell(lc, lv), _sk_cell(rc, rv)]],
-                colWidths=[col_w, col_w],
-                style=TableStyle([
-                    ("VALIGN",       (0,0),(-1,-1),"TOP"),
-                    ("LEFTPADDING",  (0,0),(-1,-1),0),
-                    ("RIGHTPADDING", (0,0),(-1,-1),4),
-                    ("TOPPADDING",   (0,0),(-1,-1),2),
-                    ("BOTTOMPADDING",(0,0),(-1,-1),4),
-                    ("LINEBELOW",    (0,0),(-1,-1),0.4,BG_RULE),
-                ])
-            )
-            story.append(grid)
-        story.append(Spacer(1, 4))
-
-    # ── Selected Projects ──────────────────────────────────────────────────────
-    projects = cv.get("projects") or []
-    if projects:
-        story += section_title("Projects")
-        for p in projects:
-            raw_name = (p.get("name") or "").strip()
-            name = _re3.sub(r'\s*\[[^\]]*\]\s*$', '', raw_name)
-            name = _re3.sub(r'^[A-Z][A-Z\s&\-]{2,}:\s*', '', name).strip()
-            if name:
-                story.append(Paragraph(esc(name), S["proj_name"]))
-            if p.get("overview"):
-                story.append(Paragraph(esc(p["overview"]), S["proj_body"]))
-            for b in (p.get("bullets") or []):
-                b_clean = b.lstrip("•·▸–▪● ").strip()
-                story.append(Paragraph('<font size="7">•</font> ' + esc(b_clean), S["proj_bul"]))
-            tech_t = p.get("techTags") or []
-            if not tech_t and p.get("tech"):
-                sep = "|" if "|" in p["tech"] else ","
-                tech_t = [t.strip() for t in p["tech"].split(sep) if t.strip()]
-            if tech_t:
-                story.append(Paragraph("  ·  ".join(esc(t) for t in tech_t), S["proj_tech"]))
-            story.append(Spacer(1, 7))
-
-    # ── Core Competencies ─────────────────────────────────────────────────────
-    comp_str = (cv.get("competencies") or "").strip()
-    if comp_str:
-        story += section_title("Core Competencies")
-        # Display as comma-separated inline list
-        pills = [c.strip() for c in comp_str.replace("*","•").split("•") if c.strip()]
-        story.append(Paragraph("  ·  ".join(esc(c) for c in pills), S["comp"]))
-        story.append(Spacer(1, 4))
-
-    # ── Education ─────────────────────────────────────────────────────────────
-    # Build the render list: p_edu (profile) is authoritative for names/degree/cgpa.
-    # cv["education"] (AI-merged) is authoritative for the "years" field when the
-    # profile entry has no from/to — this mirrors UI1's resolution logic exactly.
-    _cv_edu_raw = cv.get("education") or []
-    if isinstance(_cv_edu_raw, dict):
-        _cv_edu_raw = [_cv_edu_raw]
-
-    if p_edu:
-        _edu_render_list = []
-        for _i, _pe in enumerate(p_edu):
-            _entry = dict(_pe)   # copy — never mutate original
-            # If this profile entry lacks from/to, pull years from cv["education"]
-            _ef = str(_pe.get("from") or "").strip()
-            _et = str(_pe.get("to")   or "").strip()
-            if not _ef and not _et and _i < len(_cv_edu_raw):
-                _yr = str(_cv_edu_raw[_i].get("years") or "").strip()
-                if _yr:
-                    _entry["years"] = _yr
-            _edu_render_list.append(_entry)
-    else:
-        # No profile edu — use cv["education"] entirely
-        _edu_render_list = []
-        for _ce in _cv_edu_raw:
-            _edu_render_list.append({
-                "institution": (_ce.get("university") or _ce.get("institution") or "").strip(),
-                "degree":      (_ce.get("degree") or "").strip(),
-                "cgpa":        (_ce.get("cgpa") or "").strip(),
-                "years":       str(_ce.get("years") or "").strip(),
-                "achievement": (_ce.get("achievement") or "").strip(),
-            })
-
-    if _edu_render_list:
-        story += section_title("Education")
-        _u3_prev_start_yr = None   # anchor for auto-sequencing multiple qualifications
-        for e in _edu_render_list:
-            ef  = str(e.get("from") or "").strip()
-            et  = str(e.get("to")   or "").strip()
-            deg = (e.get("degree") or "").strip()
-            uni = (e.get("institution") or "").strip()
-            cgpa = (e.get("cgpa") or "").strip()
-            ach  = (e.get("achievement") or "").strip()
-
-            # ── Resolve date range — same priority chain as UI1 ────────────────
-            # 1. Explicit from + to in entry
-            if ef and et:
-                dr = f"{ef}–{et}"
-            else:
-                # 2. "years" field (e.g. "2016-2020" stored by cv["education"])
-                _yr_raw = str(e.get("years") or "").strip()
-                _sep = "–" if "–" in _yr_raw else "-"
-                if _yr_raw and _sep in _yr_raw:
-                    _yp = [p.strip() for p in _yr_raw.split(_sep, 1)]
-                    ef, et = _yp[0], _yp[-1]
-                    dr = f"{ef}–{et}"
-                elif et and not ef:
-                    # 3a. Only end year — infer start from degree duration
-                    _dur = _infer_degree_duration(deg)
-                    try: ef = str(int(et[:4]) - _dur)
-                    except (ValueError, TypeError): pass
-                    dr = f"{ef}–{et}" if ef else et
-                elif ef and not et:
-                    # 3b. Only start year — infer end from degree duration
-                    _dur = _infer_degree_duration(deg)
-                    try: et = str(int(ef[:4]) + _dur)
-                    except (ValueError, TypeError): pass
-                    dr = f"{ef}–{et}" if et else ef
-                elif _u3_prev_start_yr is not None:
-                    # 4. No dates at all — sequence backwards from previous entry
-                    _dur = _infer_degree_duration(deg)
-                    et = str(_u3_prev_start_yr)
-                    ef = str(_u3_prev_start_yr - _dur)
-                    dr = f"{ef}–{et}"
-                else:
-                    dr = ""
-            # Update anchor for the next entry
-            try: _u3_prev_start_yr = int(str(ef)[:4]) if ef else _u3_prev_start_yr
-            except (ValueError, TypeError): pass
-
-            if uni:
-                # Use absolute colWidths (same unit as work experience) for
-                # consistent right-alignment regardless of institution name length.
-                story.append(Table(
-                    [[Paragraph(esc(uni), S["edu_uni"]),
-                      Paragraph(esc(dr),  S["edu_date"])]],
-                    colWidths=[TW * 0.68, TW * 0.32],
-                    style=TableStyle([("VALIGN",        (0,0),(-1,-1),"BOTTOM"),
-                                      ("LEFTPADDING",   (0,0),(-1,-1),0),
-                                      ("RIGHTPADDING",  (0,0),(-1,-1),0),
-                                      ("TOPPADDING",    (0,0),(-1,-1),0),
-                                      ("BOTTOMPADDING", (0,0),(-1,-1),2),
-                                      ("ALIGN",         (1,0),(1,-1),"RIGHT")])
-                ))
-            deg_parts = [deg] if deg else []
-            if cgpa:
-                deg_parts.append(f"CGPA: {cgpa}")
-            if deg_parts:
-                story.append(Paragraph(esc(" | ".join(deg_parts)), S["edu_deg"]))
-            if ach:
-                # Use only Helvetica-supported characters — emoji glyphs render
-                # as black squares (■) in standard PDF fonts.
-                prefix = "★ " if "gold" in ach.lower() else "✓ "
-                story.append(Paragraph(prefix + esc(ach), S["edu_note"]))
-            story.append(Spacer(1, 6))
-
-    # ── Build PDF ──────────────────────────────────────────────────────────────
-    # Track page count via onPage callback so we can compute the true content
-    # height even when content overflows onto a second (or third) "page" of the
-    # tall single-page canvas.
-    _page_count = [0]
-
-    def _count_page(canvas, doc):
-        _page_count[0] += 1
-
-    doc.build(story, onFirstPage=_count_page, onLaterPages=_count_page)
-
-    # Crop the canvas down to actual content height.
-    # With PAGE_H_SINGLE = 841.89 * 5.0, no realistic CV triggers a page break,
-    # so frame._y is always the absolute canvas y where the last content ended.
-    # If somehow a page break did occur (extremely dense CV), fall back to showing
-    # the full canvas (crop_bottom = 0) to ensure no content is ever hidden.
-    last_y = doc.frame._y if hasattr(doc, 'frame') and doc.frame else MB
-    n_pages = max(_page_count[0], 1)
-
-    if n_pages == 1:
-        # Normal case: frame._y is the absolute bottom of content on the canvas.
-        tight_h = PAGE_H_SINGLE - last_y + MB + 1 * mm
-    else:
-        # Fallback: page break occurred (unexpectedly dense content).
-        # Show the full canvas to guarantee nothing is cropped out.
-        tight_h = PAGE_H_SINGLE
-
-    tight_h = max(tight_h, 60 * mm)
-    crop_bottom = PAGE_H_SINGLE - tight_h
-
-    try:
-        from pypdf import PdfReader, PdfWriter
-    except ImportError:
-        import subprocess, sys
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pypdf", "--quiet"])
-        from pypdf import PdfReader, PdfWriter
-
-    buf.seek(0)
-    reader = PdfReader(buf)
-    writer = PdfWriter()
-    writer.add_page(reader.pages[0])
-    page = writer.pages[0]
-    page.mediabox.lower_left  = (0, crop_bottom)
-    page.mediabox.upper_right = (PAGE_W, PAGE_H_SINGLE)
-
-    out = io.BytesIO()
-    writer.write(out)
-    out.seek(0)
-    return out.read()
-
+# Inject shared helpers into the UI._shared shim BEFORE importing the builders,
+# so each builder module can do `from UI._shared import ...` at module level.
+import UI._shared as _ui_shared
+_ui_shared._normalise_edu_entry = _normalise_edu_entry
+_ui_shared._infer_degree_duration = _infer_degree_duration
+_ui_shared._contact_href = _contact_href
+
+from UI.UI1 import build_cv_pdf
+from UI.UI2 import build_cv_pdf_ui2
+from UI.UI3 import build_cv_pdf_ui3
+from UI.UI4 import build_cv_pdf_ui4
+from UI.UI5 import build_cv_pdf_ui5
+from UI.UI6 import build_cv_pdf_ui6
 
 # ==============================================================================
 # PDF BUILDER REGISTRY — add new templates here only
@@ -3191,7 +2151,10 @@ def build_cv_pdf_ui3(cv: dict, profile_data: dict = None) -> bytes:
 _PDF_BUILDERS = {
     "ui1": build_cv_pdf,       # Classic Executive (original)
     "ui2": build_cv_pdf_ui2,   # Modern Sidebar (teal two-column)
-    "ui3": build_cv_pdf_ui3,   # Minimalist Serif (burnt-orange accent)
+    "ui3": build_cv_pdf_ui3,   # Contemporary Card (slate-blue / gold)
+    "ui4": build_cv_pdf_ui4,   # Executive Dark (charcoal sidebar / gold)
+    "ui5": build_cv_pdf_ui5,   # Clean Minimal (white / emerald)
+    "ui6": build_cv_pdf_ui6,   # Bold Split (indigo header / coral)
 }
 
 
