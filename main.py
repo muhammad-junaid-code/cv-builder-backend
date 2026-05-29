@@ -36,12 +36,27 @@ from reportlab.lib import colors
 app = FastAPI(title="CV Builder AI", version="11.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
-CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
-DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
-OPENAI_URL   = "https://api.openai.com/v1/chat/completions"
-GEMINI_URL   = "https://generativelanguage.googleapis.com/v1beta/models"
-OLLAMA_URL   = "http://localhost:11434"
+GROQ_URL       = "https://api.groq.com/openai/v1/chat/completions"
+CEREBRAS_URL   = "https://api.cerebras.ai/v1/chat/completions"
+DEEPSEEK_URL   = "https://api.deepseek.com/chat/completions"
+OPENAI_URL     = "https://api.openai.com/v1/chat/completions"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+GEMINI_URL     = "https://generativelanguage.googleapis.com/v1beta/models"
+OLLAMA_URL     = "http://localhost:11434"
+
+# Models routed to DeepSeek native API (openai-compatible)
+_DEEPSEEK_NATIVE_MODELS = {"deepseek-chat", "deepseek-reasoner", "deepseek-coder"}
+# Models routed to OpenRouter (free tier available)
+_OPENROUTER_MODELS = {
+    "qwen/qwen3-235b-a22b:free",
+    "qwen/qwen3-30b-a3b:free",
+    "deepseek/deepseek-chat-v3-0324:free",
+    "deepseek/deepseek-r1:free",
+    "qwen/qwen3-235b-a22b",
+    "qwen/qwen3-30b-a3b",
+    "deepseek/deepseek-chat-v3-0324",
+    "deepseek/deepseek-r1",
+}
 
 # Only static data: company names (users can edit via profile)
 CANDIDATE_COMPANIES = [
@@ -1615,8 +1630,8 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         elif r.status_code == 404:
             _log.error("%s MODEL NOT FOUND — HTTP 404 — model=%s", tag, model)
             raise ValueError(
-                f"Model \'{model}\' not found (HTTP 404). "
-                f"For Cerebras use: gpt-oss-120b or zai-glm-4.7."
+                f"Model '{model}' not found (HTTP 404). "
+                f"For Cerebras use: gpt-oss-120b, zai-glm-4.7, or qwen-3-235b-a22b. llama3.1-8b has been removed."
             )
 
         else:
@@ -1820,20 +1835,22 @@ async def call_cerebras(req: CVRequest) -> tuple:
     if not valid_keys:
         raise HTTPException(400, "No valid Cerebras keys found.")
 
-    model = req.model or "llama3.1-8b"
+    model = req.model or "gpt-oss-120b"
 
-    # ── Auto-remap reasoning/slow models that will exceed the 60s timeout ────
-    # gpt-oss-120b and qwen-3-235b are chain-of-thought models that spend
-    # minutes thinking before outputting JSON — they always timeout.
-    # Silently remap to the fast llama3.1-8b which completes in <20s.
-    _CEREBRAS_SLOW_MODELS = {
-        "gpt-oss-120b":      "llama3.1-8b",
-        "zai-glm-4.7":       "llama3.1-8b",
-        "qwen-3-235b-a22b":  "llama3.1-8b",
+    # ── Valid Cerebras models (as of May 2026) ────────────────────────────────
+    # gpt-oss-120b  — fast reasoning model, ~10-20s, recommended
+    # zai-glm-4.7   — 355B, paid/select accounts
+    # qwen-3-235b-a22b — 235B MoE, may be slow but works
+    #
+    # llama3.1-8b was removed from Cerebras API (HTTP 404) — do NOT use it.
+    # If the user somehow has it selected, remap to gpt-oss-120b.
+    _CEREBRAS_INVALID_MODELS = {
+        "llama3.1-8b":  "gpt-oss-120b",
+        "llama3-8b":    "gpt-oss-120b",
     }
-    if model in _CEREBRAS_SLOW_MODELS:
-        remapped = _CEREBRAS_SLOW_MODELS[model]
-        _log.warning("[Cerebras] Model '%s' is a reasoning/slow model that exceeds 60s timeout "
+    if model in _CEREBRAS_INVALID_MODELS:
+        remapped = _CEREBRAS_INVALID_MODELS[model]
+        _log.warning("[Cerebras] Model '%s' is no longer available (HTTP 404) "
                      "— auto-remapping to '%s'", model, remapped)
         model = remapped
 
@@ -2167,14 +2184,36 @@ async def call_deepseek(req: CVRequest) -> tuple:
     raise HTTPException(502, f"All DeepSeek keys failed: {'; '.join(errors_by_key[:3])}")
 
 async def call_openai(req: CVRequest) -> tuple:
+    """
+    Unified OpenAI-compatible provider handler.
+    Routes to the correct API endpoint based on model name:
+      • deepseek-chat / deepseek-reasoner  → api.deepseek.com  (DeepSeek native)
+      • qwen/... or deepseek/...           → openrouter.ai     (OpenRouter, free tier available)
+      • Everything else                    → api.openai.com    (ChatGPT / GPT-4o / o4-mini)
+    The user supplies ONE set of keys — the right key for the chosen model.
+    """
     raw_keys = req.openai_keys or []
     if not raw_keys:
-        raise HTTPException(400, "No OpenAI keys provided.")
+        raise HTTPException(400, "No API keys provided for this provider.")
     valid_keys = [k.strip() for k in raw_keys if k and k.strip()]
     if not valid_keys:
-        raise HTTPException(400, "No valid OpenAI keys found.")
+        raise HTTPException(400, "No valid API keys found.")
 
     model = req.model or "gpt-4o-mini"
+
+    # ── Route to the correct base URL based on model ─────────────────────────
+    if model in _DEEPSEEK_NATIVE_MODELS:
+        api_url  = DEEPSEEK_URL
+        provider_name = "DeepSeek"
+    elif model in _OPENROUTER_MODELS:
+        api_url  = OPENROUTER_URL
+        provider_name = "OpenRouter"
+    else:
+        api_url  = OPENAI_URL
+        provider_name = "OpenAI"
+
+    _log.info("[OpenAI-unified] model=%s → routing to %s (%s)", model, provider_name, api_url)
+
     sorted_keys = _prioritised_keys(valid_keys)
     errors_by_key = []
     rate_limited_count = 0
@@ -2183,9 +2222,14 @@ async def call_openai(req: CVRequest) -> tuple:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            # OpenRouter requires an extra header
+            if api_url == OPENROUTER_URL:
+                headers["HTTP-Referer"] = "https://cv-builder-ai.extension"
+                headers["X-Title"] = "CV Builder AI"
             try:
-                cv = await generate_cv_dynamic(req, client, key, model, OPENAI_URL, headers)
+                cv = await generate_cv_dynamic(req, client, key, model, api_url, headers)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
+                _log.info("[OpenAI-unified] SUCCESS — %s key %d (%s)", provider_name, i+1, mk)
                 return cv, mk, i
             except _RateLimitError as e:
                 rate_limited_count += 1
@@ -2194,12 +2238,12 @@ async def call_openai(req: CVRequest) -> tuple:
                     await asyncio.sleep(3)
                 continue
             except Exception as e:
-                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:100]}")
+                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:120]}")
                 continue
 
     if rate_limited_count == len(sorted_keys):
-        raise HTTPException(429, f"All OpenAI keys are rate-limited. Try again shortly. Details: {'; '.join(errors_by_key[:3])}")
-    raise HTTPException(502, f"All OpenAI keys failed: {'; '.join(errors_by_key[:3])}")
+        raise HTTPException(429, f"All {provider_name} keys are rate-limited. Try again shortly. Details: {'; '.join(errors_by_key[:3])}")
+    raise HTTPException(502, f"All {provider_name} keys failed: {'; '.join(errors_by_key[:3])}")
 
 # ==============================================================================
 # HEALTH CHECK
