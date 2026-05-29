@@ -47,15 +47,23 @@ OLLAMA_URL     = "http://localhost:11434"
 # Models routed to DeepSeek native API (openai-compatible)
 _DEEPSEEK_NATIVE_MODELS = {"deepseek-chat", "deepseek-reasoner", "deepseek-coder"}
 # Models routed to OpenRouter (free tier available)
+# NOTE: only include models confirmed working on OpenRouter as of 2026-05.
+# qwen/qwen3-235b-a22b:free was removed — returns HTTP 404 on OpenRouter.
 _OPENROUTER_MODELS = {
-    "qwen/qwen3-235b-a22b:free",
+    # Free tier
+    "google/gemma-3-27b-it:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "microsoft/phi-4:free",
     "qwen/qwen3-30b-a3b:free",
     "deepseek/deepseek-chat-v3-0324:free",
     "deepseek/deepseek-r1:free",
-    "qwen/qwen3-235b-a22b",
+    # Paid tier (same models without :free suffix)
     "qwen/qwen3-30b-a3b",
     "deepseek/deepseek-chat-v3-0324",
     "deepseek/deepseek-r1",
+    "google/gemma-3-27b-it",
+    "meta-llama/llama-3.3-70b-instruct",
+    "microsoft/phi-4",
 }
 
 # Only static data: company names (users can edit via profile)
@@ -2487,9 +2495,22 @@ async def check_openai_keys(body: dict):
                 results.append({"key": "***", "status": "empty"})
                 continue
             try:
-                r = await client.post(OPENAI_URL,
-                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1})
+                # OpenRouter keys start with sk-or-v1 — route to OpenRouter
+                if key.startswith("sk-or-"):
+                    check_url = OPENROUTER_URL
+                    # Use a known-working free model for the check
+                    check_model = "meta-llama/llama-3.3-70b-instruct:free"
+                    extra_headers = {
+                        "HTTP-Referer": "https://cv-builder-ai.extension",
+                        "X-Title": "CV Builder AI",
+                    }
+                else:
+                    check_url = OPENAI_URL
+                    check_model = model
+                    extra_headers = {}
+                r = await client.post(check_url,
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", **extra_headers},
+                    json={"model": check_model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1})
                 status = "ok" if r.status_code == 200 else "rate_limited" if r.status_code == 429 else "invalid"
                 results.append({"key": mask(key), "status": status})
             except Exception:
