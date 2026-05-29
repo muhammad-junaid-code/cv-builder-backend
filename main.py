@@ -1073,10 +1073,58 @@ def _normalize_job_title(title: str) -> str:
             seen_lower.append(w.lower())
     return " ".join(seen)
 
+def _clean_ai_text(s: str) -> str:
+    """Strip problematic Unicode characters that render as black squares (■/□)
+    in fonts like Calibri. These are commonly inserted by reasoning LLMs in their
+    chain-of-thought output: non-breaking hyphens, zero-width spaces, soft hyphens,
+    private-use glyphs, replacement characters, and similar invisible/unsupported chars."""
+    import unicodedata
+    if not s:
+        return s
+    # Zero-width and invisible chars
+    s = re.sub(r'[​‌‍‎‏﻿­]', '', s)
+    # Control characters (keep tab and newline)
+    s = re.sub(r'[--]', '', s)
+    # Smart quotes → straight
+    s = s.replace('‘', "'").replace('’', "'").replace('‚', "'")
+    s = s.replace('“', '"').replace('”', '"').replace('„', '"')
+    # Non-breaking hyphen, figure dash → plain hyphen
+    s = s.replace('‑', '-').replace('‒', '-')
+    # Various minus/dash variants → hyphen
+    s = re.sub(r'[‐―−]', '-', s)
+    # Non-breaking space → regular space
+    s = s.replace(' ', ' ')
+    # Line/paragraph separators → space
+    s = s.replace(' ', ' ').replace(' ', ' ')
+    # Replacement character ■/□ and private-use area
+    s = s.replace('�', '')
+    s = re.sub(r'[-]', '', s)
+    # Box drawing, block elements, geometric shapes (common ■ sources)
+    s = re.sub(r'[─-▟■-◿☀-⛿]', '', s)
+    # Collapse multiple spaces
+    s = re.sub(r'  +', ' ', s)
+    return s.strip()
+
+
+def _clean_cv_strings(obj):
+    """Recursively clean all string values in a CV dict/list."""
+    if isinstance(obj, str):
+        return _clean_ai_text(obj)
+    if isinstance(obj, list):
+        return [_clean_cv_strings(item) for item in obj]
+    if isinstance(obj, dict):
+        return {k: _clean_cv_strings(v) for k, v in obj.items()}
+    return obj
+
+
 def sanitise_cv(cv: dict) -> dict:
     if not isinstance(cv, dict):
         return {}
-    
+
+    # Strip all problematic Unicode characters from every string in the CV
+    # before any other processing — prevents ■ squares in the final HTML/PDF.
+    cv = _clean_cv_strings(cv)
+
     for field in ("totalYears", "title", "summary", "competencies", "keywords"):
         cv[field] = str(cv.get(field, "")).strip()
     
