@@ -48,22 +48,28 @@ OLLAMA_URL     = "http://localhost:11434"
 _DEEPSEEK_NATIVE_MODELS = {"deepseek-chat", "deepseek-reasoner", "deepseek-coder"}
 # Models routed to OpenRouter (free tier available)
 # NOTE: only include models confirmed working on OpenRouter as of 2026-05.
-# qwen/qwen3-235b-a22b:free was removed — returns HTTP 404 on OpenRouter.
+# qwen/qwen3-235b-a22b:free and qwen/qwen3-30b-a3b:free removed — return HTTP 404.
+# Using openrouter/free auto-router as default so it always picks a working model.
 _OPENROUTER_MODELS = {
-    # Free tier
-    "google/gemma-3-27b-it:free",
+    # Auto-router — always picks a working free model (safest default)
+    "openrouter/free",
+    # Free tier (confirmed working May 2026 per openrouter.ai/collections/free-models)
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "openai/gpt-oss-120b:free",
+    "openai/gpt-oss-20b:free",
+    "google/gemma-4-31b-it:free",
+    "deepseek/deepseek-v4-flash:free",
+    "deepseek/deepseek-r1:free",
+    "deepseek/deepseek-chat-v3-0324:free",
     "meta-llama/llama-3.3-70b-instruct:free",
     "microsoft/phi-4:free",
-    "qwen/qwen3-30b-a3b:free",
-    "deepseek/deepseek-chat-v3-0324:free",
-    "deepseek/deepseek-r1:free",
-    # Paid tier (same models without :free suffix)
-    "qwen/qwen3-30b-a3b",
+    # Paid tier
     "deepseek/deepseek-chat-v3-0324",
     "deepseek/deepseek-r1",
-    "google/gemma-3-27b-it",
     "meta-llama/llama-3.3-70b-instruct",
     "microsoft/phi-4",
+    "openai/gpt-oss-120b",
+    "google/gemma-4-31b-it",
 }
 
 # Only static data: company names (users can edit via profile)
@@ -2209,11 +2215,25 @@ async def call_openai(req: CVRequest) -> tuple:
 
     model = req.model or "gpt-4o-mini"
 
-    # ── Route to the correct base URL based on model ─────────────────────────
-    if model in _DEEPSEEK_NATIVE_MODELS:
+    # ── Route to the correct base URL based on model AND key prefix ──────────
+    # Key prefix takes priority: an sk-or- key must ALWAYS go to OpenRouter,
+    # even if the user selected an OpenAI model name (which would 401 on OR).
+    first_key = valid_keys[0].strip() if valid_keys else ""
+    key_forces_openrouter = first_key.startswith("sk-or-")
+
+    if key_forces_openrouter and model not in _OPENROUTER_MODELS:
+        # User picked an OpenAI/DeepSeek model name but supplied an OR key.
+        # Swap to the best free OR model automatically.
+        _log.warning(
+            "[OpenAI-unified] sk-or- key detected but model=%s is not an OR model — "
+            "overriding to openrouter/free", model
+        )
+        model = "openrouter/free"
+
+    if model in _DEEPSEEK_NATIVE_MODELS and not key_forces_openrouter:
         api_url  = DEEPSEEK_URL
         provider_name = "DeepSeek"
-    elif model in _OPENROUTER_MODELS:
+    elif model in _OPENROUTER_MODELS or key_forces_openrouter:
         api_url  = OPENROUTER_URL
         provider_name = "OpenRouter"
     else:
