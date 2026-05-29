@@ -1453,9 +1453,30 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         _log.info("%s HTTP %d received in %.1fs", tag, r.status_code, elapsed)
 
         if r.status_code == 200:
-            resp_json = r.json()
-            raw = resp_json["choices"][0]["message"]["content"]
-            finish_reason = resp_json["choices"][0].get("finish_reason", "?")
+            try:
+                resp_json = r.json()
+            except Exception as json_err:
+                _log.error("%s Failed to parse response body as JSON: %s — body: %r", tag, json_err, r.text[:300])
+                raise ValueError(f"Stage {stage}: server returned non-JSON response. Body: {r.text[:200]!r}")
+
+            # Safe navigation: some providers return 200 with an error body
+            choices = resp_json.get("choices") or []
+            if not choices:
+                _log.error("%s Response has no 'choices' — full body: %r", tag, str(resp_json)[:400])
+                raise ValueError(
+                    f"Stage {stage}: provider returned 200 but no 'choices' in response. "
+                    f"Body: {str(resp_json)[:200]!r}"
+                )
+            first_choice = choices[0]
+            message = first_choice.get("message") or {}
+            raw = message.get("content")
+            if raw is None:
+                _log.error("%s 'content' field missing in message — choice: %r", tag, first_choice)
+                raise ValueError(
+                    f"Stage {stage}: provider returned 200 but 'content' is missing. "
+                    f"Choice: {str(first_choice)[:200]!r}"
+                )
+            finish_reason = first_choice.get("finish_reason", "?")
             _log.info("%s SUCCESS — response %d chars, finish_reason=%s", tag, len(raw), finish_reason)
             if len(raw) < 800:
                 _log.warning("%s Response short (%d chars) — raw: %r", tag, len(raw), raw[:300])
@@ -1499,8 +1520,16 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             raise ValueError(f"Invalid/expired key on {stage} (HTTP {r.status_code})")
 
         elif r.status_code == 400:
-            body_text = r.text[:300]
+            body_text = r.text[:400]
             _log.error("%s HTTP 400 Bad Request — likely max_tokens too high or prompt too long. Body: %s", tag, body_text)
+            # DeepSeek on Groq has a strict 8192 token limit (input+output combined)
+            # Give a clearer message so the user knows what to do
+            if "deepseek" in model.lower():
+                raise ValueError(
+                    f"Stage {stage}: HTTP 400 — DeepSeek on Groq has a small context window (8192 tokens). "
+                    f"Try shortening the job description, or switch to a Llama model in Settings. "
+                    f"Details: {body_text}"
+                )
             raise ValueError(
                 f"Stage {stage}: HTTP 400 — request rejected (prompt+tokens too large or invalid). "
                 f"Details: {body_text}"
@@ -1559,6 +1588,23 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
     system_prompt, user_prompt = build_dynamic_prompt(req)
     _log.info("[GenCV|%s] Prompt built — sys=%d chars, usr=%d chars",
               provider_host, len(system_prompt), len(user_prompt))
+
+    # ── DeepSeek context-window guard ──────────────────────────────────────────
+    # deepseek-r1-distill-* on Groq has an 8192-token combined input+output limit.
+    # Estimate: 1 token ≈ 4 chars. If total prompt exceeds ~18000 chars (~4500 tokens),
+    # trim the job_description in the user_prompt to keep total under the limit.
+    DEEPSEEK_PROMPT_CHAR_LIMIT = 18_000
+    if "deepseek" in model.lower():
+        total_chars = len(system_prompt) + len(user_prompt)
+        if total_chars > DEEPSEEK_PROMPT_CHAR_LIMIT:
+            excess = total_chars - DEEPSEEK_PROMPT_CHAR_LIMIT
+            # Trim trailing characters from user_prompt (job description end is most expendable)
+            trim_to = max(200, len(user_prompt) - excess - 200)
+            user_prompt = user_prompt[:trim_to] + "
+
+[Job description truncated to fit model context window]"
+            _log.warning("[GenCV|%s] DeepSeek prompt too large (%d chars) — trimmed user_prompt to %d chars",
+                         provider_host, total_chars, len(user_prompt))
 
     result = await call_llm_atomic(client, key, model, url, system_prompt, user_prompt,
                                     "FullCV", headers, max_tokens=max_output_tokens, _deadline=_deadline)
@@ -1781,9 +1827,15 @@ async def call_groq(req: CVRequest) -> tuple:
             _log.info("[Groq] Trying key %d/%d (%s) with model %s",
                       i + 1, len(sorted_keys), mk, model)
             try:
-                # Groq free tier: 6000 TPM (input+output). Prompt ~3200 tokens → cap output at 5500.
+                # Token budget by model:
+                #   deepseek-* on Groq: 8192 context limit -> cap output at 3000
+                #   llama / other Groq models: 6000 TPM free tier -> cap at 5500
+                is_deepseek_groq = "deepseek" in model.lower()
+                groq_max_tokens = 3000 if is_deepseek_groq else 5500
+                _log.info("[Groq] model=%s is_deepseek=%s max_output_tokens=%d",
+                          model, is_deepseek_groq, groq_max_tokens)
                 cv = await generate_cv_dynamic(req, client, key, model, GROQ_URL, headers,
-                                               max_output_tokens=5500)
+                                               max_output_tokens=groq_max_tokens)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
                 _log_generation(req.job_title, mk, i, 0, model, True)
                 _log.info("[Groq] SUCCESS — key %d (%s)", i + 1, mk)
