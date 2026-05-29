@@ -1068,8 +1068,12 @@ Reminders: title ends "{years_display}" | summary opens "{years_display} years o
 # ==============================================================================
 def extract_json(raw: str) -> dict:
     """Parse JSON from an LLM response, repairing truncated output if needed."""
+    # Strip <think>...</think> blocks (Qwen3 reasoning mode)
     raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
+    # Strip markdown code fences
     raw = re.sub(r"```(?:json)?", "", raw).strip().strip("`").strip()
+    # Some Qwen3 models output plain-text thinking before the JSON even with
+    # enable_thinking=False — find the first '{' and discard everything before it
     start = raw.find("{")
     if start == -1:
         raise ValueError("No JSON object in model response")
@@ -1536,7 +1540,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
 
     # Timeout: OpenRouter free = 170s; fast providers = 50s.
     # Detected by checking the url passed to us (set by caller context via _deadline).
-    per_call_timeout = 160 if "openrouter" in url else (120 if "dashscope" in url else 50)
+    per_call_timeout = 160 if "openrouter" in url else (58 if "dashscope" in url else 50)
     mk = mask(key)
     provider_tag = url.split("/")[2].split(".")[0]   # e.g. "api" → use model instead
     tag = f"[{model}|{mk}|{stage}]"
@@ -1755,7 +1759,8 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
 
     # OpenRouter free models can take 2-3 min; other providers are fast (<30s)
     _or_slow = "openrouter" in url
-    _deadline = _t.time() + (170 if _or_slow else 55)  # 170s for OR free, 55s for fast providers
+    _or_dashscope = "dashscope" in url
+    _deadline = _t.time() + (170 if _or_slow else (58 if _or_dashscope else 55))  # 170s OR free, 58s dashscope, 55s others
     years_exp = (req.years_exp or "").strip()
     years_exp_clean = years_exp.replace("+", "").strip()
 
