@@ -1423,9 +1423,8 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
                           _deadline: float = 0.0) -> dict:
     import time as _t
 
-    # Groq can be slow on large prompts; use a generous per-call timeout.
-    # The outer httpx.AsyncClient timeout is the hard ceiling — this is per-attempt.
-    per_call_timeout = 120
+    # Hard per-call timeout — must stay well under the 60s client limit.
+    per_call_timeout = 50
     mk = mask(key)
     provider_tag = url.split("/")[2].split(".")[0]   # e.g. "api" → use model instead
     tag = f"[{model}|{mk}|{stage}]"
@@ -1439,8 +1438,9 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
     _log.info("%s Starting LLM call — prompt ~%d chars, max_tokens=%d, timeout=%ds",
               tag, prompt_chars, max_tokens, per_call_timeout)
 
-    # Up to 3 attempts: handles transient 429s and single timeout blips
-    for attempt in range(3):
+    # 1 attempt only — must complete within 55s total budget (60s client limit).
+    # Retries are handled at the caller level (multiple keys), not per-call.
+    for attempt in range(1):
         attempt_num = attempt + 1
         _log.info("%s Attempt %d/3 …", tag, attempt_num)
         t_start = _t.time()
@@ -1640,7 +1640,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
     """Generate CV using single dynamic prompt - everything from JD"""
     import time as _t
 
-    _deadline = _t.time() + 270
+    _deadline = _t.time() + 55   # 55s: leaves 5s buffer under 60s client timeout
     years_exp = (req.years_exp or "").strip()
     years_exp_clean = years_exp.replace("+", "").strip()
 
@@ -1820,12 +1820,28 @@ async def call_cerebras(req: CVRequest) -> tuple:
     if not valid_keys:
         raise HTTPException(400, "No valid Cerebras keys found.")
 
-    model = req.model or "gpt-oss-120b"
+    model = req.model or "llama3.1-8b"
+
+    # ── Auto-remap reasoning/slow models that will exceed the 60s timeout ────
+    # gpt-oss-120b and qwen-3-235b are chain-of-thought models that spend
+    # minutes thinking before outputting JSON — they always timeout.
+    # Silently remap to the fast llama3.1-8b which completes in <20s.
+    _CEREBRAS_SLOW_MODELS = {
+        "gpt-oss-120b":      "llama3.1-8b",
+        "zai-glm-4.7":       "llama3.1-8b",
+        "qwen-3-235b-a22b":  "llama3.1-8b",
+    }
+    if model in _CEREBRAS_SLOW_MODELS:
+        remapped = _CEREBRAS_SLOW_MODELS[model]
+        _log.warning("[Cerebras] Model '%s' is a reasoning/slow model that exceeds 60s timeout "
+                     "— auto-remapping to '%s'", model, remapped)
+        model = remapped
+
     sorted_keys = _prioritised_keys(valid_keys)
     errors_by_key = []
     rate_limited_count = 0
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=180, write=15, pool=10)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=8, read=55, write=10, pool=5)) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
@@ -1902,7 +1918,7 @@ async def call_groq(req: CVRequest) -> tuple:
     # read=240 gives each attempt up to 4 min; call_llm_atomic uses 120s per try
     # with its own retry loop, so the outer client must not cut it short
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=15, read=240, write=20, pool=10)
+        timeout=httpx.Timeout(connect=8, read=55, write=10, pool=5)
     ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
