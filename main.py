@@ -822,8 +822,18 @@ SECTION-BY-SECTION INSTRUCTIONS
    • Do NOT write a long paragraph — keep it punchy and scannable.
 
 ③ competencies
-   Exactly 10 domain-specific skill phrases from the JD, separated by " * ".
-   Phrases must name real capabilities, not generic filler.
+   Exactly 10 competency phrases separated by " • " (bullet character, not asterisk).
+   Each phrase must be 3–6 words, capitalised like a title, and read as a professional strength.
+   BLEND RULE — distribute across two dimensions:
+     a) Technical depth (5–6 phrases): specific capabilities drawn from the JD domain and tools.
+        e.g. "Cloud-Native API Architecture", "SQL Query Performance Optimisation", "CI/CD Pipeline Design".
+     b) Professional strengths (4–5 phrases): leadership, delivery, and interpersonal qualities
+        that match the candidate's seniority level and the role's responsibilities.
+        Draw from: stakeholder management, agile delivery, team mentorship, cross-functional
+        collaboration, strategic planning, on-time delivery, problem-solving, accountability,
+        executive communication, decision-making — pick whichever fit this specific role.
+   Result must read like a senior professional's profile, not a technology checklist.
+   No generic filler ("Good communicator", "Team player"). Every phrase must be specific.
 
 ④ keywords
    18–20 ATS keywords from the JD, comma-separated. Cover tools, methods, and domain terms.
@@ -835,10 +845,20 @@ SECTION-BY-SECTION INSTRUCTIONS
 
 ⑥ skills  [TECHNICAL SKILLS section — 5 entries only]
    Format each entry as: "Short Role-Specific Category: tech1, tech2, … tech12"
-   • Category labels must be short, specific to THIS role, and useful as subheadings.
-   • Use small subheading style — no nested structures, no extra sections.
+   • Category labels must be short, specific to THIS role, and derive naturally from the JD domain.
    • 10–12 technologies per category, all from the JD.
    • No duplicates across categories.
+   CATEGORY INTEGRITY RULE — strictly enforced, no exceptions:
+   • Each technology must appear under the category that best describes its domain.
+   • Backend / server-side languages and frameworks → backend category.
+   • UI frameworks, CSS, templating, state management → frontend category.
+   • Cloud platforms, serverless, managed services, CDN, storage → cloud category.
+   • Containerisation, orchestration, pipelines, IaC, monitoring → devops/infra category.
+   • Query languages, ORMs, caching, database engines, migrations → database category.
+   • Testing libraries, coverage tools, QA frameworks → testing category (if role requires).
+   • Cross-category tools (e.g. VS Code, Git) go in the MOST relevant category for this role.
+   • NEVER put a cloud/devops tool under a frontend category, or a UI library under a backend category.
+   • The split must reflect the actual nature of each tool, not alphabetical or arbitrary grouping.
 
 ⑦ companies  [one entry per company listed above, in order]
    role    : Apply the seniority progression rules above. Infer the full title
@@ -846,8 +866,16 @@ SECTION-BY-SECTION INSTRUCTIONS
    bullets : 4 achievement bullets per company, each 20–30 words.
              Each bullet must be unique — different technology, different metric, different context.
              No copy-pasting between companies. Bullets must sound like lived experience.
-   tech    : 6–8 JD technologies used at that company, pipe-separated.
-             Do NOT repeat the same tech set across all companies.
+             Bullet style: start with a strong action verb. Include one concrete metric per bullet.
+             Bullets must NOT start with "•", "–", or any bullet character — plain text only.
+   tech    : Exactly 8–10 JD technologies, pipe-separated, for THIS company only.
+             UNIQUENESS RULE: the tech set for each company must be meaningfully different.
+             Imagine the actual tech stack used at that stage of the candidate's career.
+             Most-recent company → most advanced / current stack from the JD.
+             Earlier companies → earlier/simpler tech from the same domain.
+             NEVER produce an identical or near-identical tech list across companies.
+             Cover the breadth of the JD: mix backend, frontend, cloud, devops, database tools
+             rather than repeating the same 8 top-line items for every position.
 
 ⑧ projects  [EXACTLY 4 — split as described]
    PROJECT SPLIT RULE (mandatory):
@@ -882,7 +910,7 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 {{
   "title": "Inferred Role | Tech1, Tech2, Tech3 | {years_display}",
   "summary": "{years_display} years of experience in [JD domain]… (4–5 sentences, 70–100 words)",
-  "competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10",
+  "competencies": "Phrase1 • Phrase2 • Phrase3 • Phrase4 • Phrase5 • Phrase6 • Phrase7 • Phrase8 • Phrase9 • Phrase10",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18",
   "technologies": {{
     "mustHave":   ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10","t11","t12"],
@@ -907,7 +935,7 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
         "Process or delivery improvement — JD technology + outcome (20–30 words).",
         "Business or stakeholder impact — JD context + result (20–30 words)."
       ],
-      "tech": "Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6 | Tech7 | Tech8"
+      "tech": "Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6 | Tech7 | Tech8 | Tech9 | Tech10"
     }}
   ],
   "projects": [
@@ -960,6 +988,10 @@ PRE-SUBMIT CHECKLIST — verify every item before writing a single character of 
 ✓ zero company names appear anywhere except the "company" JSON key
 ✓ every technology, skill, and keyword came from the job description
 ✓ output is raw JSON only — no markdown fences, no explanatory text
+✓ each company has 8–10 pipe-separated technologies, meaningfully different across positions
+✓ competencies blend technical depth AND professional/leadership strengths (10 phrases, " • " separator)
+✓ skills categories have correct domain separation — no cloud/devops tools under frontend, etc.
+✓ company bullets are plain text — no leading bullet characters, each starts with an action verb
 """
 
     user_prompt = f"""JOB DESCRIPTION:
@@ -1463,20 +1495,17 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             if finish_reason == "length":
                 _log.warning("%s finish_reason=length — model hit token cap; response likely truncated", tag)
                 if attempt < 2:
-                    _log.info("%s Retrying with lower max_tokens to avoid truncation…", tag)
                     await asyncio.sleep(2)
                     continue
                 raise ValueError(
                     f"Stage {stage}: model response was cut off (finish_reason=length). "
-                    f"The free tier may have a token-per-minute cap. Try again in a moment, "
-                    f"or switch to a different provider."
+                    f"Try again in a moment or switch provider."
                 )
             try:
                 return extract_json(raw)
             except ValueError as parse_err:
                 _log.warning("%s JSON parse failed (%s) — raw: %r", tag, parse_err, raw[:500])
                 if attempt < 2:
-                    _log.info("%s Retrying after JSON parse failure…", tag)
                     await asyncio.sleep(3)
                     continue
                 raise ValueError(
@@ -1508,6 +1537,14 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         elif r.status_code in (401, 403):
             _log.error("%s INVALID/EXPIRED KEY — HTTP %d for key %s", tag, r.status_code, mk)
             raise ValueError(f"Invalid/expired key on {stage} (HTTP {r.status_code})")
+
+        elif r.status_code == 404:
+            _log.error("%s MODEL NOT FOUND — HTTP 404 — model=%s is not available", tag, model)
+            raise ValueError(
+                f"Model \'{model}\' not found on this provider (HTTP 404). "
+                f"Please select a valid model in Settings. "
+                f"For Cerebras, valid models are: gpt-oss-120b, zai-glm-4.7."
+            )
 
         else:
             last_error = f"HTTP {r.status_code} on {stage}"
