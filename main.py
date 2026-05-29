@@ -43,8 +43,11 @@ OPENAI_URL     = "https://api.openai.com/v1/chat/completions"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 GEMINI_URL     = "https://generativelanguage.googleapis.com/v1beta/models"
 OLLAMA_URL     = "http://localhost:11434"
-# Qwen / Alibaba DashScope — OpenAI-compatible international endpoint
+# Qwen / Alibaba DashScope — OpenAI-compatible endpoints
+# International (dashscope-intl): for keys from dashscope-intl.aliyuncs.com
+# Domestic/China  (dashscope):    for keys from bailian.console.alibabacloud.com / bailian.console.aliyun.com
 QWEN_URL       = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
+QWEN_URL_CN    = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
 
 # Models routed to DeepSeek native API (openai-compatible)
 _DEEPSEEK_NATIVE_MODELS = {"deepseek-chat", "deepseek-reasoner", "deepseek-coder"}
@@ -2399,12 +2402,27 @@ async def call_qwen(req: CVRequest) -> tuple:
                 continue
 
             _log.info("[Qwen] Trying key %d/%d (%s) with model %s", i+1, len(sorted_keys), mk, model)
+            # Determine which endpoint to use: try international first, fall back to CN (bailian keys)
+            qwen_url_to_use = QWEN_URL
             try:
-                cv = await generate_cv_dynamic(req, client, key, model, QWEN_URL, headers,
+                probe = await client.post(
+                    QWEN_URL,
+                    headers=headers,
+                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
+                    timeout=8,
+                )
+                if probe.status_code in (401, 403):
+                    _log.info("[Qwen] Key %d rejected on intl endpoint — switching to CN endpoint", i+1)
+                    qwen_url_to_use = QWEN_URL_CN
+            except Exception:
+                pass  # network error on probe — just try with default URL
+
+            try:
+                cv = await generate_cv_dynamic(req, client, key, model, qwen_url_to_use, headers,
                                                max_output_tokens=8000)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
                 _log_generation(req.job_title, mk, i, 0, model, True)
-                _log.info("[Qwen] SUCCESS — key %d (%s)", i+1, mk)
+                _log.info("[Qwen] SUCCESS — key %d (%s) via %s", i+1, mk, qwen_url_to_use)
                 return cv, mk, i
             except _RateLimitError as e:
                 rate_limited_count += 1
@@ -2698,7 +2716,9 @@ async def check_openai_keys(body: dict):
 @app.post("/check-qwen-keys")
 async def check_qwen_keys(body: dict):
     """
-    Verify Qwen / DashScope API keys against the international endpoint.
+    Verify Qwen / DashScope API keys.
+    Tries the international endpoint first; if the key is rejected (401/403),
+    automatically falls back to the China/domestic endpoint (bailian.console.alibabacloud.com keys).
     Uses qwen-turbo with max_tokens=1 (cheapest possible check call).
     """
     keys = body.get("keys", [])
@@ -2710,25 +2730,35 @@ async def check_qwen_keys(body: dict):
             if not key:
                 results.append({"key": "***", "status": "empty"})
                 continue
+            payload = {"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1}
+            hdrs = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            status = "error"
             try:
-                r = await client.post(
-                    QWEN_URL,
-                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                    json={"model": model,
-                          "messages": [{"role": "user", "content": "hi"}],
-                          "max_tokens": 1},
-                )
+                # Try international endpoint first
+                r = await client.post(QWEN_URL, headers=hdrs, json=payload)
                 if r.status_code == 200:
                     status = "ok"
                 elif r.status_code == 429:
                     status = "rate_limited"
                 elif r.status_code in (401, 403):
-                    status = "invalid"
+                    # Key rejected on intl — try China/domestic endpoint (bailian keys work here)
+                    try:
+                        r2 = await client.post(QWEN_URL_CN, headers=hdrs, json=payload)
+                        if r2.status_code == 200:
+                            status = "ok"
+                        elif r2.status_code == 429:
+                            status = "rate_limited"
+                        elif r2.status_code in (401, 403):
+                            status = "invalid"
+                        else:
+                            status = f"http_{r2.status_code}"
+                    except Exception:
+                        status = "invalid"
                 else:
                     status = f"http_{r.status_code}"
-                results.append({"key": mask(key), "status": status})
             except Exception:
-                results.append({"key": mask(key), "status": "error"})
+                status = "error"
+            results.append({"key": mask(key), "status": status})
     return {"results": results}
 
 if __name__ == "__main__":
