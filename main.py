@@ -43,6 +43,8 @@ OPENAI_URL     = "https://api.openai.com/v1/chat/completions"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 GEMINI_URL     = "https://generativelanguage.googleapis.com/v1beta/models"
 OLLAMA_URL     = "http://localhost:11434"
+# Qwen / Alibaba DashScope — OpenAI-compatible international endpoint
+QWEN_URL       = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
 
 # Models routed to DeepSeek native API (openai-compatible)
 _DEEPSEEK_NATIVE_MODELS = {"deepseek-chat", "deepseek-reasoner", "deepseek-coder"}
@@ -70,6 +72,45 @@ _OPENROUTER_MODELS = {
     "microsoft/phi-4",
     "openai/gpt-oss-120b",
     "google/gemma-4-31b-it",
+}
+
+# Qwen / DashScope models — routed to dashscope-intl.aliyuncs.com
+# Free tier: new accounts get 1 M input + 1 M output tokens (90 days)
+# Sign up: https://dashscope-intl.aliyuncs.com  or  https://bailian.console.aliyun.com
+_QWEN_MODELS = {
+    # ── Flagship / Max series ─────────────────────────────────────────
+    "qwen3-max",                    # 1T+ param flagship, best quality
+    "qwen3-max-preview",            # preview snapshot
+    "qwen-max",                     # previous-gen flagship
+    "qwen-max-latest",
+    # ── Plus series (best value for CV generation) ────────────────────
+    "qwen3-plus",                   # strong all-rounder, large context
+    "qwen3.5-plus",                 # latest Plus, 256 K context
+    "qwen-plus",                    # solid for long prompts
+    "qwen-plus-latest",
+    # ── Flash series (fast & cheap) ───────────────────────────────────
+    "qwen3.5-flash",                # fastest Qwen3.5
+    "qwen-flash",                   # latency-optimised
+    "qwen-flash-latest",
+    # ── Turbo series (fast, cost-effective) ──────────────────────────
+    "qwen-turbo",                   # cheapest, recommended for testing
+    "qwen-turbo-latest",
+    # ── Open-weight instruct (hosted on DashScope) ────────────────────
+    "qwen3-235b-a22b",              # 235 B MoE
+    "qwen3-32b",
+    "qwen3-30b-a3b",
+    "qwen3-14b",
+    "qwen3-8b",
+    "qwen2.5-72b-instruct",
+    "qwen2.5-32b-instruct",
+    "qwen2.5-14b-instruct",
+    "qwen2.5-7b-instruct",
+    # ── Coder series ─────────────────────────────────────────────────
+    "qwen3-coder-plus",
+    "qwen3-coder-flash",
+    # ── Long-context ─────────────────────────────────────────────────
+    "qwen-long",
+    "qwen-long-latest",
 }
 
 # Only static data: company names (users can edit via profile)
@@ -576,6 +617,7 @@ class CVRequest(BaseModel):
     deepseek_keys: Optional[List[str]] = []
     openai_keys: Optional[List[str]] = []
     gemini_keys: Optional[List[str]] = []
+    qwen_keys: Optional[List[str]] = []
     ollama_model: Optional[str] = "qwen2.5:7b"
     profile: str = ""
     profile_data: Optional[dict] = None
@@ -2304,6 +2346,90 @@ async def call_openai(req: CVRequest) -> tuple:
     raise HTTPException(502, f"All {provider_name} keys failed: {'; '.join(errors_by_key[:3])}")
 
 # ==============================================================================
+# QWEN / DASHSCOPE PROVIDER
+# ==============================================================================
+async def call_qwen(req: CVRequest) -> tuple:
+    """
+    Qwen / Alibaba DashScope provider.
+    Uses the OpenAI-compatible international endpoint so no extra SDK is needed.
+    Free tier: new accounts get 1 M input + 1 M output tokens for 90 days.
+    API key signup: https://dashscope-intl.aliyuncs.com  (international)
+                    https://bailian.console.aliyun.com    (if you use Alibaba Cloud)
+    """
+    import time as _t
+    raw_keys = req.qwen_keys or []
+    if not raw_keys:
+        raise HTTPException(400, "No Qwen / DashScope keys provided.")
+    valid_keys = [k.strip() for k in raw_keys if k and k.strip()]
+    if not valid_keys:
+        raise HTTPException(400, "No valid Qwen keys found.")
+
+    model = req.model or "qwen-plus"
+
+    # Guard: if someone accidentally selects a non-Qwen model while on Qwen provider,
+    # fall back to the recommended default instead of a hard 404.
+    if model not in _QWEN_MODELS:
+        _log.warning("[Qwen] Model '%s' not in _QWEN_MODELS — falling back to qwen-plus", model)
+        model = "qwen-plus"
+
+    sorted_keys = _prioritised_keys(valid_keys)
+    errors_by_key = []
+    rate_limited_count = 0
+
+    _log.info("[Qwen] Starting generation — model=%s keys=%d job_title=%r",
+              model, len(sorted_keys), req.job_title[:60])
+
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(connect=10, read=90, write=10, pool=5)
+    ) as client:
+        for i, key in enumerate(sorted_keys):
+            mk = mask(key)
+            headers = {
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+            }
+
+            cooldown_until = _key_rate_limited_until.get(mk, 0)
+            if cooldown_until > _t.time():
+                remaining = int(cooldown_until - _t.time())
+                rate_limited_count += 1
+                msg = f"Key {i+1} ({mk}): still rate-limited ({remaining}s remaining)"
+                errors_by_key.append(msg)
+                _log.warning("[Qwen] %s — skipping", msg)
+                continue
+
+            _log.info("[Qwen] Trying key %d/%d (%s) with model %s", i+1, len(sorted_keys), mk, model)
+            try:
+                cv = await generate_cv_dynamic(req, client, key, model, QWEN_URL, headers,
+                                               max_output_tokens=8000)
+                _key_usage[mk] = _key_usage.get(mk, 0) + 1
+                _log_generation(req.job_title, mk, i, 0, model, True)
+                _log.info("[Qwen] SUCCESS — key %d (%s)", i+1, mk)
+                return cv, mk, i
+            except _RateLimitError as e:
+                rate_limited_count += 1
+                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)}")
+                _log.warning("[Qwen] RATE-LIMIT on key %d (%s): %s", i+1, mk, e)
+                if i < len(sorted_keys) - 1:
+                    await asyncio.sleep(3)
+                continue
+            except Exception as e:
+                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:120]}")
+                _log.error("[Qwen] FAILED key %d (%s): %s", i+1, mk, str(e)[:200])
+                continue
+
+    _log.error("[Qwen] All %d key(s) failed. rate_limited=%d. Errors: %s",
+               len(sorted_keys), rate_limited_count, " | ".join(errors_by_key))
+
+    if rate_limited_count == len(sorted_keys):
+        raise HTTPException(
+            429,
+            f"All Qwen keys are currently rate-limited. Wait ~60s and retry, "
+            f"or switch to another provider. Details: {'; '.join(errors_by_key[:3])}"
+        )
+    raise HTTPException(502, f"All Qwen keys failed: {'; '.join(errors_by_key[:3])}")
+
+# ==============================================================================
 # HEALTH CHECK
 # ==============================================================================
 @app.get("/health")
@@ -2333,6 +2459,8 @@ async def generate_cv(req: CVRequest):
             cv_data, key_used, key_idx = await call_deepseek(req)
         elif req.provider == "openai":
             cv_data, key_used, key_idx = await call_openai(req)
+        elif req.provider == "qwen":
+            cv_data, key_used, key_idx = await call_qwen(req)
         else:
             raise HTTPException(400, f"Unsupported provider: {req.provider}")
         
@@ -2562,6 +2690,42 @@ async def check_openai_keys(body: dict):
                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", **extra_headers},
                     json={"model": check_model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1})
                 status = "ok" if r.status_code == 200 else "rate_limited" if r.status_code == 429 else "invalid"
+                results.append({"key": mask(key), "status": status})
+            except Exception:
+                results.append({"key": mask(key), "status": "error"})
+    return {"results": results}
+
+@app.post("/check-qwen-keys")
+async def check_qwen_keys(body: dict):
+    """
+    Verify Qwen / DashScope API keys against the international endpoint.
+    Uses qwen-turbo with max_tokens=1 (cheapest possible check call).
+    """
+    keys = body.get("keys", [])
+    model = body.get("model", "qwen-turbo")
+    results = []
+    async with httpx.AsyncClient(timeout=15) as client:
+        for key in keys:
+            key = (key or "").strip()
+            if not key:
+                results.append({"key": "***", "status": "empty"})
+                continue
+            try:
+                r = await client.post(
+                    QWEN_URL,
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json={"model": model,
+                          "messages": [{"role": "user", "content": "hi"}],
+                          "max_tokens": 1},
+                )
+                if r.status_code == 200:
+                    status = "ok"
+                elif r.status_code == 429:
+                    status = "rate_limited"
+                elif r.status_code in (401, 403):
+                    status = "invalid"
+                else:
+                    status = f"http_{r.status_code}"
                 results.append({"key": mask(key), "status": status})
             except Exception:
                 results.append({"key": mask(key), "status": "error"})
