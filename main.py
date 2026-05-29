@@ -1039,19 +1039,25 @@ def extract_json(raw: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # Count unclosed brackets (ignoring those inside strings)
+    # Count unclosed brackets and detect unterminated strings (truncated response)
     opens = []
     in_str = False
     escape = False
-    for ch in j:
+    last_str_start = -1
+    for pos, ch in enumerate(j):
         if escape:
             escape = False
             continue
-        if ch == "\\" and in_str:
+        if ch == chr(92) and in_str:
             escape = True
             continue
-        if ch == '"':
-            in_str = not in_str
+        if ch == chr(34):
+            if in_str:
+                in_str = False
+                last_str_start = -1
+            else:
+                in_str = True
+                last_str_start = pos
             continue
         if in_str:
             continue
@@ -1061,9 +1067,26 @@ def extract_json(raw: str) -> dict:
             if opens and opens[-1] == ch:
                 opens.pop()
 
-    # Strip any trailing incomplete string / value that might confuse the parser
-    j_repaired = j.rstrip().rstrip(",").rstrip()
-    # Close all unclosed structures in reverse order
+    # If response was cut off mid-string, truncate back before that string
+    j_repaired = j
+    if in_str and last_str_start > 0:
+        j_repaired = j[:last_str_start].rstrip().rstrip(":").rstrip().rstrip(",").rstrip()
+        # Recount opens on the truncated text
+        opens2 = []
+        in_s2 = False
+        esc2 = False
+        for ch in j_repaired:
+            if esc2: esc2 = False; continue
+            if ch == chr(92) and in_s2: esc2 = True; continue
+            if ch == chr(34): in_s2 = not in_s2; continue
+            if in_s2: continue
+            if ch in "{[": opens2.append("}" if ch == "{" else "]")
+            elif ch in "}]":
+                if opens2 and opens2[-1] == ch: opens2.pop()
+        opens = opens2
+
+    # Strip any trailing incomplete value and close all open structures
+    j_repaired = j_repaired.rstrip().rstrip(",").rstrip()
     j_repaired += "".join(reversed(opens))
 
     try:
@@ -1074,8 +1097,12 @@ def extract_json(raw: str) -> dict:
         if end != -1:
             candidate = j_repaired[:end + 1]
             candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
-            return json.loads(candidate)
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                pass
         raise ValueError("Could not parse or repair JSON from model response")
+
 
 def esc_html(s: str) -> str:
     if not s:
@@ -1452,8 +1479,9 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
                           _deadline: float = 0.0) -> dict:
     import time as _t
 
-    # Hard per-call timeout — must stay well under the 60s client limit.
-    per_call_timeout = 50
+    # Timeout: OpenRouter free = 170s; fast providers = 50s.
+    # Detected by checking the url passed to us (set by caller context via _deadline).
+    per_call_timeout = 160 if "openrouter" in url else 50
     mk = mask(key)
     provider_tag = url.split("/")[2].split(".")[0]   # e.g. "api" → use model instead
     tag = f"[{model}|{mk}|{stage}]"
@@ -1669,7 +1697,9 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
     """Generate CV using single dynamic prompt - everything from JD"""
     import time as _t
 
-    _deadline = _t.time() + 55   # 55s: leaves 5s buffer under 60s client timeout
+    # OpenRouter free models can take 2-3 min; other providers are fast (<30s)
+    _or_slow = "openrouter" in url
+    _deadline = _t.time() + (170 if _or_slow else 55)  # 170s for OR free, 55s for fast providers
     years_exp = (req.years_exp or "").strip()
     years_exp_clean = years_exp.replace("+", "").strip()
 
