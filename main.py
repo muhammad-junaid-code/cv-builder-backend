@@ -822,8 +822,17 @@ SECTION-BY-SECTION INSTRUCTIONS
    • Do NOT write a long paragraph — keep it punchy and scannable.
 
 ③ competencies
-   Exactly 10 domain-specific skill phrases from the JD, separated by " * ".
-   Phrases must name real capabilities, not generic filler.
+   Exactly 12 senior-level competency phrases, separated by " * ".
+   MANDATORY: Each phrase must reflect ONE of the following dimensions — vary across all 12:
+     • Technical leadership & architecture ownership (e.g. "Distributed Systems Architecture")
+     • Delivery & execution (e.g. "End-to-End Delivery Ownership", "Agile Sprint Execution")
+     • Collaboration & stakeholder management (e.g. "Cross-Functional Team Leadership")
+     • Strategic thinking (e.g. "Technology Roadmap Planning", "Risk-Driven Decision Making")
+     • Problem-solving & engineering excellence (e.g. "Root-Cause Analysis & Incident Resolution")
+     • Domain-specific technical capability directly from the JD (e.g. actual tool/method names)
+   Each phrase: 3–5 words, title-case, punchy, sounds like a senior professional wrote it.
+   NEVER generic filler like "Good communication" or "Team player" or "Hard worker".
+   These must feel like a C-level or Principal Engineer's core strengths.
 
 ④ keywords
    18–20 ATS keywords from the JD, comma-separated. Cover tools, methods, and domain terms.
@@ -846,8 +855,12 @@ SECTION-BY-SECTION INSTRUCTIONS
    bullets : 4 achievement bullets per company, each 20–30 words.
              Each bullet must be unique — different technology, different metric, different context.
              No copy-pasting between companies. Bullets must sound like lived experience.
-   tech    : 6–8 JD technologies used at that company, pipe-separated.
-             Do NOT repeat the same tech set across all companies.
+   tech    : EXACTLY 8–10 JD technologies used at that company, pipe-separated.
+             CRITICAL: Each company MUST have a DIFFERENT, non-overlapping tech stack.
+             Company 1 (most recent): use the most advanced/relevant tools from the JD.
+             Company 2: use a different subset — different frameworks, databases, or infra tools.
+             Company 3 (if present): use earlier/foundational tools from the JD ecosystem.
+             Zero overlap in the "tech" field across companies is mandatory.
 
 ⑧ projects  [EXACTLY 4 — split as described]
    PROJECT SPLIT RULE (mandatory):
@@ -864,7 +877,8 @@ SECTION-BY-SECTION INSTRUCTIONS
      overview : 3–4 sentences. Story arc: problem → approach → technologies → outcome.
                 Reads like a real project summary a professional would write.
      bullets  : 3 achievement bullets, each with a concrete metric or outcome.
-     techTags : 5–7 technologies from the JD relevant to that project.
+     techTags : 7–9 technologies from the JD relevant to that project.
+               Each project must use a DISTINCT set of tags — no two projects share the same list.
 
 ⑨ relatedTech  [5 category objects, 5 items each — all from JD]
 
@@ -882,7 +896,7 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 {{
   "title": "Inferred Role | Tech1, Tech2, Tech3 | {years_display}",
   "summary": "{years_display} years of experience in [JD domain]… (4–5 sentences, 70–100 words)",
-  "competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10",
+  "competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10 * Phrase11 * Phrase12",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18",
   "technologies": {{
     "mustHave":   ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10","t11","t12"],
@@ -907,7 +921,7 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
         "Process or delivery improvement — JD technology + outcome (20–30 words).",
         "Business or stakeholder impact — JD context + result (20–30 words)."
       ],
-      "tech": "Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6 | Tech7 | Tech8"
+      "tech": "Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6 | Tech7 | Tech8 | Tech9 | Tech10"
     }}
   ],
   "projects": [
@@ -919,25 +933,25 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
         "Technical challenge overcome with quantified result (20–30 words).",
         "Business benefit delivered (20–30 words)."
       ],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
     }},
     {{
       "name": "Second Business-Domain Project Name",
       "overview": "3–4 sentences for a different business/industry angle.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
+      "techTags": ["TechA","TechB","TechC","TechD","TechE","TechF","TechG","TechH"]
     }},
     {{
       "name": "JD-Technical Requirements Project Name",
       "overview": "3–4 sentences aligned with the specific technical skills in the JD.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
+      "techTags": ["TechI","TechJ","TechK","TechL","TechM","TechN","TechO","TechP"]
     }},
     {{
       "name": "Second JD-Technical Requirements Project Name",
       "overview": "3–4 sentences for a different technical capability from the JD.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
+      "techTags": ["TechQ","TechR","TechS","TechT","TechU","TechV","TechW","TechX"]
     }}
   ],
   "education": {_edu_json_block},
@@ -955,6 +969,12 @@ PRE-SUBMIT CHECKLIST — verify every item before writing a single character of 
 ✓ summary opens with exactly "{years_display} years of experience in …"
 ✓ summary is 70–100 words (4–5 sentences) — concise, not bloated
 ✓ company role titles follow the seniority progression rules above
+✓ every company "tech" field has 8–10 pipe-separated technologies (NEVER fewer than 8)
+✓ no two companies share the same "tech" entries — zero overlap mandatory
+✓ every project "techTags" has 7–9 items (NEVER fewer than 7)
+✓ no two projects share the same techTags set — each is a distinct list
+✓ competencies has exactly 12 " * " separated phrases — senior-level, leadership-oriented
+✓ zero generic filler in competencies ("Good communication" etc. is NOT acceptable)
 ✓ projects 1–2 are grounded in the company/industry domain
 ✓ projects 3–4 target the JD's specific technical requirements
 ✓ zero company names appear anywhere except the "company" JSON key
@@ -1522,12 +1542,17 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         elif r.status_code == 400:
             body_text = r.text[:400]
             _log.error("%s HTTP 400 Bad Request — likely max_tokens too high or prompt too long. Body: %s", tag, body_text)
-            # DeepSeek on Groq has a strict 8192 token limit (input+output combined)
-            # Give a clearer message so the user knows what to do
+            # Check for decommissioned model error specifically
+            if "decommissioned" in body_text.lower() or "model_decommissioned" in body_text:
+                raise ValueError(
+                    f"Stage {stage}: Model '{model}' has been decommissioned by Groq. "
+                    f"Please go to Settings and select a different model (e.g. llama-3.3-70b-versatile). "
+                    f"Details: {body_text}"
+                )
             if "deepseek" in model.lower():
                 raise ValueError(
-                    f"Stage {stage}: HTTP 400 — DeepSeek on Groq has a small context window (8192 tokens). "
-                    f"Try shortening the job description, or switch to a Llama model in Settings. "
+                    f"Stage {stage}: HTTP 400 — DeepSeek on Groq has a small context window. "
+                    f"Try shortening the job description, or switch to llama-3.3-70b-versatile in Settings. "
                     f"Details: {body_text}"
                 )
             raise ValueError(
@@ -1796,6 +1821,21 @@ async def call_groq(req: CVRequest) -> tuple:
         raise HTTPException(400, "No valid Groq keys (must start with gsk_).")
 
     model = req.model or "llama-3.1-8b-instant"
+
+    # ── Remap decommissioned Groq models to active replacements ────────────────
+    # deepseek-r1-distill-llama-70b was decommissioned by Groq (May 2026).
+    # Any deepseek-r1-distill-* model on Groq is redirected to the recommended
+    # replacement. See: https://console.groq.com/docs/deprecations
+    _GROQ_DECOMMISSIONED = {
+        "deepseek-r1-distill-llama-70b":   "llama-3.3-70b-versatile",
+        "deepseek-r1-distill-llama-8b":    "llama-3.1-8b-instant",
+        "deepseek-r1-distill-qwen-32b":    "llama-3.3-70b-versatile",
+    }
+    if model in _GROQ_DECOMMISSIONED:
+        remapped = _GROQ_DECOMMISSIONED[model]
+        _log.warning("[Groq] Model '%s' is decommissioned — auto-remapping to '%s'", model, remapped)
+        model = remapped
+
     sorted_keys = _prioritised_keys(valid_keys)
     errors_by_key = []
     rate_limited_count = 0
