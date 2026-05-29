@@ -116,6 +116,10 @@ _QWEN_MODELS = {
     "qwen-long-latest",
 }
 
+# Cache: remembers which endpoint (intl vs CN) worked for each masked key.
+# Avoids a probe request on every CV generation, saving ~2s.
+_qwen_endpoint_cache: dict = {}  # mk -> QWEN_URL or QWEN_URL_CN
+
 # Qwen3 models that default to "thinking" mode and require enable_thinking=false
 # for non-streaming calls (otherwise DashScope returns HTTP 400).
 _QWEN_THINKING_MODELS = {
@@ -2418,26 +2422,17 @@ async def call_qwen(req: CVRequest) -> tuple:
                 continue
 
             _log.info("[Qwen] Trying key %d/%d (%s) with model %s", i+1, len(sorted_keys), mk, model)
-            # Determine which endpoint to use: try international first, fall back to CN (bailian keys)
-            qwen_url_to_use = QWEN_URL
-            try:
-                probe = await client.post(
-                    QWEN_URL,
-                    headers=headers,
-                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1,
-                         **({"enable_thinking": False} if model in _QWEN_THINKING_MODELS else {})},
-                    timeout=8,
-                )
-                if probe.status_code in (401, 403):
-                    _log.info("[Qwen] Key %d rejected on intl endpoint — switching to CN endpoint", i+1)
-                    qwen_url_to_use = QWEN_URL_CN
-            except Exception:
-                pass  # network error on probe — just try with default URL
+            # Use cached endpoint if known; otherwise default to intl and learn on first failure.
+            qwen_url_to_use = _qwen_endpoint_cache.get(mk, QWEN_URL)
+            _log.info("[Qwen] Using endpoint %s for key %s (cached=%s)",
+                      "CN" if qwen_url_to_use == QWEN_URL_CN else "intl",
+                      mk, mk in _qwen_endpoint_cache)
 
             try:
                 cv = await generate_cv_dynamic(req, client, key, model, qwen_url_to_use, headers,
                                                max_output_tokens=16000)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
+                _qwen_endpoint_cache[mk] = qwen_url_to_use  # remember for next request
                 _log_generation(req.job_title, mk, i, 0, model, True)
                 _log.info("[Qwen] SUCCESS — key %d (%s) via %s", i+1, mk, qwen_url_to_use)
                 return cv, mk, i
@@ -2449,8 +2444,24 @@ async def call_qwen(req: CVRequest) -> tuple:
                     await asyncio.sleep(3)
                 continue
             except Exception as e:
-                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:120]}")
-                _log.error("[Qwen] FAILED key %d (%s): %s", i+1, mk, str(e)[:200])
+                err_str = str(e)
+                # If this was an auth failure on intl, retry once with CN endpoint
+                if qwen_url_to_use == QWEN_URL and ("401" in err_str or "403" in err_str or "invalid" in err_str.lower()):
+                    _log.info("[Qwen] Auth failed on intl — retrying with CN endpoint for key %s", mk)
+                    try:
+                        cv = await generate_cv_dynamic(req, client, key, model, QWEN_URL_CN, headers,
+                                                       max_output_tokens=16000)
+                        _key_usage[mk] = _key_usage.get(mk, 0) + 1
+                        _qwen_endpoint_cache[mk] = QWEN_URL_CN  # cache CN as working endpoint
+                        _log_generation(req.job_title, mk, i, 0, model, True)
+                        _log.info("[Qwen] SUCCESS on CN fallback — key %d (%s)", i+1, mk)
+                        return cv, mk, i
+                    except Exception as e2:
+                        errors_by_key.append(f"Key {i+1} ({mk}): intl={err_str[:60]} CN={str(e2)[:60]}")
+                        _log.error("[Qwen] FAILED on both endpoints for key %d (%s)", i+1, mk)
+                else:
+                    errors_by_key.append(f"Key {i+1} ({mk}): {err_str[:120]}")
+                    _log.error("[Qwen] FAILED key %d (%s): %s", i+1, mk, err_str[:200])
                 continue
 
     _log.error("[Qwen] All %d key(s) failed. rate_limited=%d. Errors: %s",
