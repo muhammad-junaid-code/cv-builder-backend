@@ -1482,6 +1482,14 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             _log.error("%s INVALID/EXPIRED KEY — HTTP %d for key %s", tag, r.status_code, mk)
             raise ValueError(f"Invalid/expired key on {stage} (HTTP {r.status_code})")
 
+        elif r.status_code == 404:
+            _log.error("%s MODEL NOT FOUND — HTTP 404 — model=%s is not available", tag, model)
+            raise ValueError(
+                f"Model \'{model}\' not found on this provider (HTTP 404). "
+                f"Please select a valid model in Settings. "
+                f"For Cerebras, valid models are: llama3.1-8b, qwen-3-235b-a22b."
+            )
+
         else:
             last_error = f"HTTP {r.status_code} on {stage}"
             _log.warning("%s Unexpected status %d on attempt %d — %s",
