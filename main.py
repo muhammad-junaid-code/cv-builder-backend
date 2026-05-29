@@ -822,21 +822,8 @@ SECTION-BY-SECTION INSTRUCTIONS
    • Do NOT write a long paragraph — keep it punchy and scannable.
 
 ③ competencies
-   Exactly 10 competency phrases, separated by " • " (unicode bullet, not asterisk).
-   Each phrase: 3–6 words, Title Case, reads as a named professional strength.
-   BLEND RULE — mandatory, both dimensions required:
-     Technical (5 phrases): high-impact capabilities drawn directly from the JD domain.
-       Must name specific tools, methodologies, or architectural patterns from the JD.
-       Examples of the RIGHT level: "Cloud-Native Microservices Architecture", "CI/CD Pipeline Automation",
-       "SQL Query Performance Tuning", "RESTful API Design and Governance", "Azure Kubernetes Orchestration".
-       Examples of WRONG level (too generic, forbidden): "Good Coding Skills", "Works with Databases".
-     Professional (5 phrases): senior-level leadership and delivery strengths aligned to this role's seniority.
-       Draw from: Strategic Delivery Ownership, Cross-Functional Team Leadership, Stakeholder Communication,
-       Agile Scrum Facilitation, Engineering Mentorship, Executive Stakeholder Management,
-       On-Time Delivery Under Pressure, Outcome-Driven Problem Solving, Technical Decision Making,
-       Risk Identification and Mitigation, Continuous Improvement Culture, Accountability and Ownership.
-       Pick whichever 5 best match THIS role's seniority and the JD responsibilities.
-   Final output must read like a senior professional's profile card — not a technology checklist.
+   Exactly 10 domain-specific skill phrases from the JD, separated by " * ".
+   Phrases must name real capabilities, not generic filler.
 
 ④ keywords
    18–20 ATS keywords from the JD, comma-separated. Cover tools, methods, and domain terms.
@@ -848,18 +835,10 @@ SECTION-BY-SECTION INSTRUCTIONS
 
 ⑥ skills  [TECHNICAL SKILLS section — 5 entries only]
    Format each entry as: "Short Role-Specific Category: tech1, tech2, … tech12"
-   • Category labels must be short, specific to THIS role, derived from the JD domain.
-   • 10–12 technologies per category, all from the JD. No duplicates across categories.
-   CATEGORY INTEGRITY — strictly enforced, no exceptions:
-   • Backend languages, frameworks, runtime → backend category only.
-   • UI frameworks, CSS libraries, state management, frontend build tools → frontend category only.
-   • Cloud platforms, managed services, serverless, CDN, object storage → cloud category only.
-   • Containers, orchestration, CI/CD pipelines, IaC, monitoring, logging → devops/infra category only.
-   • Query languages, ORMs, caching engines, database engines, migrations → database category only.
-   • Cross-cutting tools (Git, VS Code) → most relevant category for this specific role.
-   • NEVER place a cloud/devops/infra tool inside a frontend category.
-   • NEVER place a UI library inside a backend or database category.
-   • The grouping must reflect the actual technical domain of each tool, not alphabetical order.
+   • Category labels must be short, specific to THIS role, and useful as subheadings.
+   • Use small subheading style — no nested structures, no extra sections.
+   • 10–12 technologies per category, all from the JD.
+   • No duplicates across categories.
 
 ⑦ companies  [one entry per company listed above, in order]
    role    : Apply the seniority progression rules above. Infer the full title
@@ -867,17 +846,8 @@ SECTION-BY-SECTION INSTRUCTIONS
    bullets : 4 achievement bullets per company, each 20–30 words.
              Each bullet must be unique — different technology, different metric, different context.
              No copy-pasting between companies. Bullets must sound like lived experience.
-             Start every bullet with a strong past-tense action verb (e.g. Architected, Delivered, Optimised).
-             Include one concrete quantified metric per bullet (%, $, time saved, users, count).
-             Bullets are plain text — no leading bullet symbol, no dash, no asterisk prefix.
-   tech    : Exactly 8–10 JD technologies, pipe-separated, for THIS company only.
-             UNIQUENESS RULE — mandatory, no exceptions:
-             • The tech list for each company must be substantially different from all other companies.
-             • Most-recent company: most advanced / current stack from the JD (latest frameworks, cloud-native tools).
-             • Mid-career company: intermediate stack — transitional tools, earlier versions, different sub-domain.
-             • Earliest company: foundational / entry-level tools from the JD domain.
-             • NEVER produce identical or near-identical tech lists across companies.
-             • Spread across the full JD stack: backend, frontend, cloud, devops, database — not just top-line items.
+   tech    : 6–8 JD technologies used at that company, pipe-separated.
+             Do NOT repeat the same tech set across all companies.
 
 ⑧ projects  [EXACTLY 4 — split as described]
    PROJECT SPLIT RULE (mandatory):
@@ -894,10 +864,7 @@ SECTION-BY-SECTION INSTRUCTIONS
      overview : 3–4 sentences. Story arc: problem → approach → technologies → outcome.
                 Reads like a real project summary a professional would write.
      bullets  : 3 achievement bullets, each with a concrete metric or outcome.
-                Plain text — no leading symbol. Start with an action verb. Include a metric.
-     techTags : 7–9 technologies from the JD relevant to that specific project.
-                Must be unique per project — no two projects should share the same tag list.
-                Cover the full relevant stack: language, framework, cloud service, database, devops tool.
+     techTags : 5–7 technologies from the JD relevant to that project.
 
 ⑨ relatedTech  [5 category objects, 5 items each — all from JD]
 
@@ -915,7 +882,7 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 {{
   "title": "Inferred Role | Tech1, Tech2, Tech3 | {years_display}",
   "summary": "{years_display} years of experience in [JD domain]… (4–5 sentences, 70–100 words)",
-  "competencies": "Phrase1 • Phrase2 • Phrase3 • Phrase4 • Phrase5 • Phrase6 • Phrase7 • Phrase8 • Phrase9 • Phrase10",
+  "competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18",
   "technologies": {{
     "mustHave":   ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10","t11","t12"],
@@ -940,7 +907,7 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
         "Process or delivery improvement — JD technology + outcome (20–30 words).",
         "Business or stakeholder impact — JD context + result (20–30 words)."
       ],
-      "tech": "Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6 | Tech7 | Tech8 | Tech9 | Tech10"
+      "tech": "Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6 | Tech7 | Tech8"
     }}
   ],
   "projects": [
@@ -952,25 +919,25 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
         "Technical challenge overcome with quantified result (20–30 words).",
         "Business benefit delivered (20–30 words)."
       ],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
     }},
     {{
       "name": "Second Business-Domain Project Name",
       "overview": "3–4 sentences for a different business/industry angle.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
     }},
     {{
       "name": "JD-Technical Requirements Project Name",
       "overview": "3–4 sentences aligned with the specific technical skills in the JD.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
     }},
     {{
       "name": "Second JD-Technical Requirements Project Name",
       "overview": "3–4 sentences for a different technical capability from the JD.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
     }}
   ],
   "education": {_edu_json_block},
@@ -993,11 +960,6 @@ PRE-SUBMIT CHECKLIST — verify every item before writing a single character of 
 ✓ zero company names appear anywhere except the "company" JSON key
 ✓ every technology, skill, and keyword came from the job description
 ✓ output is raw JSON only — no markdown fences, no explanatory text
-✓ each company has exactly 8–10 pipe-separated technologies, substantially different across positions
-✓ each project has 7–9 techTags, unique per project, covering full relevant stack
-✓ competencies: exactly 10 phrases separated by " • ", blending 5 technical + 5 professional strengths
-✓ skills categories have correct domain separation — cloud/devops tools never under frontend
-✓ bullets are plain text starting with an action verb — no leading bullet symbol anywhere
 """
 
     user_prompt = f"""JOB DESCRIPTION:
@@ -1496,12 +1458,12 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             finish_reason = resp_json["choices"][0].get("finish_reason", "?")
             _log.info("%s SUCCESS — response %d chars, finish_reason=%s", tag, len(raw), finish_reason)
             if len(raw) < 800:
-                _log.warning("%s Response suspiciously short (%d chars) — raw: %r", tag, len(raw), raw[:300])
+                _log.warning("%s Response short (%d chars) — raw: %r", tag, len(raw), raw[:300])
             if finish_reason == "length":
                 if attempt < 2:
                     await asyncio.sleep(2)
                     continue
-                raise ValueError(f"Stage {stage}: model response cut off (finish_reason=length). Try again.")
+                raise ValueError(f"Stage {stage}: response cut off (finish_reason=length). Try again.")
             try:
                 return extract_json(raw)
             except ValueError as parse_err:
@@ -1536,11 +1498,19 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             _log.error("%s INVALID/EXPIRED KEY — HTTP %d for key %s", tag, r.status_code, mk)
             raise ValueError(f"Invalid/expired key on {stage} (HTTP {r.status_code})")
 
+        elif r.status_code == 400:
+            body_text = r.text[:300]
+            _log.error("%s HTTP 400 Bad Request — likely max_tokens too high or prompt too long. Body: %s", tag, body_text)
+            raise ValueError(
+                f"Stage {stage}: HTTP 400 — request rejected (prompt+tokens too large or invalid). "
+                f"Details: {body_text}"
+            )
+
         elif r.status_code == 404:
-            _log.error("%s MODEL NOT FOUND — HTTP 404 — model=%s is not available", tag, model)
+            _log.error("%s MODEL NOT FOUND — HTTP 404 — model=%s", tag, model)
             raise ValueError(
                 f"Model \'{model}\' not found (HTTP 404). "
-                f"For Cerebras, valid models are: gpt-oss-120b, zai-glm-4.7."
+                f"For Cerebras use: gpt-oss-120b or zai-glm-4.7."
             )
 
         else:
@@ -1559,7 +1529,8 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
 # PROVIDER CALLERS
 # ==============================================================================
 async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
-                               url: str, headers: dict) -> dict:
+                               url: str, headers: dict,
+                               max_output_tokens: int = 6000) -> dict:
     """Generate CV using single dynamic prompt - everything from JD"""
     import time as _t
 
@@ -1590,7 +1561,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
               provider_host, len(system_prompt), len(user_prompt))
 
     result = await call_llm_atomic(client, key, model, url, system_prompt, user_prompt,
-                                    "FullCV", headers, max_tokens=8000, _deadline=_deadline)
+                                    "FullCV", headers, max_tokens=max_output_tokens, _deadline=_deadline)
 
     if not result:
         _log.error("[GenCV|%s] AI returned empty/unparseable response", provider_host)
@@ -1749,7 +1720,8 @@ async def call_cerebras(req: CVRequest) -> tuple:
                 continue
 
             try:
-                cv = await generate_cv_dynamic(req, client, key, model, CEREBRAS_URL, headers)
+                cv = await generate_cv_dynamic(req, client, key, model, CEREBRAS_URL, headers,
+                                               max_output_tokens=6000)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
                 _log_generation(req.job_title, mk, i, 0, model, True)
                 return cv, mk, i
@@ -1809,7 +1781,9 @@ async def call_groq(req: CVRequest) -> tuple:
             _log.info("[Groq] Trying key %d/%d (%s) with model %s",
                       i + 1, len(sorted_keys), mk, model)
             try:
-                cv = await generate_cv_dynamic(req, client, key, model, GROQ_URL, headers)
+                # Groq free tier: 6000 TPM (input+output). Prompt ~3200 tokens → cap output at 5500.
+                cv = await generate_cv_dynamic(req, client, key, model, GROQ_URL, headers,
+                                               max_output_tokens=5500)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
                 _log_generation(req.job_title, mk, i, 0, model, True)
                 _log.info("[Groq] SUCCESS — key %d (%s)", i + 1, mk)
