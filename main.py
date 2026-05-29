@@ -116,6 +116,16 @@ _QWEN_MODELS = {
     "qwen-long-latest",
 }
 
+# Qwen3 models that default to "thinking" mode and require enable_thinking=false
+# for non-streaming calls (otherwise DashScope returns HTTP 400).
+_QWEN_THINKING_MODELS = {
+    "qwen3-max", "qwen3-max-preview",
+    "qwen3-plus", "qwen3.5-plus",
+    "qwen3.5-flash",
+    "qwen3-235b-a22b", "qwen3-32b", "qwen3-30b-a3b", "qwen3-14b", "qwen3-8b",
+    "qwen3-coder-plus", "qwen3-coder-flash",
+}
+
 # Only static data: company names (users can edit via profile)
 CANDIDATE_COMPANIES = [
     {"name": "MULTYLOGICS SOLUTIONS",        "start": "May 2024",  "end": "Present"},
@@ -1526,7 +1536,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
 
     # Timeout: OpenRouter free = 170s; fast providers = 50s.
     # Detected by checking the url passed to us (set by caller context via _deadline).
-    per_call_timeout = 160 if "openrouter" in url else 50
+    per_call_timeout = 160 if "openrouter" in url else (120 if "dashscope" in url else 50)
     mk = mask(key)
     provider_tag = url.split("/")[2].split(".")[0]   # e.g. "api" → use model instead
     tag = f"[{model}|{mk}|{stage}]"
@@ -1559,6 +1569,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
                     ],
                     "temperature": 0.2,
                     "max_tokens": max_tokens,
+                    **({"enable_thinking": False} if model in _QWEN_THINKING_MODELS else {}),
                 },
                 timeout=per_call_timeout,
             )
