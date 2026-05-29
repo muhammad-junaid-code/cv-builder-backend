@@ -541,7 +541,7 @@ class CVRequest(BaseModel):
     job_description: str
     years_exp: Optional[str] = ""
     provider: str = "cerebras"
-    model: str = "llama3.1-8b"
+    model: str = "gpt-oss-120b"
     groq_keys: Optional[List[str]] = []
     cerebras_keys: Optional[List[str]] = []
     deepseek_keys: Optional[List[str]] = []
@@ -1453,9 +1453,36 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         _log.info("%s HTTP %d received in %.1fs", tag, r.status_code, elapsed)
 
         if r.status_code == 200:
-            raw = r.json()["choices"][0]["message"]["content"]
-            _log.info("%s SUCCESS — response %d chars", tag, len(raw))
-            return extract_json(raw)
+            resp_json = r.json()
+            raw = resp_json["choices"][0]["message"]["content"]
+            finish_reason = resp_json["choices"][0].get("finish_reason", "?")
+            _log.info("%s SUCCESS — response %d chars, finish_reason=%s", tag, len(raw), finish_reason)
+            if len(raw) < 800:
+                _log.warning("%s Response suspiciously short (%d chars) — raw preview: %r",
+                             tag, len(raw), raw[:300])
+            if finish_reason == "length":
+                _log.warning("%s finish_reason=length — model hit token cap; response likely truncated", tag)
+                if attempt < 2:
+                    _log.info("%s Retrying with lower max_tokens to avoid truncation…", tag)
+                    await asyncio.sleep(2)
+                    continue
+                raise ValueError(
+                    f"Stage {stage}: model response was cut off (finish_reason=length). "
+                    f"The free tier may have a token-per-minute cap. Try again in a moment, "
+                    f"or switch to a different provider."
+                )
+            try:
+                return extract_json(raw)
+            except ValueError as parse_err:
+                _log.warning("%s JSON parse failed (%s) — raw: %r", tag, parse_err, raw[:500])
+                if attempt < 2:
+                    _log.info("%s Retrying after JSON parse failure…", tag)
+                    await asyncio.sleep(3)
+                    continue
+                raise ValueError(
+                    f"Stage {stage}: model returned a non-JSON response ({len(raw)} chars). "
+                    f"Raw start: {raw[:200]!r}"
+                )
 
         elif r.status_code == 429:
             retry_after = int(r.headers.get("retry-after", 0))
@@ -1481,14 +1508,6 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         elif r.status_code in (401, 403):
             _log.error("%s INVALID/EXPIRED KEY — HTTP %d for key %s", tag, r.status_code, mk)
             raise ValueError(f"Invalid/expired key on {stage} (HTTP {r.status_code})")
-
-        elif r.status_code == 404:
-            _log.error("%s MODEL NOT FOUND — HTTP 404 — model=%s is not available", tag, model)
-            raise ValueError(
-                f"Model \'{model}\' not found on this provider (HTTP 404). "
-                f"Please select a valid model in Settings. "
-                f"For Cerebras, valid models are: llama3.1-8b, qwen-3-235b-a22b."
-            )
 
         else:
             last_error = f"HTTP {r.status_code} on {stage}"
@@ -1675,7 +1694,7 @@ async def call_cerebras(req: CVRequest) -> tuple:
     if not valid_keys:
         raise HTTPException(400, "No valid Cerebras keys found.")
 
-    model = req.model or "llama3.1-8b"
+    model = req.model or "gpt-oss-120b"
     sorted_keys = _prioritised_keys(valid_keys)
     errors_by_key = []
     rate_limited_count = 0
@@ -1693,30 +1712,6 @@ async def call_cerebras(req: CVRequest) -> tuple:
                 msg = f"Key {i+1} ({mk}): still rate-limited ({remaining}s remaining)"
                 errors_by_key.append(msg)
                 _log.warning("[Cerebras] %s — skipping", msg)
-                continue
-
-            # Quick probe to skip obviously bad/rate-limited keys
-            try:
-                probe = await client.post(
-                    CEREBRAS_URL,
-                    headers=headers,
-                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
-                    timeout=15,
-                )
-                if probe.status_code in (401, 403):
-                    errors_by_key.append(f"Key {i+1} ({mk}): invalid key")
-                    continue
-                if probe.status_code == 429:
-                    rate_limited_count += 1
-                    retry_after = int(probe.headers.get("retry-after", 60))
-                    _key_rate_limited_until[mk] = _t.time() + min(retry_after, 120)
-                    errors_by_key.append(f"Key {i+1} ({mk}): rate limited (retry-after {retry_after}s)")
-                    # Small gap before trying next key
-                    if i < len(sorted_keys) - 1:
-                        await asyncio.sleep(2)
-                    continue
-            except Exception as e:
-                errors_by_key.append(f"Key {i+1} ({mk}): probe failed - {str(e)[:50]}")
                 continue
 
             try:
@@ -2185,7 +2180,7 @@ async def generate_pdf(req: PDFRequest):
 @app.post("/check-cerebras-keys")
 async def check_cerebras_keys(body: dict):
     keys = body.get("keys", [])
-    model = body.get("model", "llama3.1-8b")
+    model = body.get("model", "gpt-oss-120b")
     results = []
     async with httpx.AsyncClient(timeout=10) as client:
         for key in keys:
