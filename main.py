@@ -822,18 +822,21 @@ SECTION-BY-SECTION INSTRUCTIONS
    • Do NOT write a long paragraph — keep it punchy and scannable.
 
 ③ competencies
-   Exactly 10 competency phrases separated by " • " (bullet character, not asterisk).
-   Each phrase must be 3–6 words, capitalised like a title, and read as a professional strength.
-   BLEND RULE — distribute across two dimensions:
-     a) Technical depth (5–6 phrases): specific capabilities drawn from the JD domain and tools.
-        e.g. "Cloud-Native API Architecture", "SQL Query Performance Optimisation", "CI/CD Pipeline Design".
-     b) Professional strengths (4–5 phrases): leadership, delivery, and interpersonal qualities
-        that match the candidate's seniority level and the role's responsibilities.
-        Draw from: stakeholder management, agile delivery, team mentorship, cross-functional
-        collaboration, strategic planning, on-time delivery, problem-solving, accountability,
-        executive communication, decision-making — pick whichever fit this specific role.
-   Result must read like a senior professional's profile, not a technology checklist.
-   No generic filler ("Good communicator", "Team player"). Every phrase must be specific.
+   Exactly 10 competency phrases, separated by " • " (unicode bullet, not asterisk).
+   Each phrase: 3–6 words, Title Case, reads as a named professional strength.
+   BLEND RULE — mandatory, both dimensions required:
+     Technical (5 phrases): high-impact capabilities drawn directly from the JD domain.
+       Must name specific tools, methodologies, or architectural patterns from the JD.
+       Examples of the RIGHT level: "Cloud-Native Microservices Architecture", "CI/CD Pipeline Automation",
+       "SQL Query Performance Tuning", "RESTful API Design and Governance", "Azure Kubernetes Orchestration".
+       Examples of WRONG level (too generic, forbidden): "Good Coding Skills", "Works with Databases".
+     Professional (5 phrases): senior-level leadership and delivery strengths aligned to this role's seniority.
+       Draw from: Strategic Delivery Ownership, Cross-Functional Team Leadership, Stakeholder Communication,
+       Agile Scrum Facilitation, Engineering Mentorship, Executive Stakeholder Management,
+       On-Time Delivery Under Pressure, Outcome-Driven Problem Solving, Technical Decision Making,
+       Risk Identification and Mitigation, Continuous Improvement Culture, Accountability and Ownership.
+       Pick whichever 5 best match THIS role's seniority and the JD responsibilities.
+   Final output must read like a senior professional's profile card — not a technology checklist.
 
 ④ keywords
    18–20 ATS keywords from the JD, comma-separated. Cover tools, methods, and domain terms.
@@ -845,20 +848,18 @@ SECTION-BY-SECTION INSTRUCTIONS
 
 ⑥ skills  [TECHNICAL SKILLS section — 5 entries only]
    Format each entry as: "Short Role-Specific Category: tech1, tech2, … tech12"
-   • Category labels must be short, specific to THIS role, and derive naturally from the JD domain.
-   • 10–12 technologies per category, all from the JD.
-   • No duplicates across categories.
-   CATEGORY INTEGRITY RULE — strictly enforced, no exceptions:
-   • Each technology must appear under the category that best describes its domain.
-   • Backend / server-side languages and frameworks → backend category.
-   • UI frameworks, CSS, templating, state management → frontend category.
-   • Cloud platforms, serverless, managed services, CDN, storage → cloud category.
-   • Containerisation, orchestration, pipelines, IaC, monitoring → devops/infra category.
-   • Query languages, ORMs, caching, database engines, migrations → database category.
-   • Testing libraries, coverage tools, QA frameworks → testing category (if role requires).
-   • Cross-category tools (e.g. VS Code, Git) go in the MOST relevant category for this role.
-   • NEVER put a cloud/devops tool under a frontend category, or a UI library under a backend category.
-   • The split must reflect the actual nature of each tool, not alphabetical or arbitrary grouping.
+   • Category labels must be short, specific to THIS role, derived from the JD domain.
+   • 10–12 technologies per category, all from the JD. No duplicates across categories.
+   CATEGORY INTEGRITY — strictly enforced, no exceptions:
+   • Backend languages, frameworks, runtime → backend category only.
+   • UI frameworks, CSS libraries, state management, frontend build tools → frontend category only.
+   • Cloud platforms, managed services, serverless, CDN, object storage → cloud category only.
+   • Containers, orchestration, CI/CD pipelines, IaC, monitoring, logging → devops/infra category only.
+   • Query languages, ORMs, caching engines, database engines, migrations → database category only.
+   • Cross-cutting tools (Git, VS Code) → most relevant category for this specific role.
+   • NEVER place a cloud/devops/infra tool inside a frontend category.
+   • NEVER place a UI library inside a backend or database category.
+   • The grouping must reflect the actual technical domain of each tool, not alphabetical order.
 
 ⑦ companies  [one entry per company listed above, in order]
    role    : Apply the seniority progression rules above. Infer the full title
@@ -866,16 +867,17 @@ SECTION-BY-SECTION INSTRUCTIONS
    bullets : 4 achievement bullets per company, each 20–30 words.
              Each bullet must be unique — different technology, different metric, different context.
              No copy-pasting between companies. Bullets must sound like lived experience.
-             Bullet style: start with a strong action verb. Include one concrete metric per bullet.
-             Bullets must NOT start with "•", "–", or any bullet character — plain text only.
+             Start every bullet with a strong past-tense action verb (e.g. Architected, Delivered, Optimised).
+             Include one concrete quantified metric per bullet (%, $, time saved, users, count).
+             Bullets are plain text — no leading bullet symbol, no dash, no asterisk prefix.
    tech    : Exactly 8–10 JD technologies, pipe-separated, for THIS company only.
-             UNIQUENESS RULE: the tech set for each company must be meaningfully different.
-             Imagine the actual tech stack used at that stage of the candidate's career.
-             Most-recent company → most advanced / current stack from the JD.
-             Earlier companies → earlier/simpler tech from the same domain.
-             NEVER produce an identical or near-identical tech list across companies.
-             Cover the breadth of the JD: mix backend, frontend, cloud, devops, database tools
-             rather than repeating the same 8 top-line items for every position.
+             UNIQUENESS RULE — mandatory, no exceptions:
+             • The tech list for each company must be substantially different from all other companies.
+             • Most-recent company: most advanced / current stack from the JD (latest frameworks, cloud-native tools).
+             • Mid-career company: intermediate stack — transitional tools, earlier versions, different sub-domain.
+             • Earliest company: foundational / entry-level tools from the JD domain.
+             • NEVER produce identical or near-identical tech lists across companies.
+             • Spread across the full JD stack: backend, frontend, cloud, devops, database — not just top-line items.
 
 ⑧ projects  [EXACTLY 4 — split as described]
    PROJECT SPLIT RULE (mandatory):
@@ -892,7 +894,10 @@ SECTION-BY-SECTION INSTRUCTIONS
      overview : 3–4 sentences. Story arc: problem → approach → technologies → outcome.
                 Reads like a real project summary a professional would write.
      bullets  : 3 achievement bullets, each with a concrete metric or outcome.
-     techTags : 5–7 technologies from the JD relevant to that project.
+                Plain text — no leading symbol. Start with an action verb. Include a metric.
+     techTags : 7–9 technologies from the JD relevant to that specific project.
+                Must be unique per project — no two projects should share the same tag list.
+                Cover the full relevant stack: language, framework, cloud service, database, devops tool.
 
 ⑨ relatedTech  [5 category objects, 5 items each — all from JD]
 
@@ -947,25 +952,25 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
         "Technical challenge overcome with quantified result (20–30 words).",
         "Business benefit delivered (20–30 words)."
       ],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
     }},
     {{
       "name": "Second Business-Domain Project Name",
       "overview": "3–4 sentences for a different business/industry angle.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
     }},
     {{
       "name": "JD-Technical Requirements Project Name",
       "overview": "3–4 sentences aligned with the specific technical skills in the JD.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
     }},
     {{
       "name": "Second JD-Technical Requirements Project Name",
       "overview": "3–4 sentences for a different technical capability from the JD.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
     }}
   ],
   "education": {_edu_json_block},
@@ -988,10 +993,11 @@ PRE-SUBMIT CHECKLIST — verify every item before writing a single character of 
 ✓ zero company names appear anywhere except the "company" JSON key
 ✓ every technology, skill, and keyword came from the job description
 ✓ output is raw JSON only — no markdown fences, no explanatory text
-✓ each company has 8–10 pipe-separated technologies, meaningfully different across positions
-✓ competencies blend technical depth AND professional/leadership strengths (10 phrases, " • " separator)
-✓ skills categories have correct domain separation — no cloud/devops tools under frontend, etc.
-✓ company bullets are plain text — no leading bullet characters, each starts with an action verb
+✓ each company has exactly 8–10 pipe-separated technologies, substantially different across positions
+✓ each project has 7–9 techTags, unique per project, covering full relevant stack
+✓ competencies: exactly 10 phrases separated by " • ", blending 5 technical + 5 professional strengths
+✓ skills categories have correct domain separation — cloud/devops tools never under frontend
+✓ bullets are plain text starting with an action verb — no leading bullet symbol anywhere
 """
 
     user_prompt = f"""JOB DESCRIPTION:
@@ -1490,17 +1496,12 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             finish_reason = resp_json["choices"][0].get("finish_reason", "?")
             _log.info("%s SUCCESS — response %d chars, finish_reason=%s", tag, len(raw), finish_reason)
             if len(raw) < 800:
-                _log.warning("%s Response suspiciously short (%d chars) — raw preview: %r",
-                             tag, len(raw), raw[:300])
+                _log.warning("%s Response suspiciously short (%d chars) — raw: %r", tag, len(raw), raw[:300])
             if finish_reason == "length":
-                _log.warning("%s finish_reason=length — model hit token cap; response likely truncated", tag)
                 if attempt < 2:
                     await asyncio.sleep(2)
                     continue
-                raise ValueError(
-                    f"Stage {stage}: model response was cut off (finish_reason=length). "
-                    f"Try again in a moment or switch provider."
-                )
+                raise ValueError(f"Stage {stage}: model response cut off (finish_reason=length). Try again.")
             try:
                 return extract_json(raw)
             except ValueError as parse_err:
@@ -1508,10 +1509,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
                 if attempt < 2:
                     await asyncio.sleep(3)
                     continue
-                raise ValueError(
-                    f"Stage {stage}: model returned a non-JSON response ({len(raw)} chars). "
-                    f"Raw start: {raw[:200]!r}"
-                )
+                raise ValueError(f"Stage {stage}: non-JSON response ({len(raw)} chars). Raw: {raw[:200]!r}")
 
         elif r.status_code == 429:
             retry_after = int(r.headers.get("retry-after", 0))
@@ -1541,8 +1539,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         elif r.status_code == 404:
             _log.error("%s MODEL NOT FOUND — HTTP 404 — model=%s is not available", tag, model)
             raise ValueError(
-                f"Model \'{model}\' not found on this provider (HTTP 404). "
-                f"Please select a valid model in Settings. "
+                f"Model \'{model}\' not found (HTTP 404). "
                 f"For Cerebras, valid models are: gpt-oss-120b, zai-glm-4.7."
             )
 
