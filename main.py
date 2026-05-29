@@ -1600,9 +1600,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
             excess = total_chars - DEEPSEEK_PROMPT_CHAR_LIMIT
             # Trim trailing characters from user_prompt (job description end is most expendable)
             trim_to = max(200, len(user_prompt) - excess - 200)
-            user_prompt = user_prompt[:trim_to] + "
-
-[Job description truncated to fit model context window]"
+            user_prompt = user_prompt[:trim_to] + "\n\n[Job description truncated to fit model context window]"
             _log.warning("[GenCV|%s] DeepSeek prompt too large (%d chars) — trimmed user_prompt to %d chars",
                          provider_host, total_chars, len(user_prompt))
 
