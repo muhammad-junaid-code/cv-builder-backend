@@ -2419,7 +2419,8 @@ async def call_qwen(req: CVRequest) -> tuple:
                 probe = await client.post(
                     QWEN_URL,
                     headers=headers,
-                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
+                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1,
+                         **({"enable_thinking": False} if model in _QWEN_THINKING_MODELS else {})},
                     timeout=8,
                 )
                 if probe.status_code in (401, 403):
@@ -2430,7 +2431,7 @@ async def call_qwen(req: CVRequest) -> tuple:
 
             try:
                 cv = await generate_cv_dynamic(req, client, key, model, qwen_url_to_use, headers,
-                                               max_output_tokens=8000)
+                                               max_output_tokens=16000)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
                 _log_generation(req.job_title, mk, i, 0, model, True)
                 _log.info("[Qwen] SUCCESS — key %d (%s) via %s", i+1, mk, qwen_url_to_use)
