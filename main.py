@@ -822,17 +822,11 @@ SECTION-BY-SECTION INSTRUCTIONS
    • Do NOT write a long paragraph — keep it punchy and scannable.
 
 ③ competencies
-   Exactly 12 senior-level competency phrases, separated by " * ".
-   MANDATORY: Each phrase must reflect ONE of the following dimensions — vary across all 12:
-     • Technical leadership & architecture ownership (e.g. "Distributed Systems Architecture")
-     • Delivery & execution (e.g. "End-to-End Delivery Ownership", "Agile Sprint Execution")
-     • Collaboration & stakeholder management (e.g. "Cross-Functional Team Leadership")
-     • Strategic thinking (e.g. "Technology Roadmap Planning", "Risk-Driven Decision Making")
-     • Problem-solving & engineering excellence (e.g. "Root-Cause Analysis & Incident Resolution")
-     • Domain-specific technical capability directly from the JD (e.g. actual tool/method names)
-   Each phrase: 3–5 words, title-case, punchy, sounds like a senior professional wrote it.
-   NEVER generic filler like "Good communication" or "Team player" or "Hard worker".
-   These must feel like a C-level or Principal Engineer's core strengths.
+   Exactly 12 senior-level phrases separated by " * ". Vary across: technical leadership,
+   architecture ownership, delivery/Agile execution, cross-functional collaboration,
+   stakeholder management, strategic thinking, problem-solving, and 2–3 domain-specific
+   tool/method phrases directly from the JD. Each phrase: 3–5 words, title-case.
+   ZERO generic filler ("Good communication", "Team player" etc. are not acceptable).
 
 ④ keywords
    18–20 ATS keywords from the JD, comma-separated. Cover tools, methods, and domain terms.
@@ -842,12 +836,8 @@ SECTION-BY-SECTION INSTRUCTIONS
    niceToHave : preferred / bonus technologies in the JD (8–12 items)
    additional : logically adjacent ecosystem tools implied by the JD (8–10 items)
 
-⑥ skills  [TECHNICAL SKILLS section — 5 entries only]
-   Format each entry as: "Short Role-Specific Category: tech1, tech2, … tech12"
-   • Category labels must be short, specific to THIS role, and useful as subheadings.
-   • Use small subheading style — no nested structures, no extra sections.
-   • 10–12 technologies per category, all from the JD.
-   • No duplicates across categories.
+⑥ skills  [5 entries: "Category Label: tech1, tech2, … tech12"]
+   Labels: short, role-specific. 10–12 JD technologies per entry. No duplicates across entries.
 
 ⑦ companies  [one entry per company listed above, in order]
    role    : Apply the seniority progression rules above. Infer the full title
@@ -855,12 +845,9 @@ SECTION-BY-SECTION INSTRUCTIONS
    bullets : 4 achievement bullets per company, each 20–30 words.
              Each bullet must be unique — different technology, different metric, different context.
              No copy-pasting between companies. Bullets must sound like lived experience.
-   tech    : EXACTLY 8–10 JD technologies used at that company, pipe-separated.
-             CRITICAL: Each company MUST have a DIFFERENT, non-overlapping tech stack.
-             Company 1 (most recent): use the most advanced/relevant tools from the JD.
-             Company 2: use a different subset — different frameworks, databases, or infra tools.
-             Company 3 (if present): use earlier/foundational tools from the JD ecosystem.
-             Zero overlap in the "tech" field across companies is mandatory.
+   tech    : EXACTLY 8–10 JD technologies pipe-separated. Each company MUST use a
+             non-overlapping set — Company 1: advanced/cloud tools; Company 2: different
+             frameworks/databases; Company 3: foundational/earlier tools. Zero overlap.
 
 ⑧ projects  [EXACTLY 4 — split as described]
    PROJECT SPLIT RULE (mandatory):
@@ -877,8 +864,7 @@ SECTION-BY-SECTION INSTRUCTIONS
      overview : 3–4 sentences. Story arc: problem → approach → technologies → outcome.
                 Reads like a real project summary a professional would write.
      bullets  : 3 achievement bullets, each with a concrete metric or outcome.
-     techTags : 7–9 technologies from the JD relevant to that project.
-               Each project must use a DISTINCT set of tags — no two projects share the same list.
+     techTags : 7–9 JD technologies. Each project must have a DISTINCT set — no shared lists.
 
 ⑨ relatedTech  [5 category objects, 5 items each — all from JD]
 
@@ -890,7 +876,8 @@ SECTION-BY-SECTION INSTRUCTIONS
    Only the "years" field of the first entry was calculated dynamically; use it as-is.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-JSON OUTPUT — no markdown, no code fences, no explanation text
+OUTPUT — CRITICAL: Start your response with {{ immediately. No preamble, no
+thinking text, no "Here is", no markdown. Output ONLY the raw JSON object.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {{
@@ -985,15 +972,9 @@ PRE-SUBMIT CHECKLIST — verify every item before writing a single character of 
     user_prompt = f"""JOB DESCRIPTION:
 {jd}
 
-Generate the complete CV JSON now.
+OUTPUT INSTRUCTION: Respond with ONLY the JSON object starting with {{. No thinking, no preamble.
 
-Key reminders:
-- Title must end with exactly "{years_display}" (one + sign, no more).
-- Summary must open with "{years_display} years of experience in …" and be 70–100 words.
-- Company roles must follow the seniority progression: {seniority_guidance.split(chr(10))[0]}
-- Projects 1–2: company/industry domain. Projects 3–4: JD technical requirements.
-- No company names in any free-text field.
-- Every word derived from the job description above.
+Reminders: title ends "{years_display}" | summary opens "{years_display} years of experience in …" (70–100 words) | each company tech 8–10 unique pipe-separated items with zero overlap across companies | each project 7–9 distinct techTags | competencies 12 senior-level " * " separated phrases.
 """
 
     return system_prompt, user_prompt
@@ -1490,17 +1471,40 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             first_choice = choices[0]
             message = first_choice.get("message") or {}
             raw = message.get("content")
-            if raw is None:
-                _log.error("%s 'content' field missing in message — choice: %r", tag, first_choice)
-                raise ValueError(
-                    f"Stage {stage}: provider returned 200 but 'content' is missing. "
-                    f"Choice: {str(first_choice)[:200]!r}"
-                )
             finish_reason = first_choice.get("finish_reason", "?")
+
+            # ── Cerebras reasoning-model fallback ────────────────────────────
+            # gpt-oss-120b is a chain-of-thought model. When it hits max_tokens
+            # mid-think it returns finish_reason='length' with content=None and
+            # a 'reasoning' field containing the partial thought.
+            # Strategy: extract JSON from the reasoning text if content is absent.
+            if raw is None:
+                reasoning = message.get("reasoning") or ""
+                if reasoning and "{" in reasoning:
+                    _log.warning("%s content=None (finish_reason=%s) — attempting JSON "
+                                 "extraction from reasoning field (%d chars)",
+                                 tag, finish_reason, len(reasoning))
+                    raw = reasoning   # try to parse JSON from the thinking text
+                else:
+                    _log.error("%s 'content' field missing and no reasoning JSON — choice: %r",
+                               tag, first_choice)
+                    # If we haven't used all retries, increase token budget hint
+                    if attempt < 2:
+                        _log.info("%s Retrying — content was None, model may need more tokens", tag)
+                        await asyncio.sleep(3)
+                        continue
+                    raise ValueError(
+                        f"Stage {stage}: provider returned 200 but 'content' is missing "
+                        f"and reasoning contains no JSON. The model hit its token limit "
+                        f"before producing output. Try a shorter job description or "
+                        f"increase max_tokens. Choice: {str(first_choice)[:200]!r}"
+                    )
+
             _log.info("%s SUCCESS — response %d chars, finish_reason=%s", tag, len(raw), finish_reason)
             if len(raw) < 800:
                 _log.warning("%s Response short (%d chars) — raw: %r", tag, len(raw), raw[:300])
-            if finish_reason == "length":
+            if finish_reason == "length" and raw == message.get("content"):
+                # Only abort on length for real content (not reasoning fallback)
                 if attempt < 2:
                     await asyncio.sleep(2)
                     continue
@@ -1790,7 +1794,7 @@ async def call_cerebras(req: CVRequest) -> tuple:
 
             try:
                 cv = await generate_cv_dynamic(req, client, key, model, CEREBRAS_URL, headers,
-                                               max_output_tokens=6000)
+                                               max_output_tokens=16000)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
                 _log_generation(req.job_title, mk, i, 0, model, True)
                 return cv, mk, i
@@ -1830,6 +1834,10 @@ async def call_groq(req: CVRequest) -> tuple:
         "deepseek-r1-distill-llama-70b":   "llama-3.3-70b-versatile",
         "deepseek-r1-distill-llama-8b":    "llama-3.1-8b-instant",
         "deepseek-r1-distill-qwen-32b":    "llama-3.3-70b-versatile",
+        "llama3-70b-8192":                 "llama-3.3-70b-versatile",
+        "llama3-8b-8192":                  "llama-3.1-8b-instant",
+        "llama2-70b-4096":                 "llama-3.3-70b-versatile",
+        "mixtral-8x7b-32768":              "llama-3.3-70b-versatile",
     }
     if model in _GROQ_DECOMMISSIONED:
         remapped = _GROQ_DECOMMISSIONED[model]
