@@ -1521,33 +1521,36 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             resp_body = r.json()
             choice    = resp_body.get("choices", [{}])[0]
             message   = choice.get("message") or {}
-            raw       = message.get("content") or ""
             finish    = choice.get("finish_reason", "stop")
 
+            # gpt-oss-120b (and other Cerebras reasoning models) put their
+            # output in message.reasoning instead of message.content.
+            # Fall back through content → reasoning → empty string.
+            raw = message.get("content") or message.get("reasoning") or ""
+
+            # Strip any <think>...</think> wrapper that reasoning models add
+            raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+
             if not raw:
-                # Cerebras occasionally returns an empty/null content on
-                # finish_reason="length" — treat as truncation and retry below.
-                _log.warning("%s Empty content in response (finish=%s) — body: %s",
+                _log.warning("%s Empty content+reasoning (finish=%s) — body: %s",
                              tag, finish, str(resp_body)[:300])
                 if attempt < 2:
                     await asyncio.sleep(3)
                     continue
                 raise ValueError(
-                    f"Stage {stage}: model returned empty content (finish={finish}). "
-                    "Try reducing job description length or switching to Groq/Gemini."
+                    f"Stage {stage}: model returned empty response (finish={finish}). "
+                    "For gpt-oss-120b use Cerebras with a non-reasoning model like "
+                    "llama3.1-8b, or switch to Groq/Gemini."
                 )
 
             _log.info("%s SUCCESS — response %d chars, finish=%s", tag, len(raw), finish)
 
-            # ── Continuation pass: stitch truncated JSON ──────────────────────
-            # When finish_reason=="length" and the JSON is not closed, send a
-            # second call asking the model to continue from the cut-off point.
+            # ── Continuation pass: stitch truncated JSON ──────────────────
             if finish == "length" and raw.rstrip()[-1:] not in ('}', ']'):
-                _log.warning("%s Truncated JSON (finish=length) — requesting continuation", tag)
+                _log.warning("%s Truncated (finish=length) — requesting continuation", tag)
                 try:
                     cont_r = await client.post(
-                        url,
-                        headers=headers,
+                        url, headers=headers,
                         json={
                             "model": model,
                             "messages": [
@@ -1567,19 +1570,16 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
                     if cont_r.status_code == 200:
                         cont_msg = (cont_r.json().get("choices", [{}])[0]
                                     .get("message") or {})
-                        cont_raw = cont_msg.get("content") or ""
+                        cont_raw = (cont_msg.get("content")
+                                    or cont_msg.get("reasoning") or "")
                         if cont_raw:
                             raw = raw + cont_raw
                             _log.info("%s Continuation OK — stitched %d chars total",
                                       tag, len(raw))
-                        else:
-                            _log.warning("%s Continuation returned empty content", tag)
                     else:
-                        _log.warning("%s Continuation HTTP %d — using truncated raw",
-                                     tag, cont_r.status_code)
-                except Exception as cont_exc:
-                    _log.warning("%s Continuation call failed (%s) — proceeding with truncated raw",
-                                 tag, cont_exc)
+                        _log.warning("%s Continuation HTTP %d", tag, cont_r.status_code)
+                except Exception as ce:
+                    _log.warning("%s Continuation failed (%s)", tag, ce)
 
             return extract_json(raw)
 
