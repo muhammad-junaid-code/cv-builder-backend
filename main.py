@@ -1078,9 +1078,6 @@ def extract_json(raw: str) -> dict:
 
     # Strip any trailing incomplete string / value that might confuse the parser
     j_repaired = j.rstrip().rstrip(",").rstrip()
-    # If truncated mid-string, close the dangling quote first
-    if in_str:
-        j_repaired += '"'
     # Close all unclosed structures in reverse order
     j_repaired += "".join(reversed(opens))
 
@@ -1120,27 +1117,10 @@ def _normalize_job_title(title: str) -> str:
             seen_lower.append(w.lower())
     return " ".join(seen)
 
-def _strip_artifacts(text):
-    """Remove Cerebras tokenization artifacts: black squares (\u25A0) mid-word."""
-    if not isinstance(text, str):
-        return text
-    text = re.sub(r'(?<=[A-Za-z0-9])[\u25A0\u25AA\u2588](?=[A-Za-z0-9])', '', text)
-    text = re.sub(r'[\u25A0\u25AA\u2588]', '-', text)
-    return text
-
-
 def sanitise_cv(cv: dict) -> dict:
     if not isinstance(cv, dict):
         return {}
-
-    def _clean(v):
-        if isinstance(v, str):  return _strip_artifacts(v)
-        if isinstance(v, list): return [_clean(i) for i in v]
-        if isinstance(v, dict): return {k: _clean(val) for k, val in v.items()}
-        return v
-
-    cv = _clean(cv)
-
+    
     for field in ("totalYears", "title", "summary", "competencies", "keywords"):
         cv[field] = str(cv.get(field, "")).strip()
     
@@ -1518,69 +1498,8 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         _log.info("%s HTTP %d received in %.1fs", tag, r.status_code, elapsed)
 
         if r.status_code == 200:
-            resp_body = r.json()
-            choice    = resp_body.get("choices", [{}])[0]
-            message   = choice.get("message") or {}
-            finish    = choice.get("finish_reason", "stop")
-
-            # gpt-oss-120b (and other Cerebras reasoning models) put their
-            # output in message.reasoning instead of message.content.
-            # Fall back through content → reasoning → empty string.
-            raw = message.get("content") or message.get("reasoning") or ""
-
-            # Strip any <think>...</think> wrapper that reasoning models add
-            raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
-
-            if not raw:
-                _log.warning("%s Empty content+reasoning (finish=%s) — body: %s",
-                             tag, finish, str(resp_body)[:300])
-                if attempt < 2:
-                    await asyncio.sleep(3)
-                    continue
-                raise ValueError(
-                    f"Stage {stage}: model returned empty response (finish={finish}). "
-                    "For gpt-oss-120b use Cerebras with a non-reasoning model like "
-                    "llama3.1-8b, or switch to Groq/Gemini."
-                )
-
-            _log.info("%s SUCCESS — response %d chars, finish=%s", tag, len(raw), finish)
-
-            # ── Continuation pass: stitch truncated JSON ──────────────────
-            if finish == "length" and raw.rstrip()[-1:] not in ('}', ']'):
-                _log.warning("%s Truncated (finish=length) — requesting continuation", tag)
-                try:
-                    cont_r = await client.post(
-                        url, headers=headers,
-                        json={
-                            "model": model,
-                            "messages": [
-                                {"role": "system",    "content": system},
-                                {"role": "user",      "content": user},
-                                {"role": "assistant", "content": raw},
-                                {"role": "user",      "content":
-                                    "The JSON was cut off. Continue EXACTLY from where "
-                                    "you stopped. Output only the remaining JSON — "
-                                    "no explanation, no markdown fences."},
-                            ],
-                            "temperature": 0.0,
-                            "max_tokens": max_tokens,
-                        },
-                        timeout=per_call_timeout,
-                    )
-                    if cont_r.status_code == 200:
-                        cont_msg = (cont_r.json().get("choices", [{}])[0]
-                                    .get("message") or {})
-                        cont_raw = (cont_msg.get("content")
-                                    or cont_msg.get("reasoning") or "")
-                        if cont_raw:
-                            raw = raw + cont_raw
-                            _log.info("%s Continuation OK — stitched %d chars total",
-                                      tag, len(raw))
-                    else:
-                        _log.warning("%s Continuation HTTP %d", tag, cont_r.status_code)
-                except Exception as ce:
-                    _log.warning("%s Continuation failed (%s)", tag, ce)
-
+            raw = r.json()["choices"][0]["message"]["content"]
+            _log.info("%s SUCCESS — response %d chars", tag, len(raw))
             return extract_json(raw)
 
         elif r.status_code == 429:
@@ -1839,8 +1758,7 @@ async def call_cerebras(req: CVRequest) -> tuple:
                 continue
 
             try:
-                cv = await generate_cv_dynamic(req, client, key, model, CEREBRAS_URL, headers,
-                                               max_output_tokens=4000)
+                cv = await generate_cv_dynamic(req, client, key, model, CEREBRAS_URL, headers)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
                 _log_generation(req.job_title, mk, i, 0, model, True)
                 return cv, mk, i
