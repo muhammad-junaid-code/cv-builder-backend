@@ -1377,7 +1377,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
 
     # Groq can be slow on large prompts; use a generous per-call timeout.
     # The outer httpx.AsyncClient timeout is the hard ceiling — this is per-attempt.
-    per_call_timeout = 55
+    per_call_timeout = 120
     mk = mask(key)
     provider_tag = url.split("/")[2].split(".")[0]   # e.g. "api" → use model instead
     tag = f"[{model}|{mk}|{stage}]"
@@ -1419,7 +1419,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             _log.warning("%s TIMEOUT — %s — elapsed %.1fs  (exc: %s)",
                          tag, last_error, elapsed, type(exc).__name__)
             if attempt < 2:
-                wait = 2 + attempt * 1   # 2s, 3s
+                wait = 4 + attempt * 4   # 4s, 8s
                 _log.info("%s Waiting %ds before retry …", tag, wait)
                 await asyncio.sleep(wait)
                 continue
@@ -1434,7 +1434,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             last_error = f"ReadTimeout on attempt {attempt_num} after {elapsed}s"
             _log.warning("%s READ-TIMEOUT — %s", tag, last_error)
             if attempt < 2:
-                wait = 2 + attempt * 1
+                wait = 4 + attempt * 4
                 _log.info("%s Waiting %ds before retry …", tag, wait)
                 await asyncio.sleep(wait)
                 continue
@@ -1499,11 +1499,12 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
 # PROVIDER CALLERS
 # ==============================================================================
 async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
-                               url: str, headers: dict) -> dict:
+                               url: str, headers: dict,
+                               max_output_tokens: int = None) -> dict:
     """Generate CV using single dynamic prompt - everything from JD"""
     import time as _t
 
-    _deadline = _t.time() + 60
+    _deadline = _t.time() + 270
     years_exp = (req.years_exp or "").strip()
     years_exp_clean = years_exp.replace("+", "").strip()
 
@@ -1530,7 +1531,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
               provider_host, len(system_prompt), len(user_prompt))
 
     result = await call_llm_atomic(client, key, model, url, system_prompt, user_prompt,
-                                    "FullCV", headers, max_tokens=8000, _deadline=_deadline)
+                                    "FullCV", headers, max_tokens=max_output_tokens or 8000, _deadline=_deadline)
 
     if not result:
         _log.error("[GenCV|%s] AI returned empty/unparseable response", provider_host)
@@ -1673,7 +1674,7 @@ async def call_cerebras(req: CVRequest) -> tuple:
     errors_by_key = []
     rate_limited_count = 0
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=65, write=15, pool=10)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=180, write=15, pool=10)) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
@@ -1751,10 +1752,10 @@ async def call_groq(req: CVRequest) -> tuple:
     _log.info("[Groq] Starting generation — model=%s, keys=%d, job_title=%r",
               model, len(sorted_keys), req.job_title[:60])
 
-    # read=65 gives each attempt up to 65s; call_llm_atomic uses 55s per try
+    # read=240 gives each attempt up to 4 min; call_llm_atomic uses 120s per try
     # with its own retry loop, so the outer client must not cut it short
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=15, read=65, write=20, pool=10)
+        timeout=httpx.Timeout(connect=15, read=240, write=20, pool=10)
     ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
@@ -1831,7 +1832,7 @@ async def call_gemini(req: CVRequest) -> tuple:
     errors_by_key = []
     rate_limited_count = 0
 
-    async with httpx.AsyncClient(timeout=65) as client:
+    async with httpx.AsyncClient(timeout=180) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
 
@@ -1982,7 +1983,7 @@ async def call_qwen(req: CVRequest) -> tuple:
     _log.info("[Qwen] model=%s keys=%d job=%r", model, len(sorted_keys), req.job_title[:60])
 
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=10, read=65, write=10, pool=5)
+        timeout=httpx.Timeout(connect=10, read=90, write=10, pool=5)
     ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
