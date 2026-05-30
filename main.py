@@ -36,99 +36,12 @@ from reportlab.lib import colors
 app = FastAPI(title="CV Builder AI", version="11.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-GROQ_URL       = "https://api.groq.com/openai/v1/chat/completions"
-CEREBRAS_URL   = "https://api.cerebras.ai/v1/chat/completions"
-DEEPSEEK_URL   = "https://api.deepseek.com/chat/completions"
-OPENAI_URL     = "https://api.openai.com/v1/chat/completions"
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-GEMINI_URL     = "https://generativelanguage.googleapis.com/v1beta/models"
-OLLAMA_URL     = "http://localhost:11434"
-# Qwen / Alibaba DashScope — OpenAI-compatible endpoints
-# International (dashscope-intl): for keys from dashscope-intl.aliyuncs.com
-# Domestic/China  (dashscope):    for keys from bailian.console.alibabacloud.com / bailian.console.aliyun.com
-QWEN_URL       = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
-QWEN_URL_CN    = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
-
-# Models routed to DeepSeek native API (openai-compatible)
-_DEEPSEEK_NATIVE_MODELS = {"deepseek-chat", "deepseek-reasoner", "deepseek-coder"}
-# Models routed to OpenRouter (free tier available)
-# NOTE: only include models confirmed working on OpenRouter as of 2026-05.
-# qwen/qwen3-235b-a22b:free and qwen/qwen3-30b-a3b:free removed — return HTTP 404.
-# Using openrouter/free auto-router as default so it always picks a working model.
-_OPENROUTER_MODELS = {
-    # Auto-router — always picks a working free model (safest default)
-    "openrouter/free",
-    # Free tier (confirmed working May 2026 per openrouter.ai/collections/free-models)
-    "nvidia/nemotron-3-super-120b-a12b:free",
-    "openai/gpt-oss-120b:free",
-    "openai/gpt-oss-20b:free",
-    "google/gemma-4-31b-it:free",
-    "deepseek/deepseek-v4-flash:free",
-    "deepseek/deepseek-r1:free",
-    "deepseek/deepseek-chat-v3-0324:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "microsoft/phi-4:free",
-    # Paid tier
-    "deepseek/deepseek-chat-v3-0324",
-    "deepseek/deepseek-r1",
-    "meta-llama/llama-3.3-70b-instruct",
-    "microsoft/phi-4",
-    "openai/gpt-oss-120b",
-    "google/gemma-4-31b-it",
-}
-
-# Qwen / DashScope models — routed to dashscope-intl.aliyuncs.com
-# Free tier: new accounts get 1 M input + 1 M output tokens (90 days)
-# Sign up: https://dashscope-intl.aliyuncs.com  or  https://bailian.console.aliyun.com
-_QWEN_MODELS = {
-    # ── Flagship / Max series ─────────────────────────────────────────
-    "qwen3-max",                    # 1T+ param flagship, best quality
-    "qwen3-max-preview",            # preview snapshot
-    "qwen-max",                     # previous-gen flagship
-    "qwen-max-latest",
-    # ── Plus series (best value for CV generation) ────────────────────
-    "qwen3-plus",                   # strong all-rounder, large context
-    "qwen3.5-plus",                 # latest Plus, 256 K context
-    "qwen-plus",                    # solid for long prompts
-    "qwen-plus-latest",
-    # ── Flash series (fast & cheap) ───────────────────────────────────
-    "qwen3.5-flash",                # fastest Qwen3.5
-    "qwen-flash",                   # latency-optimised
-    "qwen-flash-latest",
-    # ── Turbo series (fast, cost-effective) ──────────────────────────
-    "qwen-turbo",                   # cheapest, recommended for testing
-    "qwen-turbo-latest",
-    # ── Open-weight instruct (hosted on DashScope) ────────────────────
-    "qwen3-235b-a22b",              # 235 B MoE
-    "qwen3-32b",
-    "qwen3-30b-a3b",
-    "qwen3-14b",
-    "qwen3-8b",
-    "qwen2.5-72b-instruct",
-    "qwen2.5-32b-instruct",
-    "qwen2.5-14b-instruct",
-    "qwen2.5-7b-instruct",
-    # ── Coder series ─────────────────────────────────────────────────
-    "qwen3-coder-plus",
-    "qwen3-coder-flash",
-    # ── Long-context ─────────────────────────────────────────────────
-    "qwen-long",
-    "qwen-long-latest",
-}
-
-# Cache: remembers which endpoint (intl vs CN) worked for each masked key.
-# Avoids a probe request on every CV generation, saving ~2s.
-_qwen_endpoint_cache: dict = {}  # mk -> QWEN_URL or QWEN_URL_CN
-
-# Qwen3 models that default to "thinking" mode and require enable_thinking=false
-# for non-streaming calls (otherwise DashScope returns HTTP 400).
-_QWEN_THINKING_MODELS = {
-    "qwen3-max", "qwen3-max-preview",
-    "qwen3-plus", "qwen3.5-plus",
-    "qwen3.5-flash",
-    "qwen3-235b-a22b", "qwen3-32b", "qwen3-30b-a3b", "qwen3-14b", "qwen3-8b",
-    "qwen3-coder-plus", "qwen3-coder-flash",
-}
+GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
+CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
+DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
+OPENAI_URL   = "https://api.openai.com/v1/chat/completions"
+GEMINI_URL   = "https://generativelanguage.googleapis.com/v1beta/models"
+OLLAMA_URL   = "http://localhost:11434"
 
 # Only static data: company names (users can edit via profile)
 CANDIDATE_COMPANIES = [
@@ -628,13 +541,12 @@ class CVRequest(BaseModel):
     job_description: str
     years_exp: Optional[str] = ""
     provider: str = "cerebras"
-    model: str = "gpt-oss-120b"
+    model: str = "llama3.1-8b"
     groq_keys: Optional[List[str]] = []
     cerebras_keys: Optional[List[str]] = []
     deepseek_keys: Optional[List[str]] = []
     openai_keys: Optional[List[str]] = []
     gemini_keys: Optional[List[str]] = []
-    qwen_keys: Optional[List[str]] = []
     ollama_model: Optional[str] = "qwen2.5:7b"
     profile: str = ""
     profile_data: Optional[dict] = None
@@ -910,11 +822,8 @@ SECTION-BY-SECTION INSTRUCTIONS
    • Do NOT write a long paragraph — keep it punchy and scannable.
 
 ③ competencies
-   Exactly 12 senior-level phrases separated by " * ". Vary across: technical leadership,
-   architecture ownership, delivery/Agile execution, cross-functional collaboration,
-   stakeholder management, strategic thinking, problem-solving, and 2–3 domain-specific
-   tool/method phrases directly from the JD. Each phrase: 3–5 words, title-case.
-   ZERO generic filler ("Good communication", "Team player" etc. are not acceptable).
+   Exactly 10 domain-specific skill phrases from the JD, separated by " * ".
+   Phrases must name real capabilities, not generic filler.
 
 ④ keywords
    18–20 ATS keywords from the JD, comma-separated. Cover tools, methods, and domain terms.
@@ -924,8 +833,12 @@ SECTION-BY-SECTION INSTRUCTIONS
    niceToHave : preferred / bonus technologies in the JD (8–12 items)
    additional : logically adjacent ecosystem tools implied by the JD (8–10 items)
 
-⑥ skills  [5 entries: "Category Label: tech1, tech2, … tech12"]
-   Labels: short, role-specific. 10–12 JD technologies per entry. No duplicates across entries.
+⑥ skills  [TECHNICAL SKILLS section — 5 entries only]
+   Format each entry as: "Short Role-Specific Category: tech1, tech2, … tech12"
+   • Category labels must be short, specific to THIS role, and useful as subheadings.
+   • Use small subheading style — no nested structures, no extra sections.
+   • 10–12 technologies per category, all from the JD.
+   • No duplicates across categories.
 
 ⑦ companies  [one entry per company listed above, in order]
    role    : Apply the seniority progression rules above. Infer the full title
@@ -933,9 +846,8 @@ SECTION-BY-SECTION INSTRUCTIONS
    bullets : 4 achievement bullets per company, each 20–30 words.
              Each bullet must be unique — different technology, different metric, different context.
              No copy-pasting between companies. Bullets must sound like lived experience.
-   tech    : EXACTLY 8–10 JD technologies pipe-separated. Each company MUST use a
-             non-overlapping set — Company 1: advanced/cloud tools; Company 2: different
-             frameworks/databases; Company 3: foundational/earlier tools. Zero overlap.
+   tech    : 6–8 JD technologies used at that company, pipe-separated.
+             Do NOT repeat the same tech set across all companies.
 
 ⑧ projects  [EXACTLY 4 — split as described]
    PROJECT SPLIT RULE (mandatory):
@@ -952,7 +864,7 @@ SECTION-BY-SECTION INSTRUCTIONS
      overview : 3–4 sentences. Story arc: problem → approach → technologies → outcome.
                 Reads like a real project summary a professional would write.
      bullets  : 3 achievement bullets, each with a concrete metric or outcome.
-     techTags : 7–9 JD technologies. Each project must have a DISTINCT set — no shared lists.
+     techTags : 5–7 technologies from the JD relevant to that project.
 
 ⑨ relatedTech  [5 category objects, 5 items each — all from JD]
 
@@ -964,14 +876,13 @@ SECTION-BY-SECTION INSTRUCTIONS
    Only the "years" field of the first entry was calculated dynamically; use it as-is.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-OUTPUT — CRITICAL: Start your response with {{ immediately. No preamble, no
-thinking text, no "Here is", no markdown. Output ONLY the raw JSON object.
+JSON OUTPUT — no markdown, no code fences, no explanation text
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {{
   "title": "Inferred Role | Tech1, Tech2, Tech3 | {years_display}",
   "summary": "{years_display} years of experience in [JD domain]… (4–5 sentences, 70–100 words)",
-  "competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10 * Phrase11 * Phrase12",
+  "competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18",
   "technologies": {{
     "mustHave":   ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10","t11","t12"],
@@ -996,7 +907,7 @@ thinking text, no "Here is", no markdown. Output ONLY the raw JSON object.
         "Process or delivery improvement — JD technology + outcome (20–30 words).",
         "Business or stakeholder impact — JD context + result (20–30 words)."
       ],
-      "tech": "Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6 | Tech7 | Tech8 | Tech9 | Tech10"
+      "tech": "Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6 | Tech7 | Tech8"
     }}
   ],
   "projects": [
@@ -1008,25 +919,25 @@ thinking text, no "Here is", no markdown. Output ONLY the raw JSON object.
         "Technical challenge overcome with quantified result (20–30 words).",
         "Business benefit delivered (20–30 words)."
       ],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
     }},
     {{
       "name": "Second Business-Domain Project Name",
       "overview": "3–4 sentences for a different business/industry angle.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["TechA","TechB","TechC","TechD","TechE","TechF","TechG","TechH"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
     }},
     {{
       "name": "JD-Technical Requirements Project Name",
       "overview": "3–4 sentences aligned with the specific technical skills in the JD.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["TechI","TechJ","TechK","TechL","TechM","TechN","TechO","TechP"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
     }},
     {{
       "name": "Second JD-Technical Requirements Project Name",
       "overview": "3–4 sentences for a different technical capability from the JD.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["TechQ","TechR","TechS","TechT","TechU","TechV","TechW","TechX"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
     }}
   ],
   "education": {_edu_json_block},
@@ -1044,12 +955,6 @@ PRE-SUBMIT CHECKLIST — verify every item before writing a single character of 
 ✓ summary opens with exactly "{years_display} years of experience in …"
 ✓ summary is 70–100 words (4–5 sentences) — concise, not bloated
 ✓ company role titles follow the seniority progression rules above
-✓ every company "tech" field has 8–10 pipe-separated technologies (NEVER fewer than 8)
-✓ no two companies share the same "tech" entries — zero overlap mandatory
-✓ every project "techTags" has 7–9 items (NEVER fewer than 7)
-✓ no two projects share the same techTags set — each is a distinct list
-✓ competencies has exactly 12 " * " separated phrases — senior-level, leadership-oriented
-✓ zero generic filler in competencies ("Good communication" etc. is NOT acceptable)
 ✓ projects 1–2 are grounded in the company/industry domain
 ✓ projects 3–4 target the JD's specific technical requirements
 ✓ zero company names appear anywhere except the "company" JSON key
@@ -1060,9 +965,15 @@ PRE-SUBMIT CHECKLIST — verify every item before writing a single character of 
     user_prompt = f"""JOB DESCRIPTION:
 {jd}
 
-OUTPUT INSTRUCTION: Respond with ONLY the JSON object starting with {{. No thinking, no preamble.
+Generate the complete CV JSON now.
 
-Reminders: title ends "{years_display}" | summary opens "{years_display} years of experience in …" (70–100 words) | each company tech 8–10 unique pipe-separated items with zero overlap across companies | each project 7–9 distinct techTags | competencies 12 senior-level " * " separated phrases.
+Key reminders:
+- Title must end with exactly "{years_display}" (one + sign, no more).
+- Summary must open with "{years_display} years of experience in …" and be 70–100 words.
+- Company roles must follow the seniority progression: {seniority_guidance.split(chr(10))[0]}
+- Projects 1–2: company/industry domain. Projects 3–4: JD technical requirements.
+- No company names in any free-text field.
+- Every word derived from the job description above.
 """
 
     return system_prompt, user_prompt
@@ -1072,12 +983,8 @@ Reminders: title ends "{years_display}" | summary opens "{years_display} years o
 # ==============================================================================
 def extract_json(raw: str) -> dict:
     """Parse JSON from an LLM response, repairing truncated output if needed."""
-    # Strip <think>...</think> blocks (Qwen3 reasoning mode)
     raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
-    # Strip markdown code fences
     raw = re.sub(r"```(?:json)?", "", raw).strip().strip("`").strip()
-    # Some Qwen3 models output plain-text thinking before the JSON even with
-    # enable_thinking=False — find the first '{' and discard everything before it
     start = raw.find("{")
     if start == -1:
         raise ValueError("No JSON object in model response")
@@ -1102,25 +1009,19 @@ def extract_json(raw: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # Count unclosed brackets and detect unterminated strings (truncated response)
+    # Count unclosed brackets (ignoring those inside strings)
     opens = []
     in_str = False
     escape = False
-    last_str_start = -1
-    for pos, ch in enumerate(j):
+    for ch in j:
         if escape:
             escape = False
             continue
-        if ch == chr(92) and in_str:
+        if ch == "\\" and in_str:
             escape = True
             continue
-        if ch == chr(34):
-            if in_str:
-                in_str = False
-                last_str_start = -1
-            else:
-                in_str = True
-                last_str_start = pos
+        if ch == '"':
+            in_str = not in_str
             continue
         if in_str:
             continue
@@ -1130,26 +1031,9 @@ def extract_json(raw: str) -> dict:
             if opens and opens[-1] == ch:
                 opens.pop()
 
-    # If response was cut off mid-string, truncate back before that string
-    j_repaired = j
-    if in_str and last_str_start > 0:
-        j_repaired = j[:last_str_start].rstrip().rstrip(":").rstrip().rstrip(",").rstrip()
-        # Recount opens on the truncated text
-        opens2 = []
-        in_s2 = False
-        esc2 = False
-        for ch in j_repaired:
-            if esc2: esc2 = False; continue
-            if ch == chr(92) and in_s2: esc2 = True; continue
-            if ch == chr(34): in_s2 = not in_s2; continue
-            if in_s2: continue
-            if ch in "{[": opens2.append("}" if ch == "{" else "]")
-            elif ch in "}]":
-                if opens2 and opens2[-1] == ch: opens2.pop()
-        opens = opens2
-
-    # Strip any trailing incomplete value and close all open structures
-    j_repaired = j_repaired.rstrip().rstrip(",").rstrip()
+    # Strip any trailing incomplete string / value that might confuse the parser
+    j_repaired = j.rstrip().rstrip(",").rstrip()
+    # Close all unclosed structures in reverse order
     j_repaired += "".join(reversed(opens))
 
     try:
@@ -1160,12 +1044,8 @@ def extract_json(raw: str) -> dict:
         if end != -1:
             candidate = j_repaired[:end + 1]
             candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
-            try:
-                return json.loads(candidate)
-            except json.JSONDecodeError:
-                pass
+            return json.loads(candidate)
         raise ValueError("Could not parse or repair JSON from model response")
-
 
 def esc_html(s: str) -> str:
     if not s:
@@ -1192,58 +1072,10 @@ def _normalize_job_title(title: str) -> str:
             seen_lower.append(w.lower())
     return " ".join(seen)
 
-def _clean_ai_text(s: str) -> str:
-    """Strip problematic Unicode characters that render as black squares (■/□)
-    in fonts like Calibri. These are commonly inserted by reasoning LLMs in their
-    chain-of-thought output: non-breaking hyphens, zero-width spaces, soft hyphens,
-    private-use glyphs, replacement characters, and similar invisible/unsupported chars."""
-    import unicodedata
-    if not s:
-        return s
-    # Zero-width and invisible chars
-    s = re.sub(r'[​‌‍‎‏﻿­]', '', s)
-    # Control characters (keep tab and newline)
-    s = re.sub(r'[--]', '', s)
-    # Smart quotes → straight
-    s = s.replace('‘', "'").replace('’', "'").replace('‚', "'")
-    s = s.replace('“', '"').replace('”', '"').replace('„', '"')
-    # Non-breaking hyphen, figure dash → plain hyphen
-    s = s.replace('‑', '-').replace('‒', '-')
-    # Various minus/dash variants → hyphen
-    s = re.sub(r'[‐―−]', '-', s)
-    # Non-breaking space → regular space
-    s = s.replace(' ', ' ')
-    # Line/paragraph separators → space
-    s = s.replace(' ', ' ').replace(' ', ' ')
-    # Replacement character ■/□ and private-use area
-    s = s.replace('�', '')
-    s = re.sub(r'[-]', '', s)
-    # Box drawing, block elements, geometric shapes (common ■ sources)
-    s = re.sub(r'[─-▟■-◿☀-⛿]', '', s)
-    # Collapse multiple spaces
-    s = re.sub(r'  +', ' ', s)
-    return s.strip()
-
-
-def _clean_cv_strings(obj):
-    """Recursively clean all string values in a CV dict/list."""
-    if isinstance(obj, str):
-        return _clean_ai_text(obj)
-    if isinstance(obj, list):
-        return [_clean_cv_strings(item) for item in obj]
-    if isinstance(obj, dict):
-        return {k: _clean_cv_strings(v) for k, v in obj.items()}
-    return obj
-
-
 def sanitise_cv(cv: dict) -> dict:
     if not isinstance(cv, dict):
         return {}
-
-    # Strip all problematic Unicode characters from every string in the CV
-    # before any other processing — prevents ■ squares in the final HTML/PDF.
-    cv = _clean_cv_strings(cv)
-
+    
     for field in ("totalYears", "title", "summary", "competencies", "keywords"):
         cv[field] = str(cv.get(field, "")).strip()
     
@@ -1542,9 +1374,9 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
                           _deadline: float = 0.0) -> dict:
     import time as _t
 
-    # Timeout: OpenRouter free = 170s; fast providers = 50s.
-    # Detected by checking the url passed to us (set by caller context via _deadline).
-    per_call_timeout = 160 if "openrouter" in url else (58 if "dashscope" in url else 50)
+    # Groq can be slow on large prompts; use a generous per-call timeout.
+    # The outer httpx.AsyncClient timeout is the hard ceiling — this is per-attempt.
+    per_call_timeout = 120
     mk = mask(key)
     provider_tag = url.split("/")[2].split(".")[0]   # e.g. "api" → use model instead
     tag = f"[{model}|{mk}|{stage}]"
@@ -1558,9 +1390,8 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
     _log.info("%s Starting LLM call — prompt ~%d chars, max_tokens=%d, timeout=%ds",
               tag, prompt_chars, max_tokens, per_call_timeout)
 
-    # 1 attempt only — must complete within 55s total budget (60s client limit).
-    # Retries are handled at the caller level (multiple keys), not per-call.
-    for attempt in range(1):
+    # Up to 3 attempts: handles transient 429s and single timeout blips
+    for attempt in range(3):
         attempt_num = attempt + 1
         _log.info("%s Attempt %d/3 …", tag, attempt_num)
         t_start = _t.time()
@@ -1577,7 +1408,6 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
                     ],
                     "temperature": 0.2,
                     "max_tokens": max_tokens,
-                    **({"enable_thinking": False} if model in _QWEN_THINKING_MODELS else {}),
                 },
                 timeout=per_call_timeout,
             )
@@ -1623,69 +1453,9 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         _log.info("%s HTTP %d received in %.1fs", tag, r.status_code, elapsed)
 
         if r.status_code == 200:
-            try:
-                resp_json = r.json()
-            except Exception as json_err:
-                _log.error("%s Failed to parse response body as JSON: %s — body: %r", tag, json_err, r.text[:300])
-                raise ValueError(f"Stage {stage}: server returned non-JSON response. Body: {r.text[:200]!r}")
-
-            # Safe navigation: some providers return 200 with an error body
-            choices = resp_json.get("choices") or []
-            if not choices:
-                _log.error("%s Response has no 'choices' — full body: %r", tag, str(resp_json)[:400])
-                raise ValueError(
-                    f"Stage {stage}: provider returned 200 but no 'choices' in response. "
-                    f"Body: {str(resp_json)[:200]!r}"
-                )
-            first_choice = choices[0]
-            message = first_choice.get("message") or {}
-            raw = message.get("content")
-            finish_reason = first_choice.get("finish_reason", "?")
-
-            # ── Cerebras reasoning-model fallback ────────────────────────────
-            # gpt-oss-120b is a chain-of-thought model. When it hits max_tokens
-            # mid-think it returns finish_reason='length' with content=None and
-            # a 'reasoning' field containing the partial thought.
-            # Strategy: extract JSON from the reasoning text if content is absent.
-            if raw is None:
-                reasoning = message.get("reasoning") or ""
-                if reasoning and "{" in reasoning:
-                    _log.warning("%s content=None (finish_reason=%s) — attempting JSON "
-                                 "extraction from reasoning field (%d chars)",
-                                 tag, finish_reason, len(reasoning))
-                    raw = reasoning   # try to parse JSON from the thinking text
-                else:
-                    _log.error("%s 'content' field missing and no reasoning JSON — choice: %r",
-                               tag, first_choice)
-                    # If we haven't used all retries, increase token budget hint
-                    if attempt < 2:
-                        _log.info("%s Retrying — content was None, model may need more tokens", tag)
-                        await asyncio.sleep(3)
-                        continue
-                    raise ValueError(
-                        f"Stage {stage}: provider returned 200 but 'content' is missing "
-                        f"and reasoning contains no JSON. The model hit its token limit "
-                        f"before producing output. Try a shorter job description or "
-                        f"increase max_tokens. Choice: {str(first_choice)[:200]!r}"
-                    )
-
-            _log.info("%s SUCCESS — response %d chars, finish_reason=%s", tag, len(raw), finish_reason)
-            if len(raw) < 800:
-                _log.warning("%s Response short (%d chars) — raw: %r", tag, len(raw), raw[:300])
-            if finish_reason == "length" and raw == message.get("content"):
-                # Only abort on length for real content (not reasoning fallback)
-                if attempt < 2:
-                    await asyncio.sleep(2)
-                    continue
-                raise ValueError(f"Stage {stage}: response cut off (finish_reason=length). Try again.")
-            try:
-                return extract_json(raw)
-            except ValueError as parse_err:
-                _log.warning("%s JSON parse failed (%s) — raw: %r", tag, parse_err, raw[:500])
-                if attempt < 2:
-                    await asyncio.sleep(3)
-                    continue
-                raise ValueError(f"Stage {stage}: non-JSON response ({len(raw)} chars). Raw: {raw[:200]!r}")
+            raw = r.json()["choices"][0]["message"]["content"]
+            _log.info("%s SUCCESS — response %d chars", tag, len(raw))
+            return extract_json(raw)
 
         elif r.status_code == 429:
             retry_after = int(r.headers.get("retry-after", 0))
@@ -1712,34 +1482,6 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             _log.error("%s INVALID/EXPIRED KEY — HTTP %d for key %s", tag, r.status_code, mk)
             raise ValueError(f"Invalid/expired key on {stage} (HTTP {r.status_code})")
 
-        elif r.status_code == 400:
-            body_text = r.text[:400]
-            _log.error("%s HTTP 400 Bad Request — likely max_tokens too high or prompt too long. Body: %s", tag, body_text)
-            # Check for decommissioned model error specifically
-            if "decommissioned" in body_text.lower() or "model_decommissioned" in body_text:
-                raise ValueError(
-                    f"Stage {stage}: Model '{model}' has been decommissioned by Groq. "
-                    f"Please go to Settings and select a different model (e.g. llama-3.3-70b-versatile). "
-                    f"Details: {body_text}"
-                )
-            if "deepseek" in model.lower():
-                raise ValueError(
-                    f"Stage {stage}: HTTP 400 — DeepSeek on Groq has a small context window. "
-                    f"Try shortening the job description, or switch to llama-3.3-70b-versatile in Settings. "
-                    f"Details: {body_text}"
-                )
-            raise ValueError(
-                f"Stage {stage}: HTTP 400 — request rejected (prompt+tokens too large or invalid). "
-                f"Details: {body_text}"
-            )
-
-        elif r.status_code == 404:
-            _log.error("%s MODEL NOT FOUND — HTTP 404 — model=%s", tag, model)
-            raise ValueError(
-                f"Model '{model}' not found (HTTP 404). "
-                f"For Cerebras use: gpt-oss-120b, zai-glm-4.7, or qwen-3-235b-a22b. llama3.1-8b has been removed."
-            )
-
         else:
             last_error = f"HTTP {r.status_code} on {stage}"
             _log.warning("%s Unexpected status %d on attempt %d — %s",
@@ -1756,15 +1498,11 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
 # PROVIDER CALLERS
 # ==============================================================================
 async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
-                               url: str, headers: dict,
-                               max_output_tokens: int = 6000) -> dict:
+                               url: str, headers: dict) -> dict:
     """Generate CV using single dynamic prompt - everything from JD"""
     import time as _t
 
-    # OpenRouter free models can take 2-3 min; other providers are fast (<30s)
-    _or_slow = "openrouter" in url
-    _or_dashscope = "dashscope" in url
-    _deadline = _t.time() + (170 if _or_slow else (58 if _or_dashscope else 55))  # 170s OR free, 58s dashscope, 55s others
+    _deadline = _t.time() + 270
     years_exp = (req.years_exp or "").strip()
     years_exp_clean = years_exp.replace("+", "").strip()
 
@@ -1790,23 +1528,8 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
     _log.info("[GenCV|%s] Prompt built — sys=%d chars, usr=%d chars",
               provider_host, len(system_prompt), len(user_prompt))
 
-    # ── DeepSeek context-window guard ──────────────────────────────────────────
-    # deepseek-r1-distill-* on Groq has an 8192-token combined input+output limit.
-    # Estimate: 1 token ≈ 4 chars. If total prompt exceeds ~18000 chars (~4500 tokens),
-    # trim the job_description in the user_prompt to keep total under the limit.
-    DEEPSEEK_PROMPT_CHAR_LIMIT = 18_000
-    if "deepseek" in model.lower():
-        total_chars = len(system_prompt) + len(user_prompt)
-        if total_chars > DEEPSEEK_PROMPT_CHAR_LIMIT:
-            excess = total_chars - DEEPSEEK_PROMPT_CHAR_LIMIT
-            # Trim trailing characters from user_prompt (job description end is most expendable)
-            trim_to = max(200, len(user_prompt) - excess - 200)
-            user_prompt = user_prompt[:trim_to] + "\n\n[Job description truncated to fit model context window]"
-            _log.warning("[GenCV|%s] DeepSeek prompt too large (%d chars) — trimmed user_prompt to %d chars",
-                         provider_host, total_chars, len(user_prompt))
-
     result = await call_llm_atomic(client, key, model, url, system_prompt, user_prompt,
-                                    "FullCV", headers, max_tokens=max_output_tokens, _deadline=_deadline)
+                                    "FullCV", headers, max_tokens=8000, _deadline=_deadline)
 
     if not result:
         _log.error("[GenCV|%s] AI returned empty/unparseable response", provider_host)
@@ -1944,30 +1667,12 @@ async def call_cerebras(req: CVRequest) -> tuple:
     if not valid_keys:
         raise HTTPException(400, "No valid Cerebras keys found.")
 
-    model = req.model or "gpt-oss-120b"
-
-    # ── Valid Cerebras models (as of May 2026) ────────────────────────────────
-    # gpt-oss-120b  — fast reasoning model, ~10-20s, recommended
-    # zai-glm-4.7   — 355B, paid/select accounts
-    # qwen-3-235b-a22b — 235B MoE, may be slow but works
-    #
-    # llama3.1-8b was removed from Cerebras API (HTTP 404) — do NOT use it.
-    # If the user somehow has it selected, remap to gpt-oss-120b.
-    _CEREBRAS_INVALID_MODELS = {
-        "llama3.1-8b":  "gpt-oss-120b",
-        "llama3-8b":    "gpt-oss-120b",
-    }
-    if model in _CEREBRAS_INVALID_MODELS:
-        remapped = _CEREBRAS_INVALID_MODELS[model]
-        _log.warning("[Cerebras] Model '%s' is no longer available (HTTP 404) "
-                     "— auto-remapping to '%s'", model, remapped)
-        model = remapped
-
+    model = req.model or "llama3.1-8b"
     sorted_keys = _prioritised_keys(valid_keys)
     errors_by_key = []
     rate_limited_count = 0
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=8, read=55, write=10, pool=5)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=180, write=15, pool=10)) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
@@ -1982,9 +1687,32 @@ async def call_cerebras(req: CVRequest) -> tuple:
                 _log.warning("[Cerebras] %s — skipping", msg)
                 continue
 
+            # Quick probe to skip obviously bad/rate-limited keys
             try:
-                cv = await generate_cv_dynamic(req, client, key, model, CEREBRAS_URL, headers,
-                                               max_output_tokens=16000)
+                probe = await client.post(
+                    CEREBRAS_URL,
+                    headers=headers,
+                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
+                    timeout=15,
+                )
+                if probe.status_code in (401, 403):
+                    errors_by_key.append(f"Key {i+1} ({mk}): invalid key")
+                    continue
+                if probe.status_code == 429:
+                    rate_limited_count += 1
+                    retry_after = int(probe.headers.get("retry-after", 60))
+                    _key_rate_limited_until[mk] = _t.time() + min(retry_after, 120)
+                    errors_by_key.append(f"Key {i+1} ({mk}): rate limited (retry-after {retry_after}s)")
+                    # Small gap before trying next key
+                    if i < len(sorted_keys) - 1:
+                        await asyncio.sleep(2)
+                    continue
+            except Exception as e:
+                errors_by_key.append(f"Key {i+1} ({mk}): probe failed - {str(e)[:50]}")
+                continue
+
+            try:
+                cv = await generate_cv_dynamic(req, client, key, model, CEREBRAS_URL, headers)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
                 _log_generation(req.job_title, mk, i, 0, model, True)
                 return cv, mk, i
@@ -2015,25 +1743,6 @@ async def call_groq(req: CVRequest) -> tuple:
         raise HTTPException(400, "No valid Groq keys (must start with gsk_).")
 
     model = req.model or "llama-3.1-8b-instant"
-
-    # ── Remap decommissioned Groq models to active replacements ────────────────
-    # deepseek-r1-distill-llama-70b was decommissioned by Groq (May 2026).
-    # Any deepseek-r1-distill-* model on Groq is redirected to the recommended
-    # replacement. See: https://console.groq.com/docs/deprecations
-    _GROQ_DECOMMISSIONED = {
-        "deepseek-r1-distill-llama-70b":   "llama-3.3-70b-versatile",
-        "deepseek-r1-distill-llama-8b":    "llama-3.1-8b-instant",
-        "deepseek-r1-distill-qwen-32b":    "llama-3.3-70b-versatile",
-        "llama3-70b-8192":                 "llama-3.3-70b-versatile",
-        "llama3-8b-8192":                  "llama-3.1-8b-instant",
-        "llama2-70b-4096":                 "llama-3.3-70b-versatile",
-        "mixtral-8x7b-32768":              "llama-3.3-70b-versatile",
-    }
-    if model in _GROQ_DECOMMISSIONED:
-        remapped = _GROQ_DECOMMISSIONED[model]
-        _log.warning("[Groq] Model '%s' is decommissioned — auto-remapping to '%s'", model, remapped)
-        model = remapped
-
     sorted_keys = _prioritised_keys(valid_keys)
     errors_by_key = []
     rate_limited_count = 0
@@ -2044,7 +1753,7 @@ async def call_groq(req: CVRequest) -> tuple:
     # read=240 gives each attempt up to 4 min; call_llm_atomic uses 120s per try
     # with its own retry loop, so the outer client must not cut it short
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=8, read=55, write=10, pool=5)
+        timeout=httpx.Timeout(connect=15, read=240, write=20, pool=10)
     ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
@@ -2063,15 +1772,7 @@ async def call_groq(req: CVRequest) -> tuple:
             _log.info("[Groq] Trying key %d/%d (%s) with model %s",
                       i + 1, len(sorted_keys), mk, model)
             try:
-                # Token budget by model:
-                #   deepseek-* on Groq: 8192 context limit -> cap output at 3000
-                #   llama / other Groq models: 6000 TPM free tier -> cap at 5500
-                is_deepseek_groq = "deepseek" in model.lower()
-                groq_max_tokens = 3000 if is_deepseek_groq else 5500
-                _log.info("[Groq] model=%s is_deepseek=%s max_output_tokens=%d",
-                          model, is_deepseek_groq, groq_max_tokens)
-                cv = await generate_cv_dynamic(req, client, key, model, GROQ_URL, headers,
-                                               max_output_tokens=groq_max_tokens)
+                cv = await generate_cv_dynamic(req, client, key, model, GROQ_URL, headers)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
                 _log_generation(req.job_title, mk, i, 0, model, True)
                 _log.info("[Groq] SUCCESS — key %d (%s)", i + 1, mk)
@@ -2293,50 +1994,14 @@ async def call_deepseek(req: CVRequest) -> tuple:
     raise HTTPException(502, f"All DeepSeek keys failed: {'; '.join(errors_by_key[:3])}")
 
 async def call_openai(req: CVRequest) -> tuple:
-    """
-    Unified OpenAI-compatible provider handler.
-    Routes to the correct API endpoint based on model name:
-      • deepseek-chat / deepseek-reasoner  → api.deepseek.com  (DeepSeek native)
-      • qwen/... or deepseek/...           → openrouter.ai     (OpenRouter, free tier available)
-      • Everything else                    → api.openai.com    (ChatGPT / GPT-4o / o4-mini)
-    The user supplies ONE set of keys — the right key for the chosen model.
-    """
     raw_keys = req.openai_keys or []
     if not raw_keys:
-        raise HTTPException(400, "No API keys provided for this provider.")
+        raise HTTPException(400, "No OpenAI keys provided.")
     valid_keys = [k.strip() for k in raw_keys if k and k.strip()]
     if not valid_keys:
-        raise HTTPException(400, "No valid API keys found.")
+        raise HTTPException(400, "No valid OpenAI keys found.")
 
     model = req.model or "gpt-4o-mini"
-
-    # ── Route to the correct base URL based on model AND key prefix ──────────
-    # Key prefix takes priority: an sk-or- key must ALWAYS go to OpenRouter,
-    # even if the user selected an OpenAI model name (which would 401 on OR).
-    first_key = valid_keys[0].strip() if valid_keys else ""
-    key_forces_openrouter = first_key.startswith("sk-or-")
-
-    if key_forces_openrouter and model not in _OPENROUTER_MODELS:
-        # User picked an OpenAI/DeepSeek model name but supplied an OR key.
-        # Swap to the best free OR model automatically.
-        _log.warning(
-            "[OpenAI-unified] sk-or- key detected but model=%s is not an OR model — "
-            "overriding to openrouter/free", model
-        )
-        model = "openrouter/free"
-
-    if model in _DEEPSEEK_NATIVE_MODELS and not key_forces_openrouter:
-        api_url  = DEEPSEEK_URL
-        provider_name = "DeepSeek"
-    elif model in _OPENROUTER_MODELS or key_forces_openrouter:
-        api_url  = OPENROUTER_URL
-        provider_name = "OpenRouter"
-    else:
-        api_url  = OPENAI_URL
-        provider_name = "OpenAI"
-
-    _log.info("[OpenAI-unified] model=%s → routing to %s (%s)", model, provider_name, api_url)
-
     sorted_keys = _prioritised_keys(valid_keys)
     errors_by_key = []
     rate_limited_count = 0
@@ -2345,14 +2010,9 @@ async def call_openai(req: CVRequest) -> tuple:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-            # OpenRouter requires an extra header
-            if api_url == OPENROUTER_URL:
-                headers["HTTP-Referer"] = "https://cv-builder-ai.extension"
-                headers["X-Title"] = "CV Builder AI"
             try:
-                cv = await generate_cv_dynamic(req, client, key, model, api_url, headers)
+                cv = await generate_cv_dynamic(req, client, key, model, OPENAI_URL, headers)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
-                _log.info("[OpenAI-unified] SUCCESS — %s key %d (%s)", provider_name, i+1, mk)
                 return cv, mk, i
             except _RateLimitError as e:
                 rate_limited_count += 1
@@ -2361,119 +2021,12 @@ async def call_openai(req: CVRequest) -> tuple:
                     await asyncio.sleep(3)
                 continue
             except Exception as e:
-                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:120]}")
+                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:100]}")
                 continue
 
     if rate_limited_count == len(sorted_keys):
-        raise HTTPException(429, f"All {provider_name} keys are rate-limited. Try again shortly. Details: {'; '.join(errors_by_key[:3])}")
-    raise HTTPException(502, f"All {provider_name} keys failed: {'; '.join(errors_by_key[:3])}")
-
-# ==============================================================================
-# QWEN / DASHSCOPE PROVIDER
-# ==============================================================================
-async def call_qwen(req: CVRequest) -> tuple:
-    """
-    Qwen / Alibaba DashScope provider.
-    Uses the OpenAI-compatible international endpoint so no extra SDK is needed.
-    Free tier: new accounts get 1 M input + 1 M output tokens for 90 days.
-    API key signup: https://dashscope-intl.aliyuncs.com  (international)
-                    https://bailian.console.aliyun.com    (if you use Alibaba Cloud)
-    """
-    import time as _t
-    raw_keys = req.qwen_keys or []
-    if not raw_keys:
-        raise HTTPException(400, "No Qwen / DashScope keys provided.")
-    valid_keys = [k.strip() for k in raw_keys if k and k.strip()]
-    if not valid_keys:
-        raise HTTPException(400, "No valid Qwen keys found.")
-
-    model = req.model or "qwen-plus"
-
-    # Guard: if someone accidentally selects a non-Qwen model while on Qwen provider,
-    # fall back to the recommended default instead of a hard 404.
-    if model not in _QWEN_MODELS:
-        _log.warning("[Qwen] Model '%s' not in _QWEN_MODELS — falling back to qwen-plus", model)
-        model = "qwen-plus"
-
-    sorted_keys = _prioritised_keys(valid_keys)
-    errors_by_key = []
-    rate_limited_count = 0
-
-    _log.info("[Qwen] Starting generation — model=%s keys=%d job_title=%r",
-              model, len(sorted_keys), req.job_title[:60])
-
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=10, read=90, write=10, pool=5)
-    ) as client:
-        for i, key in enumerate(sorted_keys):
-            mk = mask(key)
-            headers = {
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-            }
-
-            cooldown_until = _key_rate_limited_until.get(mk, 0)
-            if cooldown_until > _t.time():
-                remaining = int(cooldown_until - _t.time())
-                rate_limited_count += 1
-                msg = f"Key {i+1} ({mk}): still rate-limited ({remaining}s remaining)"
-                errors_by_key.append(msg)
-                _log.warning("[Qwen] %s — skipping", msg)
-                continue
-
-            _log.info("[Qwen] Trying key %d/%d (%s) with model %s", i+1, len(sorted_keys), mk, model)
-            # Use cached endpoint if known; otherwise default to intl and learn on first failure.
-            qwen_url_to_use = _qwen_endpoint_cache.get(mk, QWEN_URL)
-            _log.info("[Qwen] Using endpoint %s for key %s (cached=%s)",
-                      "CN" if qwen_url_to_use == QWEN_URL_CN else "intl",
-                      mk, mk in _qwen_endpoint_cache)
-
-            try:
-                cv = await generate_cv_dynamic(req, client, key, model, qwen_url_to_use, headers,
-                                               max_output_tokens=16000)
-                _key_usage[mk] = _key_usage.get(mk, 0) + 1
-                _qwen_endpoint_cache[mk] = qwen_url_to_use  # remember for next request
-                _log_generation(req.job_title, mk, i, 0, model, True)
-                _log.info("[Qwen] SUCCESS — key %d (%s) via %s", i+1, mk, qwen_url_to_use)
-                return cv, mk, i
-            except _RateLimitError as e:
-                rate_limited_count += 1
-                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)}")
-                _log.warning("[Qwen] RATE-LIMIT on key %d (%s): %s", i+1, mk, e)
-                if i < len(sorted_keys) - 1:
-                    await asyncio.sleep(3)
-                continue
-            except Exception as e:
-                err_str = str(e)
-                # If this was an auth failure on intl, retry once with CN endpoint
-                if qwen_url_to_use == QWEN_URL and ("401" in err_str or "403" in err_str or "invalid" in err_str.lower()):
-                    _log.info("[Qwen] Auth failed on intl — retrying with CN endpoint for key %s", mk)
-                    try:
-                        cv = await generate_cv_dynamic(req, client, key, model, QWEN_URL_CN, headers,
-                                                       max_output_tokens=16000)
-                        _key_usage[mk] = _key_usage.get(mk, 0) + 1
-                        _qwen_endpoint_cache[mk] = QWEN_URL_CN  # cache CN as working endpoint
-                        _log_generation(req.job_title, mk, i, 0, model, True)
-                        _log.info("[Qwen] SUCCESS on CN fallback — key %d (%s)", i+1, mk)
-                        return cv, mk, i
-                    except Exception as e2:
-                        errors_by_key.append(f"Key {i+1} ({mk}): intl={err_str[:60]} CN={str(e2)[:60]}")
-                        _log.error("[Qwen] FAILED on both endpoints for key %d (%s)", i+1, mk)
-                else:
-                    errors_by_key.append(f"Key {i+1} ({mk}): {err_str[:120]}")
-                    _log.error("[Qwen] FAILED key %d (%s): %s", i+1, mk, err_str[:200])
-                continue
-
-    _log.error("[Qwen] All %d key(s) failed. rate_limited=%d. Errors: %s",
-               len(sorted_keys), rate_limited_count, " | ".join(errors_by_key))
-
-    if rate_limited_count == len(sorted_keys):
-        raise HTTPException(
-            429,
-            f"All Qwen keys are currently rate-limited. Wait ~60s and retry, "
-            f"or switch to another provider. Details: {'; '.join(errors_by_key[:3])}"
-        )
-    raise HTTPException(502, f"All Qwen keys failed: {'; '.join(errors_by_key[:3])}")
+        raise HTTPException(429, f"All OpenAI keys are rate-limited. Try again shortly. Details: {'; '.join(errors_by_key[:3])}")
+    raise HTTPException(502, f"All OpenAI keys failed: {'; '.join(errors_by_key[:3])}")
 
 # ==============================================================================
 # HEALTH CHECK
@@ -2505,8 +2058,6 @@ async def generate_cv(req: CVRequest):
             cv_data, key_used, key_idx = await call_deepseek(req)
         elif req.provider == "openai":
             cv_data, key_used, key_idx = await call_openai(req)
-        elif req.provider == "qwen":
-            cv_data, key_used, key_idx = await call_qwen(req)
         else:
             raise HTTPException(400, f"Unsupported provider: {req.provider}")
         
@@ -2626,7 +2177,7 @@ async def generate_pdf(req: PDFRequest):
 @app.post("/check-cerebras-keys")
 async def check_cerebras_keys(body: dict):
     keys = body.get("keys", [])
-    model = body.get("model", "gpt-oss-120b")
+    model = body.get("model", "llama3.1-8b")
     results = []
     async with httpx.AsyncClient(timeout=10) as client:
         for key in keys:
@@ -2719,74 +2270,13 @@ async def check_openai_keys(body: dict):
                 results.append({"key": "***", "status": "empty"})
                 continue
             try:
-                # OpenRouter keys start with sk-or-v1 — route to OpenRouter
-                if key.startswith("sk-or-"):
-                    check_url = OPENROUTER_URL
-                    # Use a known-working free model for the check
-                    check_model = "meta-llama/llama-3.3-70b-instruct:free"
-                    extra_headers = {
-                        "HTTP-Referer": "https://cv-builder-ai.extension",
-                        "X-Title": "CV Builder AI",
-                    }
-                else:
-                    check_url = OPENAI_URL
-                    check_model = model
-                    extra_headers = {}
-                r = await client.post(check_url,
-                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", **extra_headers},
-                    json={"model": check_model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1})
+                r = await client.post(OPENAI_URL,
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1})
                 status = "ok" if r.status_code == 200 else "rate_limited" if r.status_code == 429 else "invalid"
                 results.append({"key": mask(key), "status": status})
             except Exception:
                 results.append({"key": mask(key), "status": "error"})
-    return {"results": results}
-
-@app.post("/check-qwen-keys")
-async def check_qwen_keys(body: dict):
-    """
-    Verify Qwen / DashScope API keys.
-    Tries the international endpoint first; if the key is rejected (401/403),
-    automatically falls back to the China/domestic endpoint (bailian.console.alibabacloud.com keys).
-    Uses qwen-turbo with max_tokens=1 (cheapest possible check call).
-    """
-    keys = body.get("keys", [])
-    model = body.get("model", "qwen-turbo")
-    results = []
-    async with httpx.AsyncClient(timeout=15) as client:
-        for key in keys:
-            key = (key or "").strip()
-            if not key:
-                results.append({"key": "***", "status": "empty"})
-                continue
-            payload = {"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1}
-            hdrs = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-            status = "error"
-            try:
-                # Try international endpoint first
-                r = await client.post(QWEN_URL, headers=hdrs, json=payload)
-                if r.status_code == 200:
-                    status = "ok"
-                elif r.status_code == 429:
-                    status = "rate_limited"
-                elif r.status_code in (401, 403):
-                    # Key rejected on intl — try China/domestic endpoint (bailian keys work here)
-                    try:
-                        r2 = await client.post(QWEN_URL_CN, headers=hdrs, json=payload)
-                        if r2.status_code == 200:
-                            status = "ok"
-                        elif r2.status_code == 429:
-                            status = "rate_limited"
-                        elif r2.status_code in (401, 403):
-                            status = "invalid"
-                        else:
-                            status = f"http_{r2.status_code}"
-                    except Exception:
-                        status = "invalid"
-                else:
-                    status = f"http_{r.status_code}"
-            except Exception:
-                status = "error"
-            results.append({"key": mask(key), "status": status})
     return {"results": results}
 
 if __name__ == "__main__":
