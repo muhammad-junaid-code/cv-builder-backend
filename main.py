@@ -821,25 +821,9 @@ SECTION-BY-SECTION INSTRUCTIONS
    • No technology repeated. Reads like a polished professional wrote it.
    • Do NOT write a long paragraph — keep it punchy and scannable.
 
-③ competencies   [CORE COMPETENCIES — professional strengths ONLY, NO technologies]
-   Generate EXACTLY 12 professional/behavioural competencies, separated by " • ".
-   CRITICAL RULES:
-   1. NEVER include any technology name, tool, framework, language, or acronym
-      (e.g. .NET, SQL, Azure, React, Python, Angular, Docker, AWS — ALL FORBIDDEN here).
-   2. Every competency must be a PROFESSIONAL or BEHAVIOURAL strength, not a technical skill.
-   3. Derive every phrase from the JD's soft-skill signals, leadership cues, team dynamics,
-      delivery expectations, and collaboration requirements.
-   4. Each phrase must be 2–5 words, ATS-compatible, and role-specific to THIS job.
-   5. Choose 12 of the most relevant from these conceptual areas (reword to fit the JD):
-      — Leadership & Ownership, Cross-Functional Collaboration, Stakeholder Engagement,
-        Strategic Problem-Solving, Agile & Iterative Delivery, Continuous Improvement,
-        Technical Mentoring, Accountability & On-Time Delivery, Clear Communication,
-        Adaptability & Growth Mindset, Quality & Standards Focus, Self-Directed Initiative,
-        Decision-Making Under Ambiguity, Risk & Dependency Management, Customer-Value Focus,
-        Team Enablement & Coaching, Analytical & Data-Driven Thinking, Conflict Resolution.
-   6. Do NOT copy the category names above verbatim — reword them to match THIS role's JD.
-   7. Output format: "Phrase1 • Phrase2 • Phrase3 • ... • Phrase12"
-      Use a plain space-dot-space separator: " • " — no asterisks, no bullet Unicode chars.
+③ competencies
+   Exactly 10 domain-specific skill phrases from the JD, separated by " * ".
+   Phrases must name real capabilities, not generic filler.
 
 ④ keywords
    18–20 ATS keywords from the JD, comma-separated. Cover tools, methods, and domain terms.
@@ -862,15 +846,8 @@ SECTION-BY-SECTION INSTRUCTIONS
    bullets : 4 achievement bullets per company, each 20–30 words.
              Each bullet must be unique — different technology, different metric, different context.
              No copy-pasting between companies. Bullets must sound like lived experience.
-             MANDATORY FORMAT: Write plain text ONLY. Do NOT begin any bullet with a bullet
-             character (• ■ * – -). The HTML renderer wraps bullets in <li> tags — adding
-             a leading symbol produces a double-bullet that appears as a BLACK SQUARE in
-             the rendered PDF. Plain text only; the formatting is applied automatically.
-   tech    : MINIMUM 8 technologies per company, pipe-separated ("T1 | T2 | T3 | ... | T8").
-             UNIQUENESS RULE: Each company's tech list must differ meaningfully from the others.
-             Reflect the ACTUAL responsibilities and domain of that specific role/period.
-             Derive from the JD which tools are realistic for each company's context.
-             Never clone the same 8 technologies across all three companies.
+   tech    : 6–8 JD technologies used at that company, pipe-separated.
+             Do NOT repeat the same tech set across all companies.
 
 ⑧ projects  [EXACTLY 4 — split as described]
    PROJECT SPLIT RULE (mandatory):
@@ -887,12 +864,7 @@ SECTION-BY-SECTION INSTRUCTIONS
      overview : 3–4 sentences. Story arc: problem → approach → technologies → outcome.
                 Reads like a real project summary a professional would write.
      bullets  : 3 achievement bullets, each with a concrete metric or outcome.
-                MANDATORY FORMAT: Plain text only — NO leading bullet symbols (• ■ * – -).
-                Leading symbols double-render as BLACK SQUARES in the PDF output.
-     techTags : MINIMUM 8 technologies per project, all from the JD.
-                Each project's techTags must be DISTINCT from other projects.
-                Choose tools that genuinely apply to that specific project's domain & context.
-                Never repeat the identical set of 8 technologies across all 4 projects.
+     techTags : 5–7 technologies from the JD relevant to that project.
 
 ⑨ relatedTech  [5 category objects, 5 items each — all from JD]
 
@@ -910,7 +882,7 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 {{
   "title": "Inferred Role | Tech1, Tech2, Tech3 | {years_display}",
   "summary": "{years_display} years of experience in [JD domain]… (4–5 sentences, 70–100 words)",
-  "competencies": "Prof Competency 1 • Prof Competency 2 • Prof Competency 3 • Prof Competency 4 • Prof Competency 5 • Prof Competency 6 • Prof Competency 7 • Prof Competency 8 • Prof Competency 9 • Prof Competency 10 • Prof Competency 11 • Prof Competency 12",
+  "competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18",
   "technologies": {{
     "mustHave":   ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10","t11","t12"],
@@ -947,25 +919,25 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
         "Technical challenge overcome with quantified result (20–30 words).",
         "Business benefit delivered (20–30 words)."
       ],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
     }},
     {{
       "name": "Second Business-Domain Project Name",
       "overview": "3–4 sentences for a different business/industry angle.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
     }},
     {{
       "name": "JD-Technical Requirements Project Name",
       "overview": "3–4 sentences aligned with the specific technical skills in the JD.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
     }},
     {{
       "name": "Second JD-Technical Requirements Project Name",
       "overview": "3–4 sentences for a different technical capability from the JD.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
     }}
   ],
   "education": {_edu_json_block},
@@ -987,11 +959,6 @@ PRE-SUBMIT CHECKLIST — verify every item before writing a single character of 
 ✓ projects 3–4 target the JD's specific technical requirements
 ✓ zero company names appear anywhere except the "company" JSON key
 ✓ every technology, skill, and keyword came from the job description
-✓ competencies contain ZERO technology names — all professional/behavioural phrases only
-✓ competencies is exactly 12 phrases separated by " • " (space-dot-space)
-✓ every company "tech" field has MINIMUM 8 pipe-separated technologies
-✓ every project "techTags" array has MINIMUM 8 technologies, distinct per project
-✓ no bullet point symbol (• ■ * - –) appears at the START of any bullet string in bullets arrays
 ✓ output is raw JSON only — no markdown fences, no explanatory text
 """
 
@@ -1007,10 +974,6 @@ Key reminders:
 - Projects 1–2: company/industry domain. Projects 3–4: JD technical requirements.
 - No company names in any free-text field.
 - Every word derived from the job description above.
-- COMPETENCIES: Must be 12 professional/behavioural strengths. Zero technology names allowed.
-- COMPANY TECH: Minimum 8 pipe-separated technologies per company, each set must differ.
-- PROJECT TECHTAGS: Minimum 8 technologies per project, distinct across all 4 projects.
-- BULLETS: Never start any bullet string with a bullet character (• ■ * - –). Plain text only.
 """
 
     return system_prompt, user_prompt
@@ -1114,7 +1077,7 @@ def sanitise_cv(cv: dict) -> dict:
         return {}
     
     for field in ("totalYears", "title", "summary", "competencies", "keywords"):
-        cv[field] = _sanitize_ai_text(str(cv.get(field, "")).strip())
+        cv[field] = str(cv.get(field, "")).strip()
     
     if cv.get("title"):
         cv["title"] = _normalize_job_title(cv["title"])
@@ -1132,11 +1095,11 @@ def sanitise_cv(cv: dict) -> dict:
             if isinstance(tech, list):
                 tech = " | ".join(str(t) for t in tech if t)
             clean_companies.append({
-                "company": _sanitize_ai_text(str(co.get("company", ""))),
-                "role": _sanitize_ai_text(str(co.get("role", ""))),
+                "company": str(co.get("company", "")),
+                "role": str(co.get("role", "")),
                 "dateRange": str(co.get("dateRange", "")),
-                "bullets": [_clean_bullet(b) for b in bullets if b],
-                "tech": _sanitize_ai_text(str(tech)),
+                "bullets": [str(b).strip() for b in bullets if b],
+                "tech": str(tech),
             })
         cv["companies"] = clean_companies
     
@@ -1145,7 +1108,7 @@ def sanitise_cv(cv: dict) -> dict:
         clean_skills = []
         for s in skills:
             if s and isinstance(s, str):
-                clean_skills.append(_sanitize_ai_text(s.strip()))
+                clean_skills.append(s.strip())
         cv["skills"] = clean_skills
     
     projects = cv.get("projects", [])
@@ -1154,9 +1117,9 @@ def sanitise_cv(cv: dict) -> dict:
         for p in projects:
             if isinstance(p, dict):
                 clean_projects.append({
-                    "name": _sanitize_ai_text(str(p.get("name", ""))),
-                    "overview": _sanitize_ai_text(str(p.get("overview", ""))),
-                    "bullets": [_clean_bullet(b) for b in (p.get("bullets") or []) if b],
+                    "name": str(p.get("name", "")),
+                    "overview": str(p.get("overview", "")),
+                    "bullets": [str(b).strip() for b in (p.get("bullets") or []) if b],
                     "techTags": p.get("techTags", []) if isinstance(p.get("techTags"), list) else [str(p.get("techTags", ""))],
                 })
         cv["projects"] = clean_projects
@@ -1278,25 +1241,31 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
         if isinstance(val, str):
             cv[field] = val.replace("++", "+")
 
-    # ── Deduplicate tech tags WITHIN each company (not across companies) ──────
-    # Cross-company dedup was stripping too aggressively — later companies ended
-    # up with only 1-2 visible techs because all their tags had already appeared
-    # in earlier companies. Each company's tech list is now deduped independently
-    # so every company always shows its full distinct set.
+    # ── Deduplicate tech tags across companies ────────────────────────────────
     companies = cv.get("companies", [])
+    used_techs: set = set()
+
     for co in companies:
         tech_str = co.get("tech", "")
         if tech_str:
-            seen_in_co: set = set()
+            techs = [t.strip() for t in tech_str.split("|") if t.strip()]
             unique_techs = []
-            for t in [t.strip() for t in tech_str.split("|") if t.strip()]:
-                if t.lower() not in seen_in_co:
+            for t in techs:
+                if t.lower() not in used_techs:
                     unique_techs.append(t)
-                    seen_in_co.add(t.lower())
+                    used_techs.add(t.lower())
+            # Pad back up to 4 if we removed too many
+            if len(unique_techs) < 4:
+                for t in techs:
+                    if len(unique_techs) >= 6:
+                        break
+                    if t.lower() not in used_techs:
+                        unique_techs.append(t)
+                        used_techs.add(t.lower())
             if unique_techs:
-                co["tech"] = " | ".join(unique_techs)   # keep ALL unique — no truncation
+                co["tech"] = " | ".join(unique_techs[:8])
 
-    # ── Deduplicate project tech tags (within each project, no cross-project cap) ──
+    # ── Deduplicate project tech tags ─────────────────────────────────────────
     for proj in cv.get("projects", []):
         tags = proj.get("techTags", [])
         if isinstance(tags, list):
@@ -1304,7 +1273,7 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
             proj["techTags"] = [
                 t for t in tags
                 if t and t.lower() not in seen and not seen.add(t.lower())
-            ]   # keep all — prompt requires minimum 8, don't truncate below that
+            ][:7]
 
     return cv
 
@@ -1484,37 +1453,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         _log.info("%s HTTP %d received in %.1fs", tag, r.status_code, elapsed)
 
         if r.status_code == 200:
-            try:
-                resp_json = r.json()
-            except Exception as je:
-                last_error = f"JSON decode failed on HTTP 200: {je}"
-                _log.warning("%s %s — body: %s", tag, last_error, r.text[:200])
-                if attempt < 2:
-                    await asyncio.sleep(3)
-                    continue
-                raise ValueError(last_error)
-
-            # Cerebras sometimes returns a 200 with an error body instead of
-            # the standard OpenAI choices structure (e.g. {"message": "..."}).
-            choices = resp_json.get("choices")
-            if not choices or not isinstance(choices, list) or len(choices) == 0:
-                err_body = resp_json.get("message") or resp_json.get("error") or str(resp_json)[:120]
-                last_error = f"Unexpected 200 body (no choices): {err_body}"
-                _log.warning("%s %s — full body: %s", tag, last_error, str(resp_json)[:300])
-                if attempt < 2:
-                    await asyncio.sleep(4)
-                    continue
-                raise ValueError(last_error)
-
-            raw = choices[0].get("message", {}).get("content", "")
-            if not raw:
-                last_error = "Empty content in choices[0].message"
-                _log.warning("%s %s", tag, last_error)
-                if attempt < 2:
-                    await asyncio.sleep(3)
-                    continue
-                raise ValueError(last_error)
-
+            raw = r.json()["choices"][0]["message"]["content"]
             _log.info("%s SUCCESS — response %d chars", tag, len(raw))
             return extract_json(raw)
 
