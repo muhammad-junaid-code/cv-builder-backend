@@ -1079,9 +1079,9 @@ def extract_json(raw: str) -> dict:
     # Strip any trailing incomplete string / value that might confuse the parser
     j_repaired = j.rstrip().rstrip(",").rstrip()
     # If the response was cut off mid-string (Unterminated string error),
-    # close the open string first so the JSON closer can do its job
+    # close the open string before appending the bracket closers.
     if in_str:
-        j_repaired += '"\'  # close the dangling string
+        j_repaired += '"'
     # Close all unclosed structures in reverse order
     j_repaired += "".join(reversed(opens))
 
@@ -1122,7 +1122,7 @@ def _normalize_job_title(title: str) -> str:
     return " ".join(seen)
 
 def _strip_artifacts(text):
-    """Remove Cerebras tokenization artifacts: black squares (\u25A0 ■) mid-word."""
+    """Remove Cerebras tokenization artifacts: black squares (\u25A0) mid-word."""
     if not isinstance(text, str):
         return text
     import re
@@ -1520,8 +1520,47 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         _log.info("%s HTTP %d received in %.1fs", tag, r.status_code, elapsed)
 
         if r.status_code == 200:
-            raw = r.json()["choices"][0]["message"]["content"]
-            _log.info("%s SUCCESS — response %d chars", tag, len(raw))
+            resp_json   = r.json()
+            raw         = resp_json["choices"][0]["message"]["content"]
+            finish      = resp_json["choices"][0].get("finish_reason", "stop")
+            _log.info("%s SUCCESS — response %d chars, finish_reason=%s", tag, len(raw), finish)
+
+            # ── Continuation pass for truncated responses ─────────────────────
+            # Cerebras (and small-context models) sometimes hit the token limit
+            # mid-JSON (finish_reason="length"). When that happens we send a
+            # second "please continue" call and stitch the two halves together
+            # before parsing, rather than failing with "Unterminated string".
+            if finish == "length" and raw.rstrip()[-1:] not in ('}', ']'):
+                _log.warning("%s Response truncated (finish=length) — attempting continuation pass", tag)
+                try:
+                    cont_r = await client.post(
+                        url,
+                        headers=headers,
+                        json={
+                            "model": model,
+                            "messages": [
+                                {"role": "system",    "content": system},
+                                {"role": "user",      "content": user},
+                                {"role": "assistant", "content": raw},
+                                {"role": "user",      "content":
+                                    "The JSON was cut off. Continue EXACTLY from where you stopped. "
+                                    "Output only the remaining JSON fragment — no preamble, no markdown."},
+                            ],
+                            "temperature": 0.0,
+                            "max_tokens": max_tokens,
+                        },
+                        timeout=per_call_timeout,
+                    )
+                    if cont_r.status_code == 200:
+                        cont_raw    = cont_r.json()["choices"][0]["message"]["content"]
+                        raw_stitched = raw + cont_raw
+                        _log.info("%s Continuation OK — stitched total %d chars", tag, len(raw_stitched))
+                        raw = raw_stitched
+                    else:
+                        _log.warning("%s Continuation HTTP %d — using truncated raw", tag, cont_r.status_code)
+                except Exception as cont_exc:
+                    _log.warning("%s Continuation failed (%s) — falling back to truncated raw", tag, cont_exc)
+
             return extract_json(raw)
 
         elif r.status_code == 429:
