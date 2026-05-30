@@ -816,20 +816,15 @@ SECTION-BY-SECTION INSTRUCTIONS
    Inferred role (not a copy of the job title) | 3 key technologies from JD | {years_display}
    The third segment is exactly "{years_display}". Nothing more.
 
-② summary  [100–120 words, 4–5 sentences — strong professional narrative]
-   Sentence 1: "{years_display} years of experience in [JD domain]" + core discipline + seniority.
-   Sentence 2: 2–3 primary technical strengths from the JD, woven in naturally.
-   Sentence 3: A concrete career achievement or proven area of impact (quantify if natural).
-   Sentence 4: Leadership, collaboration, or delivery dimension implied by the JD.
-   Sentence 5: Candidate's professional focus and value in the target environment.
-   Rules: No I/my/me. No company names. 5–7 JD technologies woven naturally across sentences.
+② summary  [70–100 words, 4–5 sentences]
+   • Open with: "{years_display} years of experience in [specific JD domain]…"
+   • Concise, impactful, ATS-rich. Mention 4–6 key technologies naturally.
+   • No technology repeated. Reads like a polished professional wrote it.
+   • Do NOT write a long paragraph — keep it punchy and scannable.
 
-③ competencies  [EXACTLY 12 phrases, separated by " * "]
-   • 12 unique 2–4 word behavioral/leadership strengths from the JD context.
-   • May include: Code Quality, Mentoring, Technical Ownership, Agile Delivery,
-     Stakeholder Communication, Continuous Improvement, etc. — as inspiration only.
-   • FORBIDDEN: technology names, languages, frameworks, tool names.
-   • Every phrase must be specific to this role — no generic filler.
+③ competencies
+   Exactly 10 domain-specific skill phrases from the JD, separated by " * ".
+   Phrases must name real capabilities, not generic filler.
 
 ④ keywords
    18–20 ATS keywords from the JD, comma-separated. Cover tools, methods, and domain terms.
@@ -839,16 +834,12 @@ SECTION-BY-SECTION INSTRUCTIONS
    niceToHave : preferred / bonus technologies in the JD (8–12 items)
    additional : logically adjacent ecosystem tools implied by the JD (8–10 items)
 
-⑥ skills  [TECHNICAL SKILLS — 5 domain-separated categories]
-   Format: "Category Label: tech1, tech2, ..., tech10"
-   STRICT DOMAIN SEPARATION — this is critical:
-   • Backend technologies (.NET, Node.js, SQL Server, Redis, RabbitMQ, gRPC, REST)
-     must NEVER appear in a frontend category.
-   • Frontend technologies (React, Angular, Vue, CSS, Webpack, TypeScript UI)
-     must NEVER appear in a backend category.
-   • Cloud tools stay in Cloud/DevOps. Testing tools stay in Testing.
-   • 8–10 technologies per category. Zero duplicates across categories.
-   • Derive category labels from the JD's actual technology landscape.
+⑥ skills  [TECHNICAL SKILLS section — 5 entries only]
+   Format each entry as: "Short Role-Specific Category: tech1, tech2, … tech12"
+   • Category labels must be short, specific to THIS role, and useful as subheadings.
+   • Use small subheading style — no nested structures, no extra sections.
+   • 10–12 technologies per category, all from the JD.
+   • No duplicates across categories.
 
 ⑦ companies  [one entry per company listed above, in order]
    role    : Apply the seniority progression rules above. Infer the full title
@@ -857,12 +848,10 @@ SECTION-BY-SECTION INSTRUCTIONS
              Each bullet must be unique — different technology, different metric, different context.
              No copy-pasting between companies. Bullets must sound like lived experience.
    tech    : MINIMUM 8 unique, role-relevant technologies for this company,
-             pipe-separated. Selection rules:
-             - Relevant to THAT role's actual responsibilities and seniority.
-             - Earlier roles: foundational tools. Later roles: advanced/architectural.
-             - Prioritise UNIQUE tech per company — vary meaningfully across roles.
-             - NEVER copy an identical stack across all companies.
-             - All from the JD — never hardcoded.
+             pipe-separated. Select based on THAT role's actual responsibilities
+             and seniority. Earlier roles: foundational tools. Later roles: advanced.
+             Vary meaningfully across companies. Never copy an identical stack.
+             All from the JD — never hardcoded. NEVER fewer than 8.
 
 ⑧ projects  [EXACTLY 4 — split as described]
    PROJECT SPLIT RULE (mandatory):
@@ -879,8 +868,9 @@ SECTION-BY-SECTION INSTRUCTIONS
      overview : 3–4 sentences. Story arc: problem → approach → technologies → outcome.
                 Reads like a real project summary a professional would write.
      bullets  : 3 achievement bullets, each with a concrete metric or outcome.
-     techTags : MINIMUM 8 distinct technologies from the JD, relevant to
-               that project's scope. Different primary focus per project.
+     techTags : MINIMUM 8 distinct technologies from the JD, directly relevant
+               to that project's scope and implementation. Different primary
+               tech focus per project. NEVER fewer than 8.
 
 ⑨ relatedTech  [5 category objects, 5 items each — all from JD]
 
@@ -897,8 +887,8 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 
 {{
   "title": "Inferred Role | Tech1, Tech2, Tech3 | {years_display}",
-  "summary": "{years_display} years of experience in [JD domain]. [4–5 sentences, 100–120 words: discipline+seniority, technical strengths, career achievement, leadership/collaboration, value-add. No I/my/me. No company names.]",
-  "competencies": "Trait1 * Trait2 * Trait3 * Trait4 * Trait5 * Trait6 * Trait7 * Trait8 * Trait9 * Trait10 * Trait11 * Trait12",
+  "summary": "{years_display} years of experience in [JD domain]… (4–5 sentences, 70–100 words)",
+  "competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18",
   "technologies": {{
     "mustHave":   ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10","t11","t12"],
@@ -966,18 +956,16 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
   ]
 }}
 
-PRE-SUBMIT CHECKLIST:
-✓ title last segment is exactly "{years_display}" — no trailing comma, no double +
-✓ summary opens with "{years_display} years of experience in …", 100–120 words, no I/my/me
-✓ competencies: exactly 12 behavioral phrases, zero tech/tool/language names
-✓ skills: strict domain separation, backend in backend only, frontend in frontend only
-✓ every company "tech" has minimum 8 pipe-separated technologies, varied across roles
-✓ every project "techTags" has minimum 8 technologies
-✓ company role titles follow seniority progression
-✓ projects 1–2 company/industry domain, projects 3–4 JD technical requirements
-✓ zero company names outside the "company" field
-✓ no em-dashes, en-dashes, or non-ASCII punctuation in any string value
-✓ output is raw JSON only — no markdown, no code fences, no explanation text
+PRE-SUBMIT CHECKLIST — verify every item before writing a single character of output:
+✓ title last segment is exactly "{years_display}" — not "5++" not "5+ +" not "5+ years"
+✓ summary opens with exactly "{years_display} years of experience in …"
+✓ summary is 70–100 words (4–5 sentences) — concise, not bloated
+✓ company role titles follow the seniority progression rules above
+✓ projects 1–2 are grounded in the company/industry domain
+✓ projects 3–4 target the JD's specific technical requirements
+✓ zero company names appear anywhere except the "company" JSON key
+✓ every technology, skill, and keyword came from the job description
+✓ output is raw JSON only — no markdown fences, no explanatory text
 """
 
     user_prompt = f"""JOB DESCRIPTION:
@@ -986,17 +974,12 @@ PRE-SUBMIT CHECKLIST:
 Generate the complete CV JSON now.
 
 Key reminders:
-- Title: end with exactly "{years_display}" — no trailing comma, no double +.
-- Summary: 100–120 words, 4–5 sentences. Open "{years_display} years of experience in …".
-  No I/my/me. No company names. 5–7 JD technologies woven in naturally.
-- Competencies: exactly 12 behavioral phrases separated by " * ". Zero tech names.
-- Skills: strict domain separation — backend in backend ONLY, frontend in frontend ONLY.
-- Company tech: minimum 8 pipe-separated, unique per role, varied across companies.
-- Project techTags: minimum 8 per project, different primary focus per project.
-- Seniority: {seniority_guidance.split(chr(10))[0]}
+- Title must end with exactly "{years_display}" (one + sign, no more).
+- Summary must open with "{years_display} years of experience in …" and be 70–100 words.
+- Company roles must follow the seniority progression: {seniority_guidance.split(chr(10))[0]}
 - Projects 1–2: company/industry domain. Projects 3–4: JD technical requirements.
-- No company names in free-text. No em-dashes or non-ASCII punctuation.
-- Every word derived from the job description.
+- No company names in any free-text field.
+- Every word derived from the job description above.
 """
 
     return system_prompt, user_prompt
@@ -1103,7 +1086,7 @@ def sanitise_cv(cv: dict) -> dict:
         cv[field] = str(cv.get(field, "")).strip()
     
     if cv.get("title"):
-        # Strip trailing commas and whitespace from each pipe segment
+        # Strip trailing commas/spaces from each pipe segment
         _segs = [s.strip().rstrip(",").strip() for s in cv["title"].split("|")]
         cv["title"] = " | ".join(s for s in _segs if s)
         cv["title"] = _normalize_job_title(cv["title"])
@@ -1267,39 +1250,75 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
         if isinstance(val, str):
             cv[field] = val.replace("++", "+")
 
-    # ── Deduplicate tech tags across companies ────────────────────────────────
+    # ── Enforce minimum 8 technologies per company ───────────────────────────
+    # Build a fallback pool from mustHave + niceToHave so we can top-up any
+    # company that the AI under-populated. We do NOT aggressively remove
+    # cross-company duplicates — the prompt handles variety; Python only
+    # guarantees the minimum count is met.
+    _tech_pool: list = []
+    _cv_techs = cv.get("technologies", {})
+    for _bucket in ("mustHave", "niceToHave", "additional"):
+        for _t in (_cv_techs.get(_bucket) or []):
+            if _t and _t.strip() and _t.strip() not in _tech_pool:
+                _tech_pool.append(_t.strip())
+
     companies = cv.get("companies", [])
-    used_techs: set = set()
+    MIN_CO_TECH = 8
 
     for co in companies:
         tech_str = co.get("tech", "")
-        if tech_str:
-            techs = [t.strip() for t in tech_str.split("|") if t.strip()]
-            unique_techs = []
-            for t in techs:
-                if t.lower() not in used_techs:
-                    unique_techs.append(t)
-                    used_techs.add(t.lower())
-            # Pad back up to 4 if we removed too many
-            if len(unique_techs) < 4:
-                for t in techs:
-                    if len(unique_techs) >= 6:
-                        break
-                    if t.lower() not in used_techs:
-                        unique_techs.append(t)
-                        used_techs.add(t.lower())
-            if unique_techs:
-                co["tech"] = " | ".join(unique_techs[:8])
+        # Normalise: accept either pipe-string or list from AI
+        if isinstance(tech_str, list):
+            techs = [str(t).strip() for t in tech_str if str(t).strip()]
+        else:
+            techs = [t.strip() for t in str(tech_str).split("|") if t.strip()]
 
-    # ── Deduplicate project tech tags ─────────────────────────────────────────
+        # Deduplicate within this company only (preserve order)
+        seen_co: set = set()
+        unique_techs: list = []
+        for t in techs:
+            if t.lower() not in seen_co:
+                unique_techs.append(t)
+                seen_co.add(t.lower())
+
+        # Pad up to MIN_CO_TECH using the pool if under the minimum
+        if len(unique_techs) < MIN_CO_TECH:
+            for t in _tech_pool:
+                if len(unique_techs) >= MIN_CO_TECH:
+                    break
+                if t.lower() not in seen_co:
+                    unique_techs.append(t)
+                    seen_co.add(t.lower())
+
+        if unique_techs:
+            co["tech"] = " | ".join(unique_techs[:12])  # cap at 12, floor at 8
+
+    # ── Enforce minimum 8 technologies per project ───────────────────────────
+    MIN_PROJ_TECH = 8
     for proj in cv.get("projects", []):
         tags = proj.get("techTags", [])
-        if isinstance(tags, list):
-            seen: set = set()
-            proj["techTags"] = [
-                t for t in tags
-                if t and t.lower() not in seen and not seen.add(t.lower())
-            ][:7]
+        if not isinstance(tags, list):
+            tags = [str(tags)] if tags else []
+
+        # Deduplicate within this project
+        seen_proj: set = set()
+        unique_tags: list = []
+        for t in tags:
+            t = str(t).strip()
+            if t and t.lower() not in seen_proj:
+                unique_tags.append(t)
+                seen_proj.add(t.lower())
+
+        # Pad up to MIN_PROJ_TECH from the pool if under the minimum
+        if len(unique_tags) < MIN_PROJ_TECH:
+            for t in _tech_pool:
+                if len(unique_tags) >= MIN_PROJ_TECH:
+                    break
+                if t.lower() not in seen_proj:
+                    unique_tags.append(t)
+                    seen_proj.add(t.lower())
+
+        proj["techTags"] = unique_tags[:12]  # cap at 12, floor at 8
 
     return cv
 
