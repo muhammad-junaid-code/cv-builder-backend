@@ -1078,6 +1078,10 @@ def extract_json(raw: str) -> dict:
 
     # Strip any trailing incomplete string / value that might confuse the parser
     j_repaired = j.rstrip().rstrip(",").rstrip()
+    # If the response was cut off mid-string (Unterminated string error),
+    # close the open string first so the JSON closer can do its job
+    if in_str:
+        j_repaired += '"\'  # close the dangling string
     # Close all unclosed structures in reverse order
     j_repaired += "".join(reversed(opens))
 
@@ -1117,10 +1121,28 @@ def _normalize_job_title(title: str) -> str:
             seen_lower.append(w.lower())
     return " ".join(seen)
 
+def _strip_artifacts(text):
+    """Remove Cerebras tokenization artifacts: black squares (\u25A0 ■) mid-word."""
+    if not isinstance(text, str):
+        return text
+    import re
+    text = re.sub(r'(?<=[A-Za-z0-9])[\u25A0\u25AA\u2588](?=[A-Za-z0-9])', '', text)
+    text = re.sub(r'[\u25A0\u25AA\u2588]', '-', text)
+    return text
+
+
 def sanitise_cv(cv: dict) -> dict:
     if not isinstance(cv, dict):
         return {}
-    
+
+    def _clean(v):
+        if isinstance(v, str):  return _strip_artifacts(v)
+        if isinstance(v, list): return [_clean(i) for i in v]
+        if isinstance(v, dict): return {k: _clean(val) for k, val in v.items()}
+        return v
+
+    cv = _clean(cv)
+
     for field in ("totalYears", "title", "summary", "competencies", "keywords"):
         cv[field] = str(cv.get(field, "")).strip()
     
@@ -1758,7 +1780,8 @@ async def call_cerebras(req: CVRequest) -> tuple:
                 continue
 
             try:
-                cv = await generate_cv_dynamic(req, client, key, model, CEREBRAS_URL, headers)
+                cv = await generate_cv_dynamic(req, client, key, model, CEREBRAS_URL, headers,
+                                               max_output_tokens=4000)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
                 _log_generation(req.job_title, mk, i, 0, model, True)
                 return cv, mk, i
