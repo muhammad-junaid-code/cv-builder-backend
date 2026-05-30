@@ -1499,7 +1499,8 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
 # PROVIDER CALLERS
 # ==============================================================================
 async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
-                               url: str, headers: dict) -> dict:
+                               url: str, headers: dict,
+                               max_output_tokens: int = None) -> dict:
     """Generate CV using single dynamic prompt - everything from JD"""
     import time as _t
 
@@ -1530,7 +1531,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
               provider_host, len(system_prompt), len(user_prompt))
 
     result = await call_llm_atomic(client, key, model, url, system_prompt, user_prompt,
-                                    "FullCV", headers, max_tokens=8000, _deadline=_deadline)
+                                    "FullCV", headers, max_tokens=max_output_tokens or 8000, _deadline=_deadline)
 
     if not result:
         _log.error("[GenCV|%s] AI returned empty/unparseable response", provider_host)
