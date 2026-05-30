@@ -1046,6 +1046,54 @@ def extract_json(raw: str) -> dict:
     except json.JSONDecodeError:
         pass
 
+    # ── Handle unterminated strings ──────────────────────────────────────────
+    # Cerebras sometimes truncates mid-string, leaving an open " with no closing ".
+    # We find the last *complete* string boundary before the truncation point and
+    # strip everything from there, then close open brackets normally.
+    #
+    # Strategy: walk the string tracking in_string state. When we reach the end
+    # still inside a string, backtrack to the character after the opening quote
+    # and truncate there so we have clean JSON up to the last complete value.
+
+    def _find_truncation_point(s: str) -> int:
+        """Return index of the opening quote of the last unterminated string,
+        or -1 if no unterminated string is found."""
+        in_str = False
+        escape = False
+        last_open_quote = -1
+        for idx, ch in enumerate(s):
+            if escape:
+                escape = False
+                continue
+            if ch == "\\" and in_str:
+                escape = True
+                continue
+            if ch == '"':
+                if in_str:
+                    in_str = False
+                    last_open_quote = -1   # this quote was a closer — reset
+                else:
+                    in_str = True
+                    last_open_quote = idx  # remember where this string started
+        if in_str:
+            return last_open_quote
+        return -1
+
+    trunc_idx = _find_truncation_point(j)
+    if trunc_idx > 0:
+        # Strip from the opening quote of the unterminated string backwards,
+        # also eating any preceding comma/colon/whitespace so the JSON stays valid.
+        j_truncated = j[:trunc_idx].rstrip().rstrip(",").rstrip(":").rstrip().rstrip(",")
+        # If we stripped a value, we may be left with a dangling key:
+        #   Case A: `..., "key": [` or `..., "key": {`  — key + partial container
+        #   Case B: `..., "key"`                         — bare key, no value at all
+        # Strip both patterns so the JSON closes cleanly.
+        j_truncated = re.sub(r',\s*"[^"]*"\s*:\s*[\[{]?\s*$', '', j_truncated)
+        # Strip bare key (no colon, no value — e.g. `..., "summary"`)
+        j_truncated = re.sub(r',\s*"[^"]*"\s*$', '', j_truncated)
+        j_truncated = j_truncated.rstrip().rstrip(",")
+        j = j_truncated
+
     # Count unclosed brackets (ignoring those inside strings)
     opens = []
     in_str = False
@@ -1088,6 +1136,46 @@ def esc_html(s: str) -> str:
     if not s:
         return ""
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+# Strip invisible / zero-width Unicode chars that Cerebras/GPT sometimes inject
+# mid-word and that render as BLACK SQUARES (■) in PDFs and browsers.
+_INVISIBLE_CHARS_RE = re.compile(
+    r'[\u00AD\u200B\u200C\u200D\u2060\u2061\u2062\u2063\u2064'
+    r'\uFEFF\uFFFC\uFFFD\uFFF9\uFFFA\uFFFB'
+    r'\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]'
+)
+# Leading bullet/dash symbols that the AI sometimes injects into bullet strings
+# even though the prompt forbids them. When rendered inside <li> tags or
+# ReportLab ListFlowable items they produce a visible double-bullet (■ or •).
+_LEADING_BULLET_RE = re.compile(
+    r'^[\s\u2022\u25AA\u25AB\u25A0\u25B8\u25C6\u25CF\u25E6'
+    r'\u2013\u2014\u00B7\u2023\-\*\u2022\u25AA\u25AB]+'
+)
+
+def _sanitize_ai_text(s: str) -> str:
+    """Remove invisible Unicode chars and normalise non-breaking spaces."""
+    if not s:
+        return ""
+    s = _INVISIBLE_CHARS_RE.sub("", str(s))
+    s = s.replace("\u00A0", " ")          # NBSP → regular space
+    s = re.sub(r" {2,}", " ", s)          # collapse double-spaces
+    return s.strip()
+
+def _clean_bullet(s: str) -> str:
+    """Strip leading bullet symbols AND invisible chars from a bullet string.
+
+    Mirrors the JS _cleanBullet() helper in cv_templates.js so that both the
+    HTML preview and the server-side PDF renderer are consistent.
+
+    Leading symbols like •, ■, *, -, – that appear at the start of a bullet
+    string cause a visible double-bullet (black square) when the string is
+    later wrapped in a <li> tag or a ReportLab ListItem.
+    """
+    if not s:
+        return ""
+    s = _sanitize_ai_text(str(s))
+    s = _LEADING_BULLET_RE.sub("", s)
+    return s.strip()
 
 def _is_real_tech(token: str) -> bool:
     token = token.strip()
@@ -1135,7 +1223,7 @@ def sanitise_cv(cv: dict) -> dict:
                 "company": str(co.get("company", "")),
                 "role": str(co.get("role", "")),
                 "dateRange": str(co.get("dateRange", "")),
-                "bullets": [str(b).strip() for b in bullets if b],
+                "bullets": [_clean_bullet(b) for b in bullets if b],
                 "tech": str(tech),
             })
         cv["companies"] = clean_companies
@@ -1156,7 +1244,7 @@ def sanitise_cv(cv: dict) -> dict:
                 clean_projects.append({
                     "name": str(p.get("name", "")),
                     "overview": str(p.get("overview", "")),
-                    "bullets": [str(b).strip() for b in (p.get("bullets") or []) if b],
+                    "bullets": [_clean_bullet(b) for b in (p.get("bullets") or []) if b],
                     "techTags": p.get("techTags", []) if isinstance(p.get("techTags"), list) else [str(p.get("techTags", ""))],
                 })
         cv["projects"] = clean_projects
