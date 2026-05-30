@@ -1,8 +1,8 @@
 """
-CV Builder AI - FastAPI Backend v11
+CV Builder AI - FastAPI Backend v12
 Port: 8001  |  Start: uvicorn main:app --host 0.0.0.0 --port 8001
 
-Providers: Groq, Cerebras, Gemini, DeepSeek, OpenAI, Ollama
+Providers: Groq, Cerebras, Gemini, Qwen (DashScope), Ollama
 100% Dynamic - No hardcoded technologies, no static fallbacks, no predefined categories
 Everything derived from Job Description + Job Title only
 """
@@ -38,10 +38,12 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
-DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
-OPENAI_URL   = "https://api.openai.com/v1/chat/completions"
 GEMINI_URL   = "https://generativelanguage.googleapis.com/v1beta/models"
 OLLAMA_URL   = "http://localhost:11434"
+# Qwen / Alibaba DashScope — OpenAI-compatible international endpoint (Singapore region)
+# Sign up: https://bailian.console.aliyun.com → API Keys → Create API Key (sk-...)
+# Free tier: 1M input + 1M output tokens for 90 days on new accounts
+QWEN_URL     = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
 
 # Only static data: company names (users can edit via profile)
 CANDIDATE_COMPANIES = [
@@ -544,9 +546,8 @@ class CVRequest(BaseModel):
     model: str = "llama3.1-8b"
     groq_keys: Optional[List[str]] = []
     cerebras_keys: Optional[List[str]] = []
-    deepseek_keys: Optional[List[str]] = []
-    openai_keys: Optional[List[str]] = []
     gemini_keys: Optional[List[str]] = []
+    qwen_keys: Optional[List[str]] = []
     ollama_model: Optional[str] = "qwen2.5:7b"
     profile: str = ""
     profile_data: Optional[dict] = None
@@ -1958,26 +1959,48 @@ async def call_gemini(req: CVRequest) -> tuple:
         raise HTTPException(429, f"All Gemini keys are rate-limited. Try again shortly. Details: {'; '.join(errors_by_key[:3])}")
     raise HTTPException(502, f"All Gemini keys failed: {'; '.join(errors_by_key[:3])}")
 
-async def call_deepseek(req: CVRequest) -> tuple:
-    raw_keys = req.deepseek_keys or []
+async def call_qwen(req: CVRequest) -> tuple:
+    """
+    Qwen / Alibaba DashScope — OpenAI-compatible international endpoint.
+    Free tier: 1M input + 1M output tokens for 90 days on new accounts.
+    API key:   https://bailian.console.aliyun.com → API Keys → Create API Key
+    Key format: sk-XXXXXXXXXXXXXXXXXX
+    """
+    import time as _t
+    raw_keys = req.qwen_keys or []
     if not raw_keys:
-        raise HTTPException(400, "No DeepSeek keys provided.")
+        raise HTTPException(400, "No Qwen / DashScope keys provided.")
     valid_keys = [k.strip() for k in raw_keys if k and k.strip()]
     if not valid_keys:
-        raise HTTPException(400, "No valid DeepSeek keys found.")
+        raise HTTPException(400, "No valid Qwen keys found.")
 
-    model = req.model or "deepseek-chat"
+    model = req.model or "qwen-plus"
     sorted_keys = _prioritised_keys(valid_keys)
     errors_by_key = []
     rate_limited_count = 0
 
-    async with httpx.AsyncClient(timeout=180) as client:
+    _log.info("[Qwen] model=%s keys=%d job=%r", model, len(sorted_keys), req.job_title[:60])
+
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(connect=10, read=90, write=10, pool=5)
+    ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
+            cooldown_until = _key_rate_limited_until.get(mk, 0)
+            if cooldown_until > _t.time():
+                remaining = int(cooldown_until - _t.time())
+                rate_limited_count += 1
+                errors_by_key.append(f"Key {i+1} ({mk}): rate-limited ({remaining}s left)")
+                continue
+
             try:
-                cv = await generate_cv_dynamic(req, client, key, model, DEEPSEEK_URL, headers)
+                cv = await generate_cv_dynamic(req, client, key, model, QWEN_URL, headers,
+                                               max_output_tokens=8000)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
+                _log_generation(req.job_title, mk, i, 0, model, True)
+                _log.info("[Qwen] SUCCESS key %d (%s)", i + 1, mk)
                 return cv, mk, i
             except _RateLimitError as e:
                 rate_limited_count += 1
@@ -1986,47 +2009,13 @@ async def call_deepseek(req: CVRequest) -> tuple:
                     await asyncio.sleep(3)
                 continue
             except Exception as e:
-                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:100]}")
+                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:120]}")
+                _log.error("[Qwen] FAILED key %d (%s): %s", i + 1, mk, str(e)[:200])
                 continue
 
     if rate_limited_count == len(sorted_keys):
-        raise HTTPException(429, f"All DeepSeek keys are rate-limited. Try again shortly. Details: {'; '.join(errors_by_key[:3])}")
-    raise HTTPException(502, f"All DeepSeek keys failed: {'; '.join(errors_by_key[:3])}")
-
-async def call_openai(req: CVRequest) -> tuple:
-    raw_keys = req.openai_keys or []
-    if not raw_keys:
-        raise HTTPException(400, "No OpenAI keys provided.")
-    valid_keys = [k.strip() for k in raw_keys if k and k.strip()]
-    if not valid_keys:
-        raise HTTPException(400, "No valid OpenAI keys found.")
-
-    model = req.model or "gpt-4o-mini"
-    sorted_keys = _prioritised_keys(valid_keys)
-    errors_by_key = []
-    rate_limited_count = 0
-
-    async with httpx.AsyncClient(timeout=180) as client:
-        for i, key in enumerate(sorted_keys):
-            mk = mask(key)
-            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-            try:
-                cv = await generate_cv_dynamic(req, client, key, model, OPENAI_URL, headers)
-                _key_usage[mk] = _key_usage.get(mk, 0) + 1
-                return cv, mk, i
-            except _RateLimitError as e:
-                rate_limited_count += 1
-                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)}")
-                if i < len(sorted_keys) - 1:
-                    await asyncio.sleep(3)
-                continue
-            except Exception as e:
-                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:100]}")
-                continue
-
-    if rate_limited_count == len(sorted_keys):
-        raise HTTPException(429, f"All OpenAI keys are rate-limited. Try again shortly. Details: {'; '.join(errors_by_key[:3])}")
-    raise HTTPException(502, f"All OpenAI keys failed: {'; '.join(errors_by_key[:3])}")
+        raise HTTPException(429, f"All Qwen keys are rate-limited. Wait ~60s then retry. Details: {'; '.join(errors_by_key[:3])}")
+    raise HTTPException(502, f"All Qwen keys failed: {'; '.join(errors_by_key[:3])}")
 
 # ==============================================================================
 # HEALTH CHECK
@@ -2054,10 +2043,8 @@ async def generate_cv(req: CVRequest):
             cv_data, key_used, key_idx = await call_groq(req)
         elif req.provider == "gemini":
             cv_data, key_used, key_idx = await call_gemini(req)
-        elif req.provider == "deepseek":
-            cv_data, key_used, key_idx = await call_deepseek(req)
-        elif req.provider == "openai":
-            cv_data, key_used, key_idx = await call_openai(req)
+        elif req.provider == "qwen":
+            cv_data, key_used, key_idx = await call_qwen(req)
         else:
             raise HTTPException(400, f"Unsupported provider: {req.provider}")
         
@@ -2237,10 +2224,11 @@ async def check_gemini_keys(body: dict):
                 results.append({"key": mask(key), "status": "error"})
     return {"results": results}
 
-@app.post("/check-deepseek-keys")
-async def check_deepseek_keys(body: dict):
-    keys = body.get("keys", [])
-    model = body.get("model", "deepseek-chat")
+@app.post("/check-qwen-keys")
+async def check_qwen_keys(body: dict):
+    """Verify Qwen / DashScope API keys. Uses qwen-turbo with max_tokens=1 (cheapest check)."""
+    keys  = body.get("keys", [])
+    model = body.get("model", "qwen-turbo")
     results = []
     async with httpx.AsyncClient(timeout=15) as client:
         for key in keys:
@@ -2249,31 +2237,19 @@ async def check_deepseek_keys(body: dict):
                 results.append({"key": "***", "status": "empty"})
                 continue
             try:
-                r = await client.post(DEEPSEEK_URL,
+                r = await client.post(
+                    QWEN_URL,
                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1})
-                status = "ok" if r.status_code == 200 else "rate_limited" if r.status_code == 429 else "invalid"
-                results.append({"key": mask(key), "status": status})
-            except Exception:
-                results.append({"key": mask(key), "status": "error"})
-    return {"results": results}
-
-@app.post("/check-openai-keys")
-async def check_openai_keys(body: dict):
-    keys = body.get("keys", [])
-    model = body.get("model", "gpt-4o-mini")
-    results = []
-    async with httpx.AsyncClient(timeout=15) as client:
-        for key in keys:
-            key = (key or "").strip()
-            if not key:
-                results.append({"key": "***", "status": "empty"})
-                continue
-            try:
-                r = await client.post(OPENAI_URL,
-                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1})
-                status = "ok" if r.status_code == 200 else "rate_limited" if r.status_code == 429 else "invalid"
+                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
+                )
+                if r.status_code == 200:
+                    status = "ok"
+                elif r.status_code == 429:
+                    status = "rate_limited"
+                elif r.status_code in (401, 403):
+                    status = "invalid"
+                else:
+                    status = f"http_{r.status_code}"
                 results.append({"key": mask(key), "status": status})
             except Exception:
                 results.append({"key": mask(key), "status": "error"})
