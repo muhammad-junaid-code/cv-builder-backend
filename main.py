@@ -808,6 +808,36 @@ NON-NEGOTIABLE RULES
   • Vary sentence structure. Use active voice. Avoid repetition across bullets.
   • Technologies should weave in naturally — not feel like a keyword-stuffing exercise.
 
+[R6] CORE COMPETENCIES — NO TECHNICAL SKILLS
+  • The competencies field MUST NOT contain any programming languages, frameworks,
+    libraries, tools, platforms, databases, cloud services, or technology names.
+  • Generate EXACTLY 12 professional behavioral competencies derived from the job title,
+    responsibilities, seniority level, and industry context of the JD.
+  • Each competency is a 2–4 word professional strength phrase such as:
+    Leadership & Ownership, Stakeholder Management, Delivery Excellence,
+    Cross-Functional Collaboration, Strategic Thinking, Mentoring & Coaching,
+    Accountability & Integrity, Continuous Improvement, Analytical Decision-Making,
+    Risk & Change Management, Quality Assurance Mindset, Agile Team Leadership.
+  • DO NOT use any of those examples verbatim — derive all 12 from the actual JD context.
+  • Every competency must be unique, role-relevant, and readable by a non-technical recruiter.
+
+[R7] MINIMUM TECHNOLOGY DEPTH PER EXPERIENCE & PROJECT
+  • Each company entry's "tech" field MUST list at least 8 distinct technologies, pipe-separated.
+  • Each project's "techTags" array MUST contain at least 8 distinct technologies.
+  • Technology sets across companies and projects must NOT be identical; vary them to reflect
+    different focus areas, responsibilities, or project scopes. Overlap is acceptable only where
+    the context genuinely requires the same tool.
+  • All technologies must be directly relevant to the specific role, responsibilities, and JD.
+
+[R8] AI-PATTERN-FREE FORMATTING
+  • Do NOT use em-dashes (—), en-dashes (–), bullet symbols (■ ● ▪ ▶), decorative
+    separators, or any non-standard Unicode punctuation anywhere in the JSON string values.
+  • Use only standard ASCII punctuation: commas, periods, colons, hyphens (-), and parentheses.
+  • Write in clean, natural, ATS-friendly prose that reads like a human wrote it by hand.
+  • No AI tell-tale patterns: no "spearheaded", "leveraged", "orchestrated" overuse,
+    no "responsible for", no "tasked with". Use direct active verbs: built, led, reduced,
+    delivered, designed, improved, deployed, automated, mentored, negotiated.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SECTION-BY-SECTION INSTRUCTIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -823,8 +853,11 @@ SECTION-BY-SECTION INSTRUCTIONS
    • Do NOT write a long paragraph — keep it punchy and scannable.
 
 ③ competencies
-   Exactly 10 domain-specific skill phrases from the JD, separated by " * ".
-   Phrases must name real capabilities, not generic filler.
+   EXACTLY 12 professional behavioral competency phrases, separated by " * ".
+   STRICT RULE: zero technical terms, zero tool names, zero languages or frameworks.
+   Each phrase is a behavioral or leadership strength inferred from the JD context —
+   e.g. "Delivery Excellence", "Stakeholder Management", "Continuous Improvement".
+   All 12 must be unique, role-relevant, and derived solely from the JD responsibilities.
 
 ④ keywords
    18–20 ATS keywords from the JD, comma-separated. Cover tools, methods, and domain terms.
@@ -847,8 +880,9 @@ SECTION-BY-SECTION INSTRUCTIONS
    bullets : 4 achievement bullets per company, each 20–30 words.
              Each bullet must be unique — different technology, different metric, different context.
              No copy-pasting between companies. Bullets must sound like lived experience.
-   tech    : 6–8 JD technologies used at that company, pipe-separated.
-             Do NOT repeat the same tech set across all companies.
+   tech    : MINIMUM 8 distinct JD technologies used at that company, pipe-separated.
+             Do NOT copy the same tech set across companies — vary the mix to reflect
+             different responsibilities, project focus, and growth across roles.
 
 ⑧ projects  [EXACTLY 4 — split as described]
    PROJECT SPLIT RULE (mandatory):
@@ -865,7 +899,8 @@ SECTION-BY-SECTION INSTRUCTIONS
      overview : 3–4 sentences. Story arc: problem → approach → technologies → outcome.
                 Reads like a real project summary a professional would write.
      bullets  : 3 achievement bullets, each with a concrete metric or outcome.
-     techTags : 5–7 technologies from the JD relevant to that project.
+     techTags : MINIMUM 8 distinct technologies from the JD, relevant to that project's
+                scope and deliverables. Each project should have a different primary focus.
 
 ⑨ relatedTech  [5 category objects, 5 items each — all from JD]
 
@@ -883,7 +918,7 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 {{
   "title": "Inferred Role | Tech1, Tech2, Tech3 | {years_display}",
   "summary": "{years_display} years of experience in [JD domain]… (4–5 sentences, 70–100 words)",
-  "competencies": "Phrase1 * Phrase2 * Phrase3 * Phrase4 * Phrase5 * Phrase6 * Phrase7 * Phrase8 * Phrase9 * Phrase10",
+  "competencies": "Behavioral Strength 1 * Behavioral Strength 2 * Behavioral Strength 3 * Behavioral Strength 4 * Behavioral Strength 5 * Behavioral Strength 6 * Behavioral Strength 7 * Behavioral Strength 8 * Behavioral Strength 9 * Behavioral Strength 10 * Behavioral Strength 11 * Behavioral Strength 12",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18",
   "technologies": {{
     "mustHave":   ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10","t11","t12"],
@@ -908,7 +943,7 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
         "Process or delivery improvement — JD technology + outcome (20–30 words).",
         "Business or stakeholder impact — JD context + result (20–30 words)."
       ],
-      "tech": "Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6 | Tech7 | Tech8"
+      "tech": "Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6 | Tech7 | Tech8 | Tech9 | Tech10"
     }}
   ],
   "projects": [
@@ -920,25 +955,25 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
         "Technical challenge overcome with quantified result (20–30 words).",
         "Business benefit delivered (20–30 words)."
       ],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
     }},
     {{
       "name": "Second Business-Domain Project Name",
       "overview": "3–4 sentences for a different business/industry angle.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
     }},
     {{
       "name": "JD-Technical Requirements Project Name",
       "overview": "3–4 sentences aligned with the specific technical skills in the JD.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
     }},
     {{
       "name": "Second JD-Technical Requirements Project Name",
       "overview": "3–4 sentences for a different technical capability from the JD.",
       "bullets": ["Bullet1","Bullet2","Bullet3"],
-      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6"]
+      "techTags": ["Tech1","Tech2","Tech3","Tech4","Tech5","Tech6","Tech7","Tech8"]
     }}
   ],
   "education": {_edu_json_block},
@@ -960,6 +995,11 @@ PRE-SUBMIT CHECKLIST — verify every item before writing a single character of 
 ✓ projects 3–4 target the JD's specific technical requirements
 ✓ zero company names appear anywhere except the "company" JSON key
 ✓ every technology, skill, and keyword came from the job description
+✓ competencies contain ZERO technical terms, tool names, or languages — behavioral only
+✓ competencies field has EXACTLY 12 phrases separated by " * "
+✓ every company "tech" field has at LEAST 8 pipe-separated technologies
+✓ every project "techTags" array has at LEAST 8 technologies
+✓ no em-dashes, en-dashes, bullet symbols, or non-ASCII punctuation in any string value
 ✓ output is raw JSON only — no markdown fences, no explanatory text
 """
 
@@ -975,6 +1015,10 @@ Key reminders:
 - Projects 1–2: company/industry domain. Projects 3–4: JD technical requirements.
 - No company names in any free-text field.
 - Every word derived from the job description above.
+- Competencies: 12 behavioral phrases ONLY — no tech terms, no tool names, no languages.
+- Each company tech field: minimum 8 technologies, varied across companies.
+- Each project techTags: minimum 8 technologies, varied across projects.
+- No em-dashes, en-dashes, bullet symbols, or special Unicode characters in any field.
 """
 
     return system_prompt, user_prompt
