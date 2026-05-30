@@ -816,41 +816,38 @@ SECTION-BY-SECTION INSTRUCTIONS
    Inferred role (not a copy of the job title) | 3 key technologies from JD | {years_display}
    The third segment is exactly "{years_display}". Nothing more.
 
-② summary  [110–140 words, 5–6 sentences]
-   GOAL: A compelling, recruiter-stopping professional narrative that immediately
-   communicates the candidate's value proposition for this specific role.
-   Structure (follow this order):
-     Sentence 1 — Open with "{years_display} years of experience in [JD domain]" and name the
-                  core discipline and seniority level derived from the JD.
-     Sentence 2 — Highlight 2–3 primary technical strengths most demanded by the JD,
-                  woven in naturally (not listed mechanically).
-     Sentence 3 — Reference a meaningful career achievement or area of proven impact
-                  relevant to the role (quantify where natural: scale, speed, efficiency).
-     Sentence 4 — Mention cross-functional or leadership dimension if the JD implies it
-                  (team collaboration, mentoring, stakeholder delivery, Agile/project context).
-     Sentence 5 — Close with the candidate's professional focus and how they drive value
-                  in the type of organisation or environment described in the JD.
-     Sentence 6 (optional) — Add one ATS keyword-rich sentence if the summary needs more depth.
+② summary  [110–140 words, 5–6 sentences — compelling professional narrative]
+   Structure (follow this sentence order):
+   Sentence 1: Open with "{years_display} years of experience in [JD domain]" and state
+              the core discipline and seniority level derived from the JD.
+   Sentence 2: Highlight 2–3 primary technical strengths most demanded by the JD,
+              woven in naturally — not mechanically listed.
+   Sentence 3: Reference a meaningful career achievement or area of proven impact
+              relevant to this role (quantify where natural: scale, efficiency, speed).
+   Sentence 4: Mention cross-functional or leadership dimension if implied by the JD
+              (team collaboration, mentoring, stakeholder delivery, Agile context).
+   Sentence 5: Close with the candidate's professional focus and how they drive value
+              in the type of organisation or environment described in the JD.
+   Sentence 6 (optional): One additional ATS-rich sentence for further depth.
    Rules:
-   • 110–140 words total. Punchy, confident, human-sounding — not a list of keywords.
-   • Mention 5–7 key technologies from the JD, integrated naturally into sentences.
+   • 110–140 words total. Confident, human-sounding — not a keyword list.
+   • Weave in 5–7 key JD technologies naturally across sentences.
    • No technology repeated. No company names. No first-person pronouns (I, my, me).
-   • Reads like a polished senior professional wrote it, not a template engine.
 
-③ competencies  [EXACTLY 12, separated by " * "]
-   GOAL: Professional competencies that reflect both technical leadership and
-   workplace effectiveness — readable by a non-technical recruiter and an ATS alike.
+③ competencies  [EXACTLY 12 phrases, separated by " * "]
+   GOAL: Professional strengths that reflect both technical leadership and workplace
+   effectiveness — readable by a non-technical recruiter and ATS alike.
    Rules:
    • EXACTLY 12 unique competency phrases.
-   • Each phrase is 2–4 words representing a behavioral strength or professional trait.
-   • Derive ALL 12 from the job title, seniority level, responsibilities, and JD context.
-   • Competencies MAY include traits such as: Code Quality Advocacy, Code Review Leadership,
-     Mentoring and Coaching, Technical Ownership, Accountability and Delivery, Cross-Team
-     Collaboration, Agile and Scrum Delivery, Stakeholder Communication, Problem-Solving
-     Under Pressure, Continuous Improvement, Strategic Technical Thinking, Initiative
-     and Self-Direction — but ONLY use these as inspiration, not verbatim.
-   • Do NOT include raw technology names, programming languages, frameworks, or tools.
-   • Every phrase must feel earned and specific to this role — not generic filler.
+   • 2–4 words each. Derive ALL 12 from the job title, seniority, responsibilities, and JD.
+   • May include traits such as: Code Quality Advocacy, Code Review Leadership,
+     Mentoring and Coaching, Technical Ownership, Accountability and Delivery,
+     Cross-Team Collaboration, Agile Delivery, Stakeholder Communication,
+     Problem-Solving Under Pressure, Continuous Improvement, Strategic Thinking,
+     Initiative and Self-Direction — use only as inspiration, NOT verbatim.
+   • STRICTLY FORBIDDEN: raw technology names, programming languages, frameworks,
+     tool names, or platform names. Every phrase must be a behavioral/leadership trait.
+   • Every phrase must feel earned and specific to this role — never generic filler.
 
 ④ keywords
    18–20 ATS keywords from the JD, comma-separated. Cover tools, methods, and domain terms.
@@ -860,27 +857,23 @@ SECTION-BY-SECTION INSTRUCTIONS
    niceToHave : preferred / bonus technologies in the JD (8–12 items)
    additional : logically adjacent ecosystem tools implied by the JD (8–10 items)
 
-⑥ skills  [TECHNICAL SKILLS section — 5 categories]
-   Format each entry as: "Category Label: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10"
-   CATEGORIZATION RULES (CRITICAL — enforce strict domain separation):
-   • Derive 5 role-appropriate category labels directly from the JD's technology landscape.
-     Common examples by domain (pick only those relevant to THIS JD):
-       Backend roles     : "Backend Development", "API and Integration", "Data and Storage",
-                           "DevOps and Infrastructure", "Testing and Quality"
-       Frontend roles    : "Frontend Development", "UI Frameworks and Libraries", "State Management
-                           and Tooling", "Build and Deployment", "Testing and Accessibility"
-       Full-stack roles  : "Backend Development", "Frontend Development", "Cloud and DevOps",
-                           "Data and Persistence", "Testing and Quality Assurance"
-       Data/ML roles     : "Data Engineering", "Machine Learning", "Visualization and BI",
-                           "Cloud and Orchestration", "Languages and Frameworks"
-     Adapt labels precisely to THIS JD — do not use examples verbatim if they don't fit.
-   • STRICT DOMAIN SEPARATION: backend technologies (e.g. .NET, Node.js, SQL Server, RabbitMQ,
-     Redis, gRPC) must NEVER appear in a frontend category. Frontend technologies (e.g. React,
-     Angular, Vue, CSS, Webpack, TypeScript UI libs) must NEVER appear in a backend category.
-     Cloud tools stay in Cloud. Testing tools stay in Testing. Enforce this rigorously.
+⑥ skills  [TECHNICAL SKILLS — 5 domain-separated categories]
+   Format: "Category Label: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8, tech9, tech10"
+   CATEGORIZATION RULES — enforce strict domain separation:
+   • Derive 5 category labels from the JD's actual technology landscape. Examples by role:
+       Backend roles:    Backend Development | API and Integration | Data and Storage |
+                         DevOps and Infrastructure | Testing and Quality
+       Frontend roles:   Frontend Development | UI Frameworks and Libraries |
+                         State Management and Tooling | Build and Deployment | Testing
+       Full-stack roles: Backend Development | Frontend Development | Cloud and DevOps |
+                         Data and Persistence | Testing and Quality Assurance
+     Adapt labels precisely to THIS JD — do not use examples verbatim if they do not fit.
+   • STRICT SEPARATION: backend technologies (.NET, Node.js, SQL Server, Redis, RabbitMQ,
+     gRPC, REST APIs) must NEVER appear in a frontend category. Frontend technologies
+     (React, Angular, Vue, CSS, Webpack, TypeScript UI libs) must NEVER appear in a
+     backend category. Cloud tools stay in Cloud. Testing tools stay in Testing.
    • 8–12 technologies per category, all sourced from the JD.
-   • Zero duplicates across categories. If a technology could fit two categories, place it
-     in the more specific one and exclude it from the other.
+   • Zero duplicates across categories. If a tech fits two, place it in the more specific one.
 
 ⑦ companies  [one entry per company listed above, in order]
    role    : Apply the seniority progression rules above. Infer the full title
@@ -888,11 +881,18 @@ SECTION-BY-SECTION INSTRUCTIONS
    bullets : 4 achievement bullets per company, each 20–30 words.
              Each bullet must be unique — different technology, different metric, different context.
              No copy-pasting between companies. Bullets must sound like lived experience.
-   tech    : MINIMUM 8 distinct, role-relevant technologies for this company, pipe-separated.
-             Select based on the specific responsibilities, seniority, and achievements at
-             that point in the career. Vary the mix meaningfully across companies — earlier
-             roles may emphasise foundational tools, later roles more advanced or architectural ones.
-             Do NOT copy an identical tech set across all companies.
+   tech    : MINIMUM 8 unique, role-relevant technologies for this specific company,
+             pipe-separated (e.g. "Tech1 | Tech2 | Tech3 | Tech4 | Tech5 | Tech6 | Tech7 | Tech8").
+             Selection rules:
+             - Choose technologies that are directly relevant to THAT role's responsibilities,
+               seniority level, achievements, and time period in the candidate's career.
+             - Prioritise UNIQUE technologies for each company. Earlier roles should emphasise
+               foundational or narrower tools; later roles should reflect broader, more
+               architectural, or advanced technology usage.
+             - Overlap is acceptable ONLY if the technology is genuinely applicable to that
+               specific role — not just copied for convenience.
+             - All selections must be derived from the JD context. NEVER hardcode a fixed
+               tech list or repeat identical stacks across all companies.
 
 ⑧ projects  [EXACTLY 4 — split as described]
    PROJECT SPLIT RULE (mandatory):
@@ -912,6 +912,7 @@ SECTION-BY-SECTION INSTRUCTIONS
      techTags : MINIMUM 8 distinct technologies from the JD, directly relevant to
                that project's implementation, scope, and technical decisions.
                Each project must have a meaningfully different primary tech focus.
+               Do NOT copy the same tags across all projects.
 
 ⑨ relatedTech  [5 category objects, 5 items each — all from JD]
 
@@ -928,8 +929,8 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 
 {{
   "title": "Inferred Role | Tech1, Tech2, Tech3 | {years_display}",
-  "summary": "{years_display} years of experience in [JD domain]. [5–6 sentences: core discipline, primary strengths, career impact, leadership/collaboration dimension, value-add focus, optional ATS sentence. 110–140 words total. No I/my/me. No company names.]",
-  "competencies": "Competency1 * Competency2 * Competency3 * Competency4 * Competency5 * Competency6 * Competency7 * Competency8 * Competency9 * Competency10 * Competency11 * Competency12",
+  "summary": "{years_display} years of experience in [JD domain]. [5–6 sentences, 110–140 words: discipline + seniority, primary technical strengths woven in naturally, career achievement/impact, leadership/collaboration dimension, value proposition close, optional ATS sentence. No I/my/me. No company names.]",
+  "competencies": "BehavioralTrait1 * BehavioralTrait2 * BehavioralTrait3 * BehavioralTrait4 * BehavioralTrait5 * BehavioralTrait6 * BehavioralTrait7 * BehavioralTrait8 * BehavioralTrait9 * BehavioralTrait10 * BehavioralTrait11 * BehavioralTrait12",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18",
   "technologies": {{
     "mustHave":   ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10","t11","t12"],
@@ -1000,20 +1001,20 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 PRE-SUBMIT CHECKLIST — verify every item before writing a single character of output:
 ✓ title last segment is exactly "{years_display}" — not "5++" not "5+ +" not "5+ years"
 ✓ summary opens with "{years_display} years of experience in …" and is 110–140 words
-✓ summary has 5–6 sentences covering discipline, strengths, impact, leadership, value-add
-✓ summary contains no first-person pronouns (I, my, me) and no company names
+✓ summary has 5–6 sentences: discipline, strengths, achievement, leadership, value-add
+✓ summary contains zero first-person pronouns (I, my, me) and zero company names
 ✓ competencies has EXACTLY 12 behavioral phrases separated by " * "
-✓ competencies contain ZERO raw technology names, languages, or framework names
-✓ skills categories are domain-correct: backend techs in backend, frontend in frontend, cloud in cloud
-✓ zero technology appears in the wrong skills category
-✓ every company "tech" field has at least 8 pipe-separated technologies
-✓ every project "techTags" has at least 8 technologies
+✓ competencies contain ZERO technology names, languages, frameworks, or tool names
+✓ skills categories are domain-correct: backend tech in backend only, frontend in frontend only
+✓ every company "tech" has MINIMUM 8 pipe-separated technologies
+✓ company tech sets are varied — not the same stack copy-pasted across all roles
+✓ every project "techTags" has MINIMUM 8 technologies with varied primary focus
 ✓ company role titles follow the seniority progression rules above
 ✓ projects 1–2 are grounded in the company/industry domain
 ✓ projects 3–4 target the JD's specific technical requirements
 ✓ zero company names appear anywhere except the "company" JSON key
 ✓ every technology, skill, and keyword came from the job description
-✓ no em-dashes, en-dashes, bullet symbols, or non-ASCII punctuation in string values
+✓ no em-dashes (—), en-dashes (–), or non-ASCII punctuation in any string value
 ✓ output is raw JSON only — no markdown fences, no explanatory text
 """
 
@@ -1023,20 +1024,22 @@ PRE-SUBMIT CHECKLIST — verify every item before writing a single character of 
 Generate the complete CV JSON now.
 
 Key reminders:
-- Title: end with exactly "{years_display}" (one + sign, no more).
-- Summary: open with "{years_display} years of experience in …", 110–140 words, 5–6 sentences.
-  Cover: core discipline, primary technical strengths, career impact, leadership/collaboration,
-  value proposition. No I/my/me. No company names. 5–7 JD technologies woven in naturally.
+- Title: end with exactly "{years_display}" (one + sign only).
+- Summary: 110–140 words, 5–6 sentences. Open with "{years_display} years of experience in …".
+  Cover: discipline+seniority, technical strengths, career achievement, leadership, value-add.
+  No first-person pronouns. No company names. 5–7 JD technologies woven in naturally.
 - Competencies: exactly 12 behavioral phrases separated by " * ". Zero tech/tool/language names.
-- Skills: strict domain separation — backend tech in backend categories only, frontend in
-  frontend only, cloud in cloud only. Never mix domains across category labels.
-- Company tech: minimum 8 pipe-separated technologies per company, varied across roles.
-- Project techTags: minimum 8 technologies per project, meaningfully different across projects.
-- Company roles: follow the seniority progression: {seniority_guidance.split(chr(10))[0]}
+- Skills: strict domain separation — backend tech in backend categories ONLY, frontend in
+  frontend ONLY, cloud in cloud ONLY. Never mix domains across category labels.
+- Company tech: MINIMUM 8 pipe-separated technologies per company. Prioritise unique
+  technologies per role — vary the stack meaningfully across companies. Do not copy the
+  same set. Select based on that role's actual responsibilities, seniority, and JD context.
+- Project techTags: minimum 8 per project, with a different primary tech focus per project.
+- Company roles: follow seniority progression: {seniority_guidance.split(chr(10))[0]}
 - Projects 1–2: company/industry domain. Projects 3–4: JD technical requirements.
 - No company names in any free-text field.
 - No em-dashes, en-dashes, or non-ASCII punctuation in any field.
-- Every word derived from the job description above.
+- Every technology, competency, and keyword must come from the job description.
 """
 
     return system_prompt, user_prompt
@@ -1439,7 +1442,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
 
     # Groq can be slow on large prompts; use a generous per-call timeout.
     # The outer httpx.AsyncClient timeout is the hard ceiling — this is per-attempt.
-    per_call_timeout = 120
+    per_call_timeout = 50
     mk = mask(key)
     provider_tag = url.split("/")[2].split(".")[0]   # e.g. "api" → use model instead
     tag = f"[{model}|{mk}|{stage}]"
@@ -1481,7 +1484,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             _log.warning("%s TIMEOUT — %s — elapsed %.1fs  (exc: %s)",
                          tag, last_error, elapsed, type(exc).__name__)
             if attempt < 2:
-                wait = 4 + attempt * 4   # 4s, 8s
+                wait = 2 + attempt * 1   # 2s, 3s
                 _log.info("%s Waiting %ds before retry …", tag, wait)
                 await asyncio.sleep(wait)
                 continue
@@ -1496,7 +1499,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             last_error = f"ReadTimeout on attempt {attempt_num} after {elapsed}s"
             _log.warning("%s READ-TIMEOUT — %s", tag, last_error)
             if attempt < 2:
-                wait = 4 + attempt * 4
+                wait = 2 + attempt * 1
                 _log.info("%s Waiting %ds before retry …", tag, wait)
                 await asyncio.sleep(wait)
                 continue
@@ -1566,7 +1569,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
     """Generate CV using single dynamic prompt - everything from JD"""
     import time as _t
 
-    _deadline = _t.time() + 270
+    _deadline = _t.time() + 58
     years_exp = (req.years_exp or "").strip()
     years_exp_clean = years_exp.replace("+", "").strip()
 
@@ -1736,7 +1739,7 @@ async def call_cerebras(req: CVRequest) -> tuple:
     errors_by_key = []
     rate_limited_count = 0
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=180, write=15, pool=10)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=60, write=15, pool=10)) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
@@ -1814,10 +1817,10 @@ async def call_groq(req: CVRequest) -> tuple:
     _log.info("[Groq] Starting generation — model=%s, keys=%d, job_title=%r",
               model, len(sorted_keys), req.job_title[:60])
 
-    # read=240 gives each attempt up to 4 min; call_llm_atomic uses 120s per try
+    # read=60 gives each attempt up to 60s; call_llm_atomic uses 50s per try
     # with its own retry loop, so the outer client must not cut it short
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=15, read=240, write=20, pool=10)
+        timeout=httpx.Timeout(connect=15, read=60, write=20, pool=10)
     ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
@@ -1894,7 +1897,7 @@ async def call_gemini(req: CVRequest) -> tuple:
     errors_by_key = []
     rate_limited_count = 0
 
-    async with httpx.AsyncClient(timeout=180) as client:
+    async with httpx.AsyncClient(timeout=60) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
 
@@ -2045,7 +2048,7 @@ async def call_qwen(req: CVRequest) -> tuple:
     _log.info("[Qwen] model=%s keys=%d job=%r", model, len(sorted_keys), req.job_title[:60])
 
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=10, read=90, write=10, pool=5)
+        timeout=httpx.Timeout(connect=10, read=60, write=10, pool=5)
     ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
