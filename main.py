@@ -1078,8 +1078,7 @@ def extract_json(raw: str) -> dict:
 
     # Strip any trailing incomplete string / value that might confuse the parser
     j_repaired = j.rstrip().rstrip(",").rstrip()
-    # If the response was cut off mid-string (Unterminated string error),
-    # close the open string before appending the bracket closers.
+    # If truncated mid-string, close the dangling quote first
     if in_str:
         j_repaired += '"'
     # Close all unclosed structures in reverse order
@@ -1125,7 +1124,6 @@ def _strip_artifacts(text):
     """Remove Cerebras tokenization artifacts: black squares (\u25A0) mid-word."""
     if not isinstance(text, str):
         return text
-    import re
     text = re.sub(r'(?<=[A-Za-z0-9])[\u25A0\u25AA\u2588](?=[A-Za-z0-9])', '', text)
     text = re.sub(r'[\u25A0\u25AA\u2588]', '-', text)
     return text
@@ -1520,18 +1518,32 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         _log.info("%s HTTP %d received in %.1fs", tag, r.status_code, elapsed)
 
         if r.status_code == 200:
-            resp_json   = r.json()
-            raw         = resp_json["choices"][0]["message"]["content"]
-            finish      = resp_json["choices"][0].get("finish_reason", "stop")
-            _log.info("%s SUCCESS — response %d chars, finish_reason=%s", tag, len(raw), finish)
+            resp_body = r.json()
+            choice    = resp_body.get("choices", [{}])[0]
+            message   = choice.get("message") or {}
+            raw       = message.get("content") or ""
+            finish    = choice.get("finish_reason", "stop")
 
-            # ── Continuation pass for truncated responses ─────────────────────
-            # Cerebras (and small-context models) sometimes hit the token limit
-            # mid-JSON (finish_reason="length"). When that happens we send a
-            # second "please continue" call and stitch the two halves together
-            # before parsing, rather than failing with "Unterminated string".
+            if not raw:
+                # Cerebras occasionally returns an empty/null content on
+                # finish_reason="length" — treat as truncation and retry below.
+                _log.warning("%s Empty content in response (finish=%s) — body: %s",
+                             tag, finish, str(resp_body)[:300])
+                if attempt < 2:
+                    await asyncio.sleep(3)
+                    continue
+                raise ValueError(
+                    f"Stage {stage}: model returned empty content (finish={finish}). "
+                    "Try reducing job description length or switching to Groq/Gemini."
+                )
+
+            _log.info("%s SUCCESS — response %d chars, finish=%s", tag, len(raw), finish)
+
+            # ── Continuation pass: stitch truncated JSON ──────────────────────
+            # When finish_reason=="length" and the JSON is not closed, send a
+            # second call asking the model to continue from the cut-off point.
             if finish == "length" and raw.rstrip()[-1:] not in ('}', ']'):
-                _log.warning("%s Response truncated (finish=length) — attempting continuation pass", tag)
+                _log.warning("%s Truncated JSON (finish=length) — requesting continuation", tag)
                 try:
                     cont_r = await client.post(
                         url,
@@ -1543,8 +1555,9 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
                                 {"role": "user",      "content": user},
                                 {"role": "assistant", "content": raw},
                                 {"role": "user",      "content":
-                                    "The JSON was cut off. Continue EXACTLY from where you stopped. "
-                                    "Output only the remaining JSON fragment — no preamble, no markdown."},
+                                    "The JSON was cut off. Continue EXACTLY from where "
+                                    "you stopped. Output only the remaining JSON — "
+                                    "no explanation, no markdown fences."},
                             ],
                             "temperature": 0.0,
                             "max_tokens": max_tokens,
@@ -1552,14 +1565,21 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
                         timeout=per_call_timeout,
                     )
                     if cont_r.status_code == 200:
-                        cont_raw    = cont_r.json()["choices"][0]["message"]["content"]
-                        raw_stitched = raw + cont_raw
-                        _log.info("%s Continuation OK — stitched total %d chars", tag, len(raw_stitched))
-                        raw = raw_stitched
+                        cont_msg = (cont_r.json().get("choices", [{}])[0]
+                                    .get("message") or {})
+                        cont_raw = cont_msg.get("content") or ""
+                        if cont_raw:
+                            raw = raw + cont_raw
+                            _log.info("%s Continuation OK — stitched %d chars total",
+                                      tag, len(raw))
+                        else:
+                            _log.warning("%s Continuation returned empty content", tag)
                     else:
-                        _log.warning("%s Continuation HTTP %d — using truncated raw", tag, cont_r.status_code)
+                        _log.warning("%s Continuation HTTP %d — using truncated raw",
+                                     tag, cont_r.status_code)
                 except Exception as cont_exc:
-                    _log.warning("%s Continuation failed (%s) — falling back to truncated raw", tag, cont_exc)
+                    _log.warning("%s Continuation call failed (%s) — proceeding with truncated raw",
+                                 tag, cont_exc)
 
             return extract_json(raw)
 
