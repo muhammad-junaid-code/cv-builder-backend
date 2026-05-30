@@ -808,35 +808,27 @@ NON-NEGOTIABLE RULES
   • Vary sentence structure. Use active voice. Avoid repetition across bullets.
   • Technologies should weave in naturally — not feel like a keyword-stuffing exercise.
 
-[R6] CORE COMPETENCIES — NO TECHNICAL SKILLS
+[R6] CORE COMPETENCIES - NO TECHNICAL SKILLS
   • The competencies field MUST NOT contain any programming languages, frameworks,
     libraries, tools, platforms, databases, cloud services, or technology names.
   • Generate EXACTLY 12 professional behavioral competencies derived from the job title,
     responsibilities, seniority level, and industry context of the JD.
-  • Each competency is a 2–4 word professional strength phrase such as:
-    Leadership & Ownership, Stakeholder Management, Delivery Excellence,
-    Cross-Functional Collaboration, Strategic Thinking, Mentoring & Coaching,
-    Accountability & Integrity, Continuous Improvement, Analytical Decision-Making,
-    Risk & Change Management, Quality Assurance Mindset, Agile Team Leadership.
-  • DO NOT use any of those examples verbatim — derive all 12 from the actual JD context.
-  • Every competency must be unique, role-relevant, and readable by a non-technical recruiter.
+  • Each competency is a 2-4 word professional strength phrase such as:
+    Delivery Excellence, Stakeholder Management, Continuous Improvement, Strategic Thinking.
+  • DO NOT use those examples verbatim - derive all 12 from the actual JD context.
+  • Every competency must be unique, role-relevant, readable by a non-technical recruiter.
 
-[R7] MINIMUM TECHNOLOGY DEPTH PER EXPERIENCE & PROJECT
-  • Each company entry's "tech" field MUST list at least 8 distinct technologies, pipe-separated.
-  • Each project's "techTags" array MUST contain at least 8 distinct technologies.
-  • Technology sets across companies and projects must NOT be identical; vary them to reflect
-    different focus areas, responsibilities, or project scopes. Overlap is acceptable only where
-    the context genuinely requires the same tool.
-  • All technologies must be directly relevant to the specific role, responsibilities, and JD.
+[R7] MINIMUM TECHNOLOGY DEPTH PER EXPERIENCE AND PROJECT
+  • Each company entry "tech" field MUST list at least 8 distinct technologies, pipe-separated.
+  • Each project "techTags" array MUST contain at least 8 distinct technologies.
+  • Tech sets across companies and projects must NOT be identical - vary them to reflect
+    different focus areas and responsibilities. Overlap is fine only where context requires it.
 
-[R8] AI-PATTERN-FREE FORMATTING
-  • Do NOT use em-dashes (—), en-dashes (–), bullet symbols (■ ● ▪ ▶), decorative
-    separators, or any non-standard Unicode punctuation anywhere in the JSON string values.
-  • Use only standard ASCII punctuation: commas, periods, colons, hyphens (-), and parentheses.
-  • Write in clean, natural, ATS-friendly prose that reads like a human wrote it by hand.
-  • No AI tell-tale patterns: no "spearheaded", "leveraged", "orchestrated" overuse,
-    no "responsible for", no "tasked with". Use direct active verbs: built, led, reduced,
-    delivered, designed, improved, deployed, automated, mentored, negotiated.
+[R8] CLEAN HUMAN FORMATTING
+  • Do NOT use em-dashes, en-dashes, bullet symbols, or non-ASCII punctuation in string values.
+  • Use only standard ASCII: commas, periods, colons, hyphens, parentheses.
+  • No AI cliches: no "spearheaded", "leveraged", "orchestrated", "responsible for".
+  • Use direct active verbs: built, led, reduced, delivered, designed, improved, deployed.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SECTION-BY-SECTION INSTRUCTIONS
@@ -853,11 +845,9 @@ SECTION-BY-SECTION INSTRUCTIONS
    • Do NOT write a long paragraph — keep it punchy and scannable.
 
 ③ competencies
-   EXACTLY 12 professional behavioral competency phrases, separated by " * ".
-   STRICT RULE: zero technical terms, zero tool names, zero languages or frameworks.
-   Each phrase is a behavioral or leadership strength inferred from the JD context —
-   e.g. "Delivery Excellence", "Stakeholder Management", "Continuous Improvement".
-   All 12 must be unique, role-relevant, and derived solely from the JD responsibilities.
+   EXACTLY 12 professional behavioral phrases, separated by " * ".
+   STRICT: zero technical terms, zero tool names, zero languages or frameworks.
+   Each phrase is a behavioral/leadership strength from the JD context only.
 
 ④ keywords
    18–20 ATS keywords from the JD, comma-separated. Cover tools, methods, and domain terms.
@@ -881,8 +871,7 @@ SECTION-BY-SECTION INSTRUCTIONS
              Each bullet must be unique — different technology, different metric, different context.
              No copy-pasting between companies. Bullets must sound like lived experience.
    tech    : MINIMUM 8 distinct JD technologies used at that company, pipe-separated.
-             Do NOT copy the same tech set across companies — vary the mix to reflect
-             different responsibilities, project focus, and growth across roles.
+             Vary the mix across companies to reflect different responsibilities.
 
 ⑧ projects  [EXACTLY 4 — split as described]
    PROJECT SPLIT RULE (mandatory):
@@ -899,8 +888,7 @@ SECTION-BY-SECTION INSTRUCTIONS
      overview : 3–4 sentences. Story arc: problem → approach → technologies → outcome.
                 Reads like a real project summary a professional would write.
      bullets  : 3 achievement bullets, each with a concrete metric or outcome.
-     techTags : MINIMUM 8 distinct technologies from the JD, relevant to that project's
-                scope and deliverables. Each project should have a different primary focus.
+     techTags : MINIMUM 8 distinct technologies from the JD relevant to that project.
 
 ⑨ relatedTech  [5 category objects, 5 items each — all from JD]
 
@@ -918,7 +906,7 @@ JSON OUTPUT — no markdown, no code fences, no explanation text
 {{
   "title": "Inferred Role | Tech1, Tech2, Tech3 | {years_display}",
   "summary": "{years_display} years of experience in [JD domain]… (4–5 sentences, 70–100 words)",
-  "competencies": "Behavioral Strength 1 * Behavioral Strength 2 * Behavioral Strength 3 * Behavioral Strength 4 * Behavioral Strength 5 * Behavioral Strength 6 * Behavioral Strength 7 * Behavioral Strength 8 * Behavioral Strength 9 * Behavioral Strength 10 * Behavioral Strength 11 * Behavioral Strength 12",
+  "competencies": "BehavioralStrength1 * BehavioralStrength2 * BehavioralStrength3 * BehavioralStrength4 * BehavioralStrength5 * BehavioralStrength6 * BehavioralStrength7 * BehavioralStrength8 * BehavioralStrength9 * BehavioralStrength10 * BehavioralStrength11 * BehavioralStrength12",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18",
   "technologies": {{
     "mustHave":   ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10","t11","t12"],
@@ -995,11 +983,10 @@ PRE-SUBMIT CHECKLIST — verify every item before writing a single character of 
 ✓ projects 3–4 target the JD's specific technical requirements
 ✓ zero company names appear anywhere except the "company" JSON key
 ✓ every technology, skill, and keyword came from the job description
-✓ competencies contain ZERO technical terms, tool names, or languages — behavioral only
-✓ competencies field has EXACTLY 12 phrases separated by " * "
-✓ every company "tech" field has at LEAST 8 pipe-separated technologies
-✓ every project "techTags" array has at LEAST 8 technologies
-✓ no em-dashes, en-dashes, bullet symbols, or non-ASCII punctuation in any string value
+✓ competencies has EXACTLY 12 behavioral phrases - zero tech terms allowed
+✓ every company "tech" has at least 8 pipe-separated technologies
+✓ every project "techTags" has at least 8 technologies
+✓ no em-dashes, en-dashes, or non-ASCII punctuation in any string value
 ✓ output is raw JSON only — no markdown fences, no explanatory text
 """
 
@@ -1015,10 +1002,10 @@ Key reminders:
 - Projects 1–2: company/industry domain. Projects 3–4: JD technical requirements.
 - No company names in any free-text field.
 - Every word derived from the job description above.
-- Competencies: 12 behavioral phrases ONLY — no tech terms, no tool names, no languages.
-- Each company tech field: minimum 8 technologies, varied across companies.
+- Competencies: exactly 12 behavioral phrases only, zero tech terms, separated by " * ".
+- Each company tech: minimum 8 technologies, varied across companies.
 - Each project techTags: minimum 8 technologies, varied across projects.
-- No em-dashes, en-dashes, bullet symbols, or special Unicode characters in any field.
+- No em-dashes, en-dashes, or special Unicode in any field value.
 """
 
     return system_prompt, user_prompt
@@ -1421,7 +1408,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
 
     # Groq can be slow on large prompts; use a generous per-call timeout.
     # The outer httpx.AsyncClient timeout is the hard ceiling — this is per-attempt.
-    per_call_timeout = 120
+    per_call_timeout = 50
     mk = mask(key)
     provider_tag = url.split("/")[2].split(".")[0]   # e.g. "api" → use model instead
     tag = f"[{model}|{mk}|{stage}]"
@@ -1463,7 +1450,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             _log.warning("%s TIMEOUT — %s — elapsed %.1fs  (exc: %s)",
                          tag, last_error, elapsed, type(exc).__name__)
             if attempt < 2:
-                wait = 4 + attempt * 4   # 4s, 8s
+                wait = 2 + attempt * 1   # 2s, 3s
                 _log.info("%s Waiting %ds before retry …", tag, wait)
                 await asyncio.sleep(wait)
                 continue
@@ -1478,7 +1465,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             last_error = f"ReadTimeout on attempt {attempt_num} after {elapsed}s"
             _log.warning("%s READ-TIMEOUT — %s", tag, last_error)
             if attempt < 2:
-                wait = 4 + attempt * 4
+                wait = 2 + attempt * 1
                 _log.info("%s Waiting %ds before retry …", tag, wait)
                 await asyncio.sleep(wait)
                 continue
@@ -1548,7 +1535,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
     """Generate CV using single dynamic prompt - everything from JD"""
     import time as _t
 
-    _deadline = _t.time() + 270
+    _deadline = _t.time() + 58
     years_exp = (req.years_exp or "").strip()
     years_exp_clean = years_exp.replace("+", "").strip()
 
@@ -1718,7 +1705,7 @@ async def call_cerebras(req: CVRequest) -> tuple:
     errors_by_key = []
     rate_limited_count = 0
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=180, write=15, pool=10)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=60, write=15, pool=10)) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
@@ -1796,10 +1783,10 @@ async def call_groq(req: CVRequest) -> tuple:
     _log.info("[Groq] Starting generation — model=%s, keys=%d, job_title=%r",
               model, len(sorted_keys), req.job_title[:60])
 
-    # read=240 gives each attempt up to 4 min; call_llm_atomic uses 120s per try
+    # read=60 gives each attempt up to 60s; call_llm_atomic uses 50s per try
     # with its own retry loop, so the outer client must not cut it short
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=15, read=240, write=20, pool=10)
+        timeout=httpx.Timeout(connect=15, read=60, write=20, pool=10)
     ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
@@ -1876,7 +1863,7 @@ async def call_gemini(req: CVRequest) -> tuple:
     errors_by_key = []
     rate_limited_count = 0
 
-    async with httpx.AsyncClient(timeout=180) as client:
+    async with httpx.AsyncClient(timeout=60) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
 
@@ -2027,7 +2014,7 @@ async def call_qwen(req: CVRequest) -> tuple:
     _log.info("[Qwen] model=%s keys=%d job=%r", model, len(sorted_keys), req.job_title[:60])
 
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=10, read=90, write=10, pool=5)
+        timeout=httpx.Timeout(connect=10, read=60, write=10, pool=5)
     ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
