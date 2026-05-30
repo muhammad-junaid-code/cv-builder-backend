@@ -766,132 +766,90 @@ WORK HISTORY (use these exact names and date ranges — do not invent others):
 
 SENIORITY PROGRESSION RULES
 {seniority_guidance}
-Role titles must feel natural, realistic, and human. Infer the full role title
-(seniority prefix + domain + function) from the JD itself.
+Role titles must feel natural, realistic, and human. Infer the full role title from the JD.
 
 NON-NEGOTIABLE RULES
 
 [R1] EXPERIENCE FORMAT
-  • Title last segment must be exactly "{years_display}" — no trailing comma, no double +.
-  • Summary must open with "{years_display} years of experience in [JD domain]".
-  • No bare year-count appears elsewhere as a standalone token.
+  Title last segment must be exactly "{years_display}" — no trailing comma, no double +.
+  Summary must open with "{years_display} years of experience in [JD domain]".
 
 [R2] TITLE FORMAT
-  • Read the JD and infer a role title that is closely related but not a verbatim copy.
-  • Identify the 3 most critical technologies from the JD.
-  • Assemble: inferred role title | tech1, tech2, tech3 | {years_display}
-  • The last pipe-segment must be exactly "{years_display}" — nothing after it.
+  Infer a role title from the JD (not verbatim). Identify 3 most critical JD technologies.
+  Assemble: inferred role | tech1, tech2, tech3 | {years_display}
 
 [R3] NO COMPANY NAMES IN FREE TEXT
-  • Company names must appear ONLY in the "company" JSON field.
-  • Never use them in: summary, project names, overviews, bullets, or competencies.
+  Company names appear ONLY in the "company" JSON field — never in any other field.
 
 [R4] 100% DERIVED FROM JD
-  • Every technology, competency, keyword, bullet, and project idea must be traceable
-    to the job description. Nothing hardcoded. Nothing generic.
+  Every technology, competency, keyword, bullet, and project must trace to the JD.
+  Nothing hardcoded. Nothing generic.
 
 [R5] HUMANISED WRITING
-  • Write as a seasoned professional. Active voice. Varied sentence structure.
-  • No keyword stuffing. No AI-style filler. No special characters or em-dashes.
+  Active voice. Varied sentence structure. No keyword stuffing. No em-dashes.
 
 [R6] KEY COMPETENCIES — MINIMUM 14, BEHAVIORAL ONLY
-  Read the job title, seniority level, and every sentence of the job description.
+  Read the job title, seniority level, and every sentence of the JD.
   Identify the professional qualities, leadership traits, delivery expectations,
   collaboration requirements, and workplace effectiveness qualities the role demands.
-  Translate each identified quality into a concise 2–5 word professional phrase.
+  Translate each quality into a concise 2-5 word professional phrase.
   Generate a minimum of 14 such phrases, separated by " * ".
-  Each phrase must be unique and must not overlap in meaning with any other phrase.
-  The set must span the full range of professional dimensions present in the JD.
-
-  ABSOLUTE RULE: The competencies field must not contain any technology name,
-  programming language, framework, library, database, cloud platform, tool, or
-  methodology. Every phrase must describe a human quality — something a
-  non-technical recruiter would recognise as a professional or leadership strength.
-  If a phrase names a specific technology it does not belong in this field.
+  Each phrase must be unique and non-overlapping.
+  ABSOLUTE RULE: No technology names, languages, frameworks, tools, platforms,
+  databases, or methodologies. Every phrase is a human behavioral or professional trait.
 
 [R7] TECHNOLOGY CATEGORIZATION
-  Derive category labels for the skills section directly from the JD content.
-  Enforce strict domain separation: each technology belongs in exactly one category.
-  No duplicates across categories.
+  Derive 5 category labels from the JD. Strict domain separation — each technology
+  in exactly one category. No duplicates across categories.
 
 [R8] TECHNOLOGY DEPTH
-  Every company experience must list a minimum of 8 unique technologies, pipe-separated.
-  Every project must include a minimum of 8 unique technologies in techTags.
-  Vary the selection across companies and projects based on role responsibilities.
-  All technologies must be sourced from the JD. Never hardcoded.
+  Every company: minimum 8 unique technologies, pipe-separated, varied per role.
+  Every project: minimum 8 unique technologies in techTags, different focus per project.
+  All from the JD. Never hardcoded.
 
-SECTION-BY-SECTION INSTRUCTIONS
+SECTION INSTRUCTIONS
 
-① title
-   Infer a role title from the JD (not a verbatim copy), append the 3 most critical
-   JD technologies, then append exactly "{years_display}".
-   Format: inferred role | tech1, tech2, tech3 | {years_display}
+① title: inferred role | tech1, tech2, tech3 | {years_display}
 
-② summary  [100–120 words, 4–5 sentences]
-   Sentence 1: Open with "{years_display} years of experience in [JD domain]" and state
-               the core discipline and seniority level.
-   Sentence 2: Highlight the primary technical strengths demanded by the JD.
-   Sentence 3: Reference a meaningful area of career impact relevant to this role.
-   Sentence 4: Mention the collaboration or leadership dimension implied by the JD.
-   Sentence 5: Close with the candidate's professional focus and value proposition.
-   Rules: No first-person pronouns. No company names. Weave in 5–7 JD technologies naturally.
+② summary [100-120 words, 4-5 sentences]
+   S1: "{years_display} years of experience in [JD domain]" + discipline + seniority.
+   S2: Primary technical strengths from the JD.
+   S3: Meaningful career impact relevant to this role.
+   S4: Collaboration or leadership dimension from the JD.
+   S5: Professional focus and value proposition.
+   No first-person pronouns. No company names. 5-7 JD technologies woven naturally.
 
-③ competencies  [MINIMUM 14 phrases, separated by " * "]
-   Read the job title, seniority level, and every sentence of the job description.
-   Identify the professional qualities, leadership traits, delivery expectations,
-   collaboration requirements, and workplace effectiveness qualities the role demands.
-   Translate each identified quality into a concise 2–5 word professional phrase.
-   Generate a minimum of 14 such phrases. Each phrase must be unique and must not
-   overlap in meaning with any other phrase in the list.
-   The complete set must span the full range of professional dimensions present in
-   the JD — covering leadership, ownership, delivery, collaboration, quality focus,
-   communication, decision-making, and any other behavioral or professional trait
-   relevant to this specific role.
-   STRICT RULE: No technology names, languages, frameworks, tools, platforms,
-   databases, or methodologies in this field. Every phrase is a behavioral or
-   professional effectiveness trait that stands alone without any technical qualifier.
+③ competencies [MINIMUM 14 phrases, " * " separated]
+   Read every sentence of the JD. Identify what professional qualities the role demands.
+   Translate each into a 2-5 word phrase. Cover the full range of professional dimensions
+   in the JD. STRICT: no technology names, no tools, no platforms in this field.
 
-④ keywords
-   20–24 ATS keywords extracted directly from the JD. Cover tools, domain terms, methods.
+④ keywords: 20-24 ATS terms from the JD.
 
-⑤ technologies
-   mustHave   : technologies explicitly required in the JD (10–14 items)
-   niceToHave : technologies preferred or listed as a bonus in the JD (8–12 items)
-   additional : ecosystem tools logically implied by the JD context (8–10 items)
+⑤ technologies: mustHave (10-14), niceToHave (8-12), additional (8-10) — all from JD.
 
-⑥ skills  [5 domain-separated categories]
-   Format: "Category Label: tech1, tech2, tech3, tech4, tech5, tech6, tech7, tech8"
-   Derive 5 category labels from the JD's technology landscape.
-   Enforce strict domain boundaries: each technology belongs in exactly one category.
-   8–10 technologies per category, all sourced from the JD. Zero duplicates across categories.
+⑥ skills [5 domain-separated categories]
+   "Category Label: t1, t2, t3, t4, t5, t6, t7, t8"
+   Strict domain separation. 8-10 per category. Zero duplicates across categories.
 
-⑦ companies  [one entry per company, in order]
-   role    : Infer the full title from the JD using the seniority progression rules.
-   bullets : 4 achievement bullets per company, each 20–30 words.
-             Unique per company — different technology, metric, and context each time.
-   tech    : Minimum 8 unique JD technologies for this role, pipe-separated.
-             Vary the selection across companies based on that role's responsibilities.
+⑦ companies [one per company, in order]
+   role: full title from JD with correct seniority.
+   bullets: 4 unique achievement bullets, 20-30 words each.
+   tech: minimum 8 unique JD technologies, pipe-separated, varied per role.
 
-⑧ projects  [EXACTLY 4]
-   Projects 1 and 2: Grounded in the target company's or JD's industry domain.
-   Projects 3 and 4: Address the specific technical requirements in the JD.
-   For every project:
-     name     : Descriptive and specific. Never a generic placeholder or company name.
-     overview : 3–4 sentences. Arc: problem, approach, technologies used, outcome.
-     bullets  : 3 achievement bullets with concrete metrics or outcomes.
-     techTags : Minimum 8 unique technologies from the JD. Different focus per project.
+⑧ projects [EXACTLY 4]
+   Projects 1-2: JD industry domain. Projects 3-4: JD technical requirements.
+   Each: name, overview (3-4 sentences), 3 bullets, techTags (min 8, different focus).
 
-⑨ relatedTech  [5 category objects, 5 items each — all from the JD]
+⑨ relatedTech: 5 category objects, 5 items each, all from JD.
 
-⑩ education
-   Copy ALL education entries EXACTLY as provided in the JSON array below.
-   Preserve every entry, every field, and every value unchanged.
+⑩ education: copy EXACTLY from the pre-filled array below, unchanged.
 
-JSON OUTPUT — raw JSON only, no markdown, no code fences, no explanation
+JSON OUTPUT — raw JSON only, no markdown, no code fences
 
 {{
-  "title": "Role inferred from JD | tech1, tech2, tech3 | {years_display}",
-  "summary": "{years_display} years of experience in [domain]. [4-5 sentences, 100-120 words, no I/my/me, no company names]",
+  "title": "Inferred role | tech1, tech2, tech3 | {years_display}",
+  "summary": "{years_display} years of experience in [domain]. [4-5 sentences, 100-120 words, no I/my/me]",
   "competencies": "Trait1 * Trait2 * Trait3 * Trait4 * Trait5 * Trait6 * Trait7 * Trait8 * Trait9 * Trait10 * Trait11 * Trait12 * Trait13 * Trait14",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18, kw19, kw20",
   "technologies": {{
@@ -909,96 +867,83 @@ JSON OUTPUT — raw JSON only, no markdown, no code fences, no explanation
   "companies": [
     {{
       "company": "",
-      "role": "Role title from JD with correct seniority",
+      "role": "Role from JD with correct seniority",
       "dateRange": "",
       "bullets": [
         "Achievement with JD technology and measurable result (20-30 words).",
         "Different achievement with different technology and quantified impact (20-30 words).",
-        "Delivery or process improvement with technology and outcome (20-30 words).",
-        "Business or stakeholder impact with JD context and result (20-30 words)."
+        "Delivery improvement with technology and outcome (20-30 words).",
+        "Business or stakeholder impact with result (20-30 words)."
       ],
       "tech": "t1 | t2 | t3 | t4 | t5 | t6 | t7 | t8"
     }}
   ],
   "projects": [
     {{
-      "name": "Project name derived from JD industry domain",
-      "overview": "3-4 sentences: problem, approach, technologies used, measurable outcome.",
-      "bullets": [
-        "Outcome with technology and metric (20-30 words).",
-        "Technical challenge with quantified result (20-30 words).",
-        "Business benefit delivered (20-30 words)."
-      ],
+      "name": "Project from JD industry domain",
+      "overview": "3-4 sentences: problem, approach, technologies, outcome.",
+      "bullets": ["Outcome 1 (20-30 words).","Outcome 2 (20-30 words).","Outcome 3 (20-30 words)."],
       "techTags": ["t1","t2","t3","t4","t5","t6","t7","t8"]
     }},
     {{
       "name": "Second project from JD domain",
-      "overview": "3-4 sentences covering a different aspect of the domain.",
+      "overview": "3-4 sentences covering a different domain aspect.",
       "bullets": ["Outcome 1","Outcome 2","Outcome 3"],
       "techTags": ["t1","t2","t3","t4","t5","t6","t7","t8"]
     }},
     {{
       "name": "Project from JD technical requirements",
-      "overview": "3-4 sentences aligned with the technical skills in the JD.",
+      "overview": "3-4 sentences aligned with JD technical skills.",
       "bullets": ["Outcome 1","Outcome 2","Outcome 3"],
       "techTags": ["t1","t2","t3","t4","t5","t6","t7","t8"]
     }},
     {{
       "name": "Second project from JD technical requirements",
-      "overview": "3-4 sentences covering a different technical capability from the JD.",
+      "overview": "3-4 sentences covering a different JD technical capability.",
       "bullets": ["Outcome 1","Outcome 2","Outcome 3"],
       "techTags": ["t1","t2","t3","t4","t5","t6","t7","t8"]
     }}
   ],
   "education": {_edu_json_block},
   "relatedTech": [
-    {{"category": "category1", "items": ["t1","t2","t3","t4","t5"]}},
-    {{"category": "category2", "items": ["t1","t2","t3","t4","t5"]}},
-    {{"category": "category3", "items": ["t1","t2","t3","t4","t5"]}},
-    {{"category": "category4", "items": ["t1","t2","t3","t4","t5"]}},
-    {{"category": "category5", "items": ["t1","t2","t3","t4","t5"]}}
+    {{"category": "cat1", "items": ["t1","t2","t3","t4","t5"]}},
+    {{"category": "cat2", "items": ["t1","t2","t3","t4","t5"]}},
+    {{"category": "cat3", "items": ["t1","t2","t3","t4","t5"]}},
+    {{"category": "cat4", "items": ["t1","t2","t3","t4","t5"]}},
+    {{"category": "cat5", "items": ["t1","t2","t3","t4","t5"]}}
   ]
 }}
 
-PRE-SUBMIT CHECKLIST:
-✓ title: last segment exactly "{years_display}", no trailing comma, no double +
-✓ summary: opens with "{years_display} years of experience in", 100-120 words, no I/my/me
-✓ competencies: minimum 14 phrases separated by " * "
-✓ competencies: zero technology names, languages, frameworks, tools, or platforms
-✓ competencies: every phrase is a behavioral or professional effectiveness trait
-✓ competencies: every phrase is unique, non-overlapping, and derived from the JD
+CHECKLIST:
+✓ title last segment exactly "{years_display}", no trailing comma, no double +
+✓ summary opens with "{years_display} years of experience in", 100-120 words, no I/my/me
+✓ competencies: minimum 14 behavioral phrases, zero technology names
+✓ competencies: unique, non-overlapping, derived from JD
 ✓ skills: strict domain separation, each technology in exactly one category
-✓ company tech: minimum 8 pipe-separated technologies per company, varied across roles
-✓ project techTags: minimum 8 technologies per project, different focus per project
-✓ company roles follow the seniority progression rules
-✓ projects 1-2 grounded in the company or JD industry domain
-✓ projects 3-4 address the specific technical requirements in the JD
+✓ company tech: minimum 8 per company, varied per role
+✓ project techTags: minimum 8 per project, different focus per project
+✓ projects 1-2 industry domain, projects 3-4 JD technical requirements
 ✓ zero company names outside the company field
-✓ no em-dashes, en-dashes, special symbols, or non-ASCII punctuation
-✓ raw JSON only — no markdown, no code fences, no explanation text
+✓ no em-dashes, en-dashes, or non-ASCII punctuation
+✓ raw JSON only
 """
 
     user_prompt = f"""JOB DESCRIPTION:
 {jd}
 
-Generate the complete CV JSON now.
+Generate the CV JSON now.
 
-Critical reminders:
-- Title: end with exactly "{years_display}", no trailing comma, no double +.
-- Summary: 100-120 words, open with "{years_display} years of experience in".
-  No first-person pronouns. No company names.
-- Competencies: minimum 14 phrases separated by " * ".
-  Derive every phrase directly from this job description and job title.
-  No technology names, languages, frameworks, tools, or platforms allowed here.
-  Every phrase must be a behavioral or professional effectiveness quality.
-- Skills: each technology in exactly one domain-appropriate category.
-- Company tech: minimum 8 unique technologies per company, pipe-separated, varied per role.
-- Project techTags: minimum 8 technologies per project, different focus per project.
+Reminders:
+- Title: inferred role | tech1, tech2, tech3 | {years_display} (no trailing comma)
+- Summary: 100-120 words, open with "{years_display} years of experience in". No I/my/me.
+- Competencies: minimum 14 behavioral phrases via " * ". No technology names at all.
+  Derive every phrase from this specific JD and job title.
+- Skills: strict domain separation per category.
+- Company tech: min 8 per company, varied. Project techTags: min 8 per project.
 - Seniority: {seniority_guidance.split(chr(10))[0]}
 - Projects 1-2: industry domain. Projects 3-4: JD technical requirements.
-- No company names in any free-text field.
-- No em-dashes, en-dashes, or non-ASCII punctuation in any field.
-- Everything derived from the job description above.
+- No company names in free-text. No em-dashes or non-ASCII punctuation.
+- Everything from the job description above.
 """
     return system_prompt, user_prompt
 
@@ -1267,14 +1212,13 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
         if isinstance(val, str):
             cv[field] = val.replace("++", "+")
 
-    # ── Build pool from CV's own JD-derived technologies for padding ─────────
+    # Build pool from CV's own JD-derived technologies for padding
     _tech_pool: list = []
     for _bucket in ("mustHave", "niceToHave", "additional"):
         for _t in (cv.get("technologies", {}).get(_bucket) or []):
             if _t and _t.strip() and _t.strip() not in _tech_pool:
                 _tech_pool.append(_t.strip())
-
-    # ── Enforce minimum 8 technologies per company ───────────────────────────
+    # Enforce minimum 8 technologies per company
     MIN_CO_TECH = 8
     companies = cv.get("companies", [])
     for co in companies:
@@ -1282,40 +1226,26 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
         techs = [str(t).strip() for t in
                  (tech_str if isinstance(tech_str, list) else str(tech_str).split("|"))
                  if str(t).strip()]
-        seen_co: set = set()
-        unique_techs: list = []
+        seen_co: set = set(); unique_techs: list = []
         for t in techs:
-            if t.lower() not in seen_co:
-                unique_techs.append(t)
-                seen_co.add(t.lower())
+            if t.lower() not in seen_co: unique_techs.append(t); seen_co.add(t.lower())
         for t in _tech_pool:
-            if len(unique_techs) >= MIN_CO_TECH:
-                break
-            if t.lower() not in seen_co:
-                unique_techs.append(t)
-                seen_co.add(t.lower())
-        if unique_techs:
-            co["tech"] = " | ".join(unique_techs[:12])
+            if len(unique_techs) >= MIN_CO_TECH: break
+            if t.lower() not in seen_co: unique_techs.append(t); seen_co.add(t.lower())
+        if unique_techs: co["tech"] = " | ".join(unique_techs[:12])
 
-    # ── Enforce minimum 8 technologies per project ───────────────────────────
+    # Enforce minimum 8 technologies per project
     MIN_PROJ_TECH = 8
     for proj in cv.get("projects", []):
         tags = proj.get("techTags", []) or []
-        if not isinstance(tags, list):
-            tags = [str(tags)]
-        seen_proj: set = set()
-        unique_tags: list = []
+        if not isinstance(tags, list): tags = [str(tags)]
+        seen_proj: set = set(); unique_tags: list = []
         for t in tags:
             t = str(t).strip()
-            if t and t.lower() not in seen_proj:
-                unique_tags.append(t)
-                seen_proj.add(t.lower())
+            if t and t.lower() not in seen_proj: unique_tags.append(t); seen_proj.add(t.lower())
         for t in _tech_pool:
-            if len(unique_tags) >= MIN_PROJ_TECH:
-                break
-            if t.lower() not in seen_proj:
-                unique_tags.append(t)
-                seen_proj.add(t.lower())
+            if len(unique_tags) >= MIN_PROJ_TECH: break
+            if t.lower() not in seen_proj: unique_tags.append(t); seen_proj.add(t.lower())
         proj["techTags"] = unique_tags[:12]
 
     return cv
@@ -1419,7 +1349,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
 
     # Groq can be slow on large prompts; use a generous per-call timeout.
     # The outer httpx.AsyncClient timeout is the hard ceiling — this is per-attempt.
-    per_call_timeout = 75
+    per_call_timeout = 45
     mk = mask(key)
     provider_tag = url.split("/")[2].split(".")[0]   # e.g. "api" → use model instead
     tag = f"[{model}|{mk}|{stage}]"
@@ -1546,7 +1476,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
     """Generate CV using single dynamic prompt - everything from JD"""
     import time as _t
 
-    _deadline = _t.time() + 90
+    _deadline = _t.time() + 92
     years_exp = (req.years_exp or "").strip()
     years_exp_clean = years_exp.replace("+", "").strip()
 
@@ -1573,7 +1503,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
               provider_host, len(system_prompt), len(user_prompt))
 
     result = await call_llm_atomic(client, key, model, url, system_prompt, user_prompt,
-                                    "FullCV", headers, max_tokens=max_output_tokens or 5000, _deadline=_deadline)
+                                    "FullCV", headers, max_tokens=max_output_tokens or 4000, _deadline=_deadline)
 
     if not result:
         _log.error("[GenCV|%s] AI returned empty/unparseable response", provider_host)
@@ -1716,7 +1646,7 @@ async def call_cerebras(req: CVRequest) -> tuple:
     errors_by_key = []
     rate_limited_count = 0
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=80, write=15, pool=10)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=50, write=15, pool=10)) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
@@ -1794,10 +1724,10 @@ async def call_groq(req: CVRequest) -> tuple:
     _log.info("[Groq] Starting generation — model=%s, keys=%d, job_title=%r",
               model, len(sorted_keys), req.job_title[:60])
 
-    # read=80 gives each attempt up to 80s; call_llm_atomic uses 75s per try
+    # read=50 gives each attempt up to 50s; call_llm_atomic uses 45s per try
     # with its own retry loop, so the outer client must not cut it short
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=15, read=80, write=20, pool=10)
+        timeout=httpx.Timeout(connect=15, read=50, write=20, pool=10)
     ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
@@ -1874,7 +1804,7 @@ async def call_gemini(req: CVRequest) -> tuple:
     errors_by_key = []
     rate_limited_count = 0
 
-    async with httpx.AsyncClient(timeout=80) as client:
+    async with httpx.AsyncClient(timeout=50) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
 
@@ -2025,7 +1955,7 @@ async def call_qwen(req: CVRequest) -> tuple:
     _log.info("[Qwen] model=%s keys=%d job=%r", model, len(sorted_keys), req.job_title[:60])
 
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=10, read=80, write=10, pool=5)
+        timeout=httpx.Timeout(connect=10, read=50, write=10, pool=5)
     ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
