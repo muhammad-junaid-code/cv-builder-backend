@@ -788,57 +788,15 @@ NON-NEGOTIABLE RULES
 [R5] HUMANISED WRITING
   Active voice. Varied sentence structure. No keyword stuffing. No em-dashes.
 
-[R6] KEY COMPETENCIES — MINIMUM 14, ROLE-DERIVED
-  Read the job title, seniority level, and every sentence of the JD carefully.
-  Determine whether this is a TECHNICAL role (software, engineering, data, DevOps,
-  architecture, QA, etc.) or a NON-TECHNICAL role (sales, marketing, finance,
-  operations, HR, legal, etc.).
-
-  FOR TECHNICAL ROLES — generate competencies drawn from these dimensions
-  (only include a dimension if the JD genuinely supports it):
-    • Technical leadership and engineering ownership
-    • Code quality, code reviews, and engineering standards
-    • Software architecture and solution design
-    • Requirement analysis and technical specification
-    • Performance optimisation and system reliability
-    • Mentoring and developer enablement
-    • Quality assurance and testing discipline
-    • Agile delivery and sprint execution
-    • Cross-functional collaboration (product, QA, design, business)
-    • Stakeholder communication and technical documentation
-    • Process improvement and engineering maturity
-    • Domain or industry knowledge specific to this role
-
-  FOR NON-TECHNICAL ROLES — generate competencies drawn from dimensions
-  genuinely present in the JD such as:
-    • Strategic planning and business development
-    • Client relationship management
-    • Commercial acumen and revenue focus
-    • Team leadership and people management
-    • Operational excellence and process efficiency
-    • Data-driven decision making
-    • Stakeholder engagement and executive communication
-    • Budget management and financial oversight
-    • Change management and organisational transformation
-    • Compliance, risk, and governance awareness
-    • Domain expertise relevant to this specific profession
-
-  PHRASING RULES (apply to both role types):
-  • Write each competency as a 2-5 word professional phrase that reads naturally
-    on an executive or senior-level resume — noun-led (e.g. "Solution Architecture
-    Design"), gerund-led (e.g. "Mentoring Engineering Teams"), or adjective-noun
-    (e.g. "Cross-Functional Collaboration").
-  • Avoid AI-style generic fillers: do NOT use phrases like "Team Player",
-    "Hard Worker", "Detail Oriented", "Strong Communicator", "Problem Solver",
-    "Fast Learner", or any phrase that could appear on any resume for any role.
-  • Every phrase must be specific enough that it could ONLY appear on a resume
-    targeting this particular role and industry.
-  • Vary phrasing structure — do not start multiple phrases with the same word.
-  • Minimum 14 phrases, separated by " • ". Each phrase unique and non-overlapping.
-  • For technical roles: include 2–4 phrases that are engineering-specific
-    (architecture, code quality, technical leadership, etc.) and the remainder
-    covering delivery, collaboration, and domain dimensions.
-  • For non-technical roles: exclude all software engineering competencies entirely.
+[R6] KEY COMPETENCIES — MINIMUM 14, BEHAVIORAL ONLY
+  Read the job title, seniority level, and every sentence of the JD.
+  Identify the professional qualities, leadership traits, delivery expectations,
+  collaboration requirements, and workplace effectiveness qualities the role demands.
+  Translate each quality into a concise 2-5 word professional phrase.
+  Generate a minimum of 14 such phrases, separated by " * ".
+  Each phrase must be unique and non-overlapping.
+  ABSOLUTE RULE: No technology names, languages, frameworks, tools, platforms,
+  databases, or methodologies. Every phrase is a human behavioral or professional trait.
 
 [R7] TECHNOLOGY CATEGORIZATION
   Derive 5 category labels from the JD. Strict domain separation — each technology
@@ -853,24 +811,18 @@ SECTION INSTRUCTIONS
 
 ① title: inferred role | tech1, tech2, tech3 | {years_display}
 
-② summary [scale length to JD depth]
-   If JD is under 150 words → write 3 sentences (~60-80 words).
-   If JD is 150-400 words   → write 4 sentences (~90-110 words).
-   If JD is over 400 words  → write 5 sentences (~110-130 words).
+② summary [100-120 words, 4-5 sentences]
    S1: "{years_display} years of experience in [JD domain]" + discipline + seniority.
-   S2: Primary technical or professional strengths drawn from the JD.
-   S3: Meaningful career impact or delivery outcome relevant to this role.
-   S4 (if length allows): Collaboration, leadership, or cross-functional dimension from JD.
-   S5 (if length allows): Professional focus, value proposition, or domain specialisation.
-   No first-person pronouns. No company names. Weave in 4-7 JD-specific terms naturally.
+   S2: Primary technical strengths from the JD.
+   S3: Meaningful career impact relevant to this role.
+   S4: Collaboration or leadership dimension from the JD.
+   S5: Professional focus and value proposition.
+   No first-person pronouns. No company names. 5-7 JD technologies woven naturally.
 
-③ competencies [MINIMUM 14 phrases, " • " separated]
-   Determine if this is a technical or non-technical role from the JD.
-   Generate role-specific competency phrases as instructed in [R6].
-   Technical roles: include 2–4 engineering-specific phrases plus delivery,
-   collaboration, and domain phrases. Non-technical roles: no engineering phrases.
-   All phrases must be natural, executive-quality, and specific to THIS role.
-   Separator: " • ". Minimum 14. Every phrase unique.
+③ competencies [MINIMUM 14 phrases, " * " separated]
+   Read every sentence of the JD. Identify what professional qualities the role demands.
+   Translate each into a 2-5 word phrase. Cover the full range of professional dimensions
+   in the JD. STRICT: no technology names, no tools, no platforms in this field.
 
 ④ keywords: 20-24 ATS terms from the JD.
 
@@ -898,7 +850,7 @@ JSON OUTPUT — raw JSON only, no markdown, no code fences
 {{
   "title": "Inferred role | tech1, tech2, tech3 | {years_display}",
   "summary": "{years_display} years of experience in [domain]. [4-5 sentences, 100-120 words, no I/my/me]",
-  "competencies": "Phrase1 • Phrase2 • Phrase3 • Phrase4 • Phrase5 • Phrase6 • Phrase7 • Phrase8 • Phrase9 • Phrase10 • Phrase11 • Phrase12 • Phrase13 • Phrase14",
+  "competencies": "Trait1 * Trait2 * Trait3 * Trait4 * Trait5 * Trait6 * Trait7 * Trait8 * Trait9 * Trait10 * Trait11 * Trait12 * Trait13 * Trait14",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18, kw19, kw20",
   "technologies": {{
     "mustHave":   ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10"],
@@ -965,9 +917,8 @@ JSON OUTPUT — raw JSON only, no markdown, no code fences
 CHECKLIST:
 ✓ title last segment exactly "{years_display}", no trailing comma, no double +
 ✓ summary opens with "{years_display} years of experience in", 100-120 words, no I/my/me
-✓ competencies: minimum 14 phrases, " • " separated, role-type-aware (technical vs non-technical)
-✓ competencies: natural executive phrasing, no generic fillers, specific to this JD and role
-✓ competencies: unique, non-overlapping, balanced across leadership/delivery/domain dimensions
+✓ competencies: minimum 14 behavioral phrases, zero technology names
+✓ competencies: unique, non-overlapping, derived from JD
 ✓ skills: strict domain separation, each technology in exactly one category
 ✓ company tech: minimum 8 per company, varied per role
 ✓ project techTags: minimum 8 per project, different focus per project
@@ -985,11 +936,8 @@ Generate the CV JSON now.
 Reminders:
 - Title: inferred role | tech1, tech2, tech3 | {years_display} (no trailing comma)
 - Summary: 100-120 words, open with "{years_display} years of experience in". No I/my/me.
-- Competencies: minimum 14 phrases via " • ". Detect role type (technical vs non-technical)
-  from the JD. Technical roles: include 2-4 engineering-specific phrases (architecture,
-  code quality, technical leadership, etc.) plus delivery/collaboration/domain phrases.
-  Non-technical roles: no engineering phrases. All phrasing must be natural, specific,
-  executive-quality — no generic fillers. Derive every phrase from THIS JD and role.
+- Competencies: minimum 14 behavioral phrases via " * ". No technology names at all.
+  Derive every phrase from this specific JD and job title.
 - Skills: strict domain separation per category.
 - Company tech: min 8 per company, varied. Project techTags: min 8 per project.
 - Seniority: {seniority_guidance.split(chr(10))[0]}
