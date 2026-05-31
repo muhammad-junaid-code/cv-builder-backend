@@ -874,10 +874,18 @@ NON-NEGOTIABLE RULES
   ABSOLUTE RULE: No raw technology names, language names, framework names, or tool names.
   Every phrase describes a human professional or behavioural quality.
 {_tech_competencies_instruction}
-[R7] TECHNOLOGY CATEGORIZATION
-  Derive 5 category labels from the JD. Strict domain separation — each technology
-  in exactly one category. No duplicates across categories. Only include technologies
-  the candidate can genuinely support from their background.
+[R7] TECHNICAL SKILLS — MINIMUM 5 CATEGORIES, MINIMUM 10 ITEMS EACH
+  Derive a MINIMUM of 5 category labels dynamically from the job title, JD, company
+  domain, and candidate background. Do NOT hardcode category names — infer them from
+  what the JD and candidate background actually cover (e.g. "Backend Development",
+  "Database & Storage", "DevOps & CI/CD", "API & Integration", "Architecture & Design").
+  Rules:
+    • Minimum 5 categories — more are allowed if the JD supports them.
+    • Each category must contain at least 10 unique, comma-separated items.
+    • Strict domain separation — every item appears in exactly one category.
+    • Zero duplicates across categories.
+    • Only include technologies/tools/concepts the candidate can genuinely claim.
+    • All items must be ATS-friendly, realistic, and specific to the target role.
 
 [R8] TECHNOLOGY DEPTH
   Every company: minimum 8 unique technologies, pipe-separated, varied per role.
@@ -908,10 +916,13 @@ SECTION INSTRUCTIONS
 ⑤ technologies: mustHave (10-14), niceToHave (8-12), additional (8-10) — from JD only,
    limited to what the candidate's background can genuinely support.
 
-⑥ skills [5 domain-separated categories]
-   "Category Label: t1, t2, t3, t4, t5, t6, t7, t8"
-   Strict domain separation. 8-10 per category. Zero duplicates across categories.
-   Only technologies the candidate can genuinely claim.
+⑥ skills [MINIMUM 5 categories, MINIMUM 10 items each]
+   Dynamically derive category names from the JD, job title, company domain, and candidate
+   background. Do NOT use generic or hardcoded category names — infer them from what the
+   role actually requires.
+   Format: "Category Label: item1, item2, item3, item4, item5, item6, item7, item8, item9, item10"
+   Rules: minimum 5 categories (more allowed), minimum 10 items per category, strict domain
+   separation (each item in exactly one category), zero duplicates, candidate-authentic only.
 
 ⑦ companies [one per company, in order]
    role: full title from JD with correct seniority.
@@ -943,11 +954,11 @@ JSON OUTPUT — raw JSON only, no markdown, no code fences
     "additional": ["t1","t2","t3","t4","t5","t6","t7","t8"]
   }},
   "skills": [
-    "CategoryA: t1, t2, t3, t4, t5, t6, t7, t8",
-    "CategoryB: t1, t2, t3, t4, t5, t6, t7, t8",
-    "CategoryC: t1, t2, t3, t4, t5, t6, t7, t8",
-    "CategoryD: t1, t2, t3, t4, t5, t6, t7, t8",
-    "CategoryE: t1, t2, t3, t4, t5, t6, t7, t8"
+    "CategoryA: t1, t2, t3, t4, t5, t6, t7, t8, t9, t10",
+    "CategoryB: t1, t2, t3, t4, t5, t6, t7, t8, t9, t10",
+    "CategoryC: t1, t2, t3, t4, t5, t6, t7, t8, t9, t10",
+    "CategoryD: t1, t2, t3, t4, t5, t6, t7, t8, t9, t10",
+    "CategoryE: t1, t2, t3, t4, t5, t6, t7, t8, t9, t10"
   ],
   "companies": [
     {{
@@ -1008,7 +1019,8 @@ CHECKLIST:
 ✓ technologies and skills: only those consistent with the candidate's actual background
 ✓ no technologies introduced that the candidate cannot plausibly support
 ✓ projects: existing candidate projects reused/adapted where relevant, not replaced
-✓ skills: strict domain separation, each technology in exactly one category
+✓ skills: minimum 5 dynamically-named categories, minimum 10 items each, strict domain separation
+✓ skills: category names derived from JD/role — not hardcoded, not generic
 ✓ company tech: minimum 8 per company, varied per role, candidate-authentic
 ✓ project techTags: minimum 8 per project, different focus per project
 ✓ projects 1-2 industry domain, projects 3-4 JD technical requirements
@@ -1033,7 +1045,8 @@ Reminders:
   Do NOT introduce foreign languages, frameworks, or platforms the candidate hasn't used.
 - Projects: reuse or subtly adapt existing candidate projects where possible.
   Only invent new projects if no existing project can be aligned to the JD.
-- Skills: strict domain separation per category.
+- Skills: minimum 5 categories (dynamically named from JD/role), minimum 10 items each.
+  Strict domain separation — no item repeated across categories. Candidate-authentic only.
 - Company tech: min 8 per company, varied, candidate-authentic. Project techTags: min 8 per project.
 - Seniority: {seniority_guidance.split(chr(10))[0]}
 - Projects 1-2: industry domain. Projects 3-4: JD technical requirements.
