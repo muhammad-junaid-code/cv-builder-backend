@@ -1026,6 +1026,7 @@ CHECKLIST:
 ✓ projects 1-2 industry domain, projects 3-4 JD technical requirements
 ✓ zero company names outside the company field
 ✓ no em-dashes, en-dashes, or non-ASCII punctuation
+✓ NO geometric symbols or Unicode block characters (■◼◾▮▬●▸ etc.) — use plain hyphens instead
 ✓ raw JSON only
 """
 
@@ -1050,7 +1051,7 @@ Reminders:
 - Company tech: min 8 per company, varied, candidate-authentic. Project techTags: min 8 per project.
 - Seniority: {seniority_guidance.split(chr(10))[0]}
 - Projects 1-2: industry domain. Projects 3-4: JD technical requirements.
-- No company names in free-text. No em-dashes or non-ASCII punctuation.
+- No company names in free-text. No em-dashes, non-ASCII punctuation, or geometric/symbol characters (■◼◾ etc.). Use plain hyphens only.
 - Everything must be realistic, credible, and aligned with the candidate's actual background.
 """
     return system_prompt, user_prompt
@@ -1149,17 +1150,25 @@ def _normalize_job_title(title: str) -> str:
             seen_lower.append(w.lower())
     return " ".join(seen)
 
-_BLACK_SQ_RE = re.compile(
-    r'(?<=[A-Za-z0-9])[\u25A0\u25AA\u2588\u25FC\u25FE\u2B1B](?=[A-Za-z0-9])'
+# Matches ANY non-ASCII, non-Latin-extended character appearing between two word
+# characters — these are geometric/symbol chars the model uses as hyphen substitutes.
+_INLINE_SYMBOL_RE = re.compile(
+    r'(?<=[A-Za-z0-9])([^\x20-\x7E\u00C0-\u024F])(?=[A-Za-z0-9])'
 )
-_BLACK_SQ_ANY = re.compile(r'[\u25A0\u25AA\u2588\u25FC\u25FE\u2B1B]')
+# Matches entire Unicode blocks that render as solid shapes/glyphs anywhere in text:
+# Block Elements, Geometric Shapes, Misc Symbols, Dingbats, Misc Technical,
+# Supplemental Arrows-B, Misc Math Symbols, Enclosed Alphanumerics.
+_SYMBOL_BLOCKS_RE = re.compile(
+    r'[\u2300-\u27BF\u2B00-\u2BFF\u2E00-\u2E7F]'
+)
 
 def _clean_black_squares(s: str) -> str:
-    """Remove black-square characters that Cerebras embeds as hyphen substitutes."""
+    """Remove any geometric/symbol character that Cerebras embeds as a hyphen substitute.
+    Uses Unicode block ranges so it catches all variants regardless of exact codepoint."""
     if not s:
         return s
-    s = _BLACK_SQ_RE.sub("", s)       # between letters: strip completely (test■driven → testdriven)
-    s = _BLACK_SQ_ANY.sub("-", s)     # elsewhere: replace with hyphen
+    s = _INLINE_SYMBOL_RE.sub("", s)    # between letters: strip (test■driven → testdriven)
+    s = _SYMBOL_BLOCKS_RE.sub("-", s)   # geometric block chars anywhere: replace with hyphen
     return s
 
 def sanitise_cv(cv: dict) -> dict:
