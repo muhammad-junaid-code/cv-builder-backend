@@ -828,21 +828,15 @@ NON-NEGOTIABLE RULES
   Read the job title, seniority level, and every sentence of the JD.
   Identify the professional qualities, leadership traits, delivery expectations,
   collaboration requirements, and workplace effectiveness qualities the role demands.
-  For TECHNICAL roles: also derive behavioural phrases from the technical dimensions
-  signalled by the JD — e.g. code quality culture, design ownership, testing discipline,
-  debugging rigour, documentation standards, performance mindset, review culture.
-  Phrase these as professional behavioural traits, NOT as technology or tool names.
-  Examples of correct phrasing: "Engineering Quality Ownership", "Test-Driven Delivery
-  Mindset", "Scalable System Thinking", "Root Cause Analysis Discipline",
-  "Performance-Conscious Development", "Documentation-First Engineering",
-  "Cross-Functional Technical Alignment", "Requirement Clarity Advocacy".
-  At least 4 of the minimum 14 phrases MUST reflect technical professional behaviours
-  when the role is technical. Derive the exact phrasing from the JD — never generic.
   Translate each quality into a concise 2-5 word professional phrase.
   Generate a minimum of 14 such phrases, separated by " * ".
   Each phrase must be unique and non-overlapping.
   ABSOLUTE RULE: No technology names, languages, frameworks, tools, platforms,
   databases, or methodologies. Every phrase is a human behavioral or professional trait.
+  For technical and engineering roles: where the JD evidences them, also include relevant
+  phrases reflecting code quality standards, SDLC practices, and technical documentation
+  discipline (e.g. "Engineering Quality Ownership", "SDLC Process Adherence",
+  "Documentation-First Engineering") — still as human behavioural traits, never tool names.
 
 [R7] TECHNOLOGY CATEGORIZATION
   Derive 5 category labels from the JD. Strict domain separation — each technology
@@ -868,9 +862,8 @@ SECTION INSTRUCTIONS
 ③ competencies [MINIMUM 14 phrases, " * " separated]
    Read every sentence of the JD. Identify what professional qualities the role demands.
    Translate each into a 2-5 word phrase. Cover the full range of professional dimensions
-   in the JD. For TECHNICAL roles: include at least 4 phrases that capture technical
-   professional behaviours evidenced by the JD (e.g. quality ownership, design thinking,
-   testing discipline, performance mindset) — phrased as human traits, not tool names.
+   in the JD. For technical and engineering roles only: also include phrases reflecting
+   code quality standards, SDLC implementation practices, and technical documentation discipline.
    STRICT: no technology names, no tools, no platforms in this field.
 
 ④ keywords: 20-24 ATS terms from the JD.
