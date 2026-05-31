@@ -746,10 +746,61 @@ Use your knowledge of this company to create relevant projects.
         l.get("value", "") for l in _p_links_raw[:4] if l.get("value", "")
     )
 
+    # ── Extract candidate's actual technology background from static_data / profile ──
+    # Used to prevent the AI from inventing technologies the candidate doesn't know.
+    _static = req.static_data or {}
+    _cand_skills_raw = _static.get("skills", "") or ""
+    # Also pull any skills listed directly on profile work entries
+    _cand_role_skills = []
+    for _w in _p_work_l:
+        _ws = (_w.get("skills") or _w.get("tech") or "").strip()
+        if _ws:
+            _cand_role_skills.append(_ws)
+    _cand_all_skills = ", ".join(filter(None, [_cand_skills_raw] + _cand_role_skills))
+
+    # Existing projects from static_data (if any) — used for the "keep or adjust" rule
+    _existing_projects_raw = _static.get("projects", []) or []
+    _existing_projects_block = ""
+    if _existing_projects_raw:
+        _proj_lines = []
+        for _ep in _existing_projects_raw[:6]:  # cap at 6 to keep prompt lean
+            _pn = (_ep.get("name") or "").strip()
+            _pd = (_ep.get("desc") or _ep.get("overview") or "").strip()
+            if _pn:
+                _proj_lines.append(f'  • {_pn}' + (f': {_pd[:120]}' if _pd else ''))
+        if _proj_lines:
+            _existing_projects_block = (
+                "CANDIDATE'S EXISTING PROJECTS (reference these first before inventing new ones):\n"
+                + "\n".join(_proj_lines)
+            )
+
+    # Detect if this is a technical/software engineering role for competency guidance
+    _tech_role_keywords = (
+        "engineer", "developer", "architect", "devops", "sre", "backend", "frontend",
+        "fullstack", "full stack", "software", "platform", "data", "ml", "ai", "cloud",
+        "infrastructure", "systems", "security", "embedded", "firmware", "mobile",
+        "web", "api", "database", "dba", "qa", "test", "automation", "sdet"
+    )
+    _is_tech_role = any(kw in job_title.lower() for kw in _tech_role_keywords)
+
+    _tech_competencies_instruction = ""
+    if _is_tech_role:
+        _tech_competencies_instruction = """
+[R6-TECH] TECHNICAL COMPETENCIES FOR ENGINEERING ROLES
+  Because this is a technical/software engineering role, the competencies field MUST also
+  include phrases that reflect software craftsmanship and engineering quality — for example:
+    Code Quality Assurance, Code Review Leadership, Clean Architecture Principles,
+    Software Design Patterns, Debugging and Troubleshooting, Performance Optimisation,
+    Best Development Practices, Test-Driven Development, Scalable System Design.
+  These must still be 2-5 word professional phrases — no raw tool or language names.
+  They count toward the 14-phrase minimum and must complement (not replace) the
+  behavioral traits derived from the JD.
+"""
+
     system_prompt = f"""You are a world-class CV writer. Generate a single, complete, ATS-optimised, \
-humanised CV as a JSON object. Every word, technology, competency, and phrase must be derived \
-exclusively from the job description provided. Zero hardcoded content. Zero static templates. \
-Zero predefined examples. Every JD must produce a completely unique output.
+humanised CV as a JSON object. All content must be aligned with both the job description AND the \
+candidate's actual background. Zero hardcoded content. Zero static templates. Zero predefined examples. \
+Every JD must produce a completely unique output.
 
 CONTEXT
 Job Title Provided : {job_title}
@@ -757,10 +808,13 @@ Work Positions     : {num_cos}
 Education Period   : {edu['start']} to {edu['end']}
 {f"Candidate Name     : {_p_name_str}" if _p_name_str else ""}
 {f"Contact            : {_p_contact_str}" if _p_contact_str else ""}
+{f"Candidate Technologies : {_cand_all_skills}" if _cand_all_skills else ""}
 
 WORK HISTORY (use these exact names and date ranges — do not invent others):
 {co_lines}
 {_profile_work_ctx}
+
+{_existing_projects_block}
 
 {company_context_block}
 
@@ -775,37 +829,60 @@ NON-NEGOTIABLE RULES
   Summary must open with "{years_display} years of experience in [JD domain]".
 
 [R2] TITLE FORMAT
-  Infer a role title from the JD (not verbatim). Identify 3 most critical JD technologies.
+  Infer a role title from the JD (not verbatim). Identify 3 most critical JD technologies
+  that the candidate can genuinely claim from their background.
   Assemble: inferred role | tech1, tech2, tech3 | {years_display}
 
 [R3] NO COMPANY NAMES IN FREE TEXT
   Company names appear ONLY in the "company" JSON field — never in any other field.
 
-[R4] 100% DERIVED FROM JD
-  Every technology, competency, keyword, bullet, and project must trace to the JD.
-  Nothing hardcoded. Nothing generic.
+[R4] TECHNOLOGY AUTHENTICITY — STRICTLY ENFORCED
+  Only include technologies, languages, frameworks, and tools that either:
+    (a) appear explicitly in the JD AND can be reasonably inferred from the candidate's
+        background (work history, skills, domain), OR
+    (b) are clearly part of the candidate's stated technology stack.
+  NEVER introduce technologies that the JD requires but the candidate has no plausible
+  background in. For example: if the candidate is a C#/.NET backend developer and the JD
+  mentions JavaScript or Python peripherally, do NOT list JavaScript or Python as skills
+  unless the candidate's background supports it.
+  RULE: When in doubt about whether the candidate knows a technology, omit it.
+
+[R4b] PROJECT REUSE AND ALIGNMENT
+  If CANDIDATE'S EXISTING PROJECTS are provided above, always evaluate them first:
+    • If an existing project is already relevant to the JD domain or company — keep it
+      as-is, only lightly rewording the description to better reflect the JD.
+    • If an existing project is not strongly aligned — make subtle, realistic adjustments
+      to its description so it reflects the company's domain or JD requirements, without
+      inventing fake technologies or experiences the candidate cannot support.
+    • Only invent fully new projects when no existing project can be reasonably adapted.
+  Never fabricate technical capabilities the candidate does not possess.
 
 [R5] HUMANISED WRITING
   Active voice. Varied sentence structure. No keyword stuffing. No em-dashes.
 
-[R6] KEY COMPETENCIES — MINIMUM 14, BEHAVIORAL ONLY
+[R6] KEY COMPETENCIES — MINIMUM 14, CLEAR AND ATS-FRIENDLY
   Read the job title, seniority level, and every sentence of the JD.
   Identify the professional qualities, leadership traits, delivery expectations,
   collaboration requirements, and workplace effectiveness qualities the role demands.
-  Translate each quality into a concise 2-5 word professional phrase.
+  Translate each quality into a clear, concise 2-5 word professional phrase.
+  Use plain, direct language — avoid overly complex or ornate phrasing.
+  Good examples: "Cross-Team Collaboration", "Stakeholder Communication",
+    "Agile Delivery", "Risk Management", "Continuous Improvement", "Ownership Mindset".
+  Bad examples: "Architectural Integrity Enforcement", "Edge Case Mastery" (too vague/ornate).
   Generate a minimum of 14 such phrases, separated by " * ".
   Each phrase must be unique and non-overlapping.
-  ABSOLUTE RULE: No technology names, languages, frameworks, tools, platforms,
-  databases, or methodologies. Every phrase is a human behavioral or professional trait.
-
+  ABSOLUTE RULE: No raw technology names, language names, framework names, or tool names.
+  Every phrase describes a human professional or behavioural quality.
+{_tech_competencies_instruction}
 [R7] TECHNOLOGY CATEGORIZATION
   Derive 5 category labels from the JD. Strict domain separation — each technology
-  in exactly one category. No duplicates across categories.
+  in exactly one category. No duplicates across categories. Only include technologies
+  the candidate can genuinely support from their background.
 
 [R8] TECHNOLOGY DEPTH
   Every company: minimum 8 unique technologies, pipe-separated, varied per role.
   Every project: minimum 8 unique technologies in techTags, different focus per project.
-  All from the JD. Never hardcoded.
+  All must be consistent with both the JD AND the candidate's background. Never invented.
 
 SECTION INSTRUCTIONS
 
@@ -821,23 +898,31 @@ SECTION INSTRUCTIONS
 
 ③ competencies [MINIMUM 14 phrases, " * " separated]
    Read every sentence of the JD. Identify what professional qualities the role demands.
-   Translate each into a 2-5 word phrase. Cover the full range of professional dimensions
-   in the JD. STRICT: no technology names, no tools, no platforms in this field.
+   Translate each into a clear, plain 2-5 word professional phrase. Use simple, direct
+   language that reads naturally on a CV. For technical roles also include engineering
+   quality traits (code quality, design principles, etc.) as professional phrases.
+   STRICT: no technology names, no tools, no platforms in this field.
 
 ④ keywords: 20-24 ATS terms from the JD.
 
-⑤ technologies: mustHave (10-14), niceToHave (8-12), additional (8-10) — all from JD.
+⑤ technologies: mustHave (10-14), niceToHave (8-12), additional (8-10) — from JD only,
+   limited to what the candidate's background can genuinely support.
 
 ⑥ skills [5 domain-separated categories]
    "Category Label: t1, t2, t3, t4, t5, t6, t7, t8"
    Strict domain separation. 8-10 per category. Zero duplicates across categories.
+   Only technologies the candidate can genuinely claim.
 
 ⑦ companies [one per company, in order]
    role: full title from JD with correct seniority.
    bullets: 4 unique achievement bullets, 20-30 words each.
-   tech: minimum 8 unique JD technologies, pipe-separated, varied per role.
+   tech: minimum 8 unique technologies the candidate knows, pipe-separated, varied per role.
 
 ⑧ projects [EXACTLY 4]
+   First, review CANDIDATE'S EXISTING PROJECTS (if provided). Prioritise adapting relevant
+   existing projects to fit this JD's domain. Only invent new projects if no existing
+   project can be plausibly aligned. Subtle domain rewording is encouraged; inventing
+   new technologies the candidate does not know is FORBIDDEN.
    Projects 1-2: JD industry domain. Projects 3-4: JD technical requirements.
    Each: name, overview (3-4 sentences), 3 bullets, techTags (min 8, different focus).
 
@@ -917,10 +1002,14 @@ JSON OUTPUT — raw JSON only, no markdown, no code fences
 CHECKLIST:
 ✓ title last segment exactly "{years_display}", no trailing comma, no double +
 ✓ summary opens with "{years_display} years of experience in", 100-120 words, no I/my/me
-✓ competencies: minimum 14 behavioral phrases, zero technology names
-✓ competencies: unique, non-overlapping, derived from JD
+✓ competencies: minimum 14 clear, plain behavioral phrases (+ technical quality phrases for tech roles)
+✓ competencies: no technology names, no tool names — only human professional traits
+✓ competencies: simple, direct language — not ornate or overly complex phrasing
+✓ technologies and skills: only those consistent with the candidate's actual background
+✓ no technologies introduced that the candidate cannot plausibly support
+✓ projects: existing candidate projects reused/adapted where relevant, not replaced
 ✓ skills: strict domain separation, each technology in exactly one category
-✓ company tech: minimum 8 per company, varied per role
+✓ company tech: minimum 8 per company, varied per role, candidate-authentic
 ✓ project techTags: minimum 8 per project, different focus per project
 ✓ projects 1-2 industry domain, projects 3-4 JD technical requirements
 ✓ zero company names outside the company field
@@ -936,14 +1025,20 @@ Generate the CV JSON now.
 Reminders:
 - Title: inferred role | tech1, tech2, tech3 | {years_display} (no trailing comma)
 - Summary: 100-120 words, open with "{years_display} years of experience in". No I/my/me.
-- Competencies: minimum 14 behavioral phrases via " * ". No technology names at all.
-  Derive every phrase from this specific JD and job title.
+- Competencies: minimum 14 clear, plain behavioral phrases via " * ". No technology names.
+  For tech/engineering roles also include software quality traits (e.g. "Code Quality Assurance",
+  "Clean Architecture Principles", "Debugging and Troubleshooting") as professional phrases.
+  Use simple, direct language — avoid ornate or overly abstract phrasing.
+- Technologies/Skills: only include what the candidate's background genuinely supports.
+  Do NOT introduce foreign languages, frameworks, or platforms the candidate hasn't used.
+- Projects: reuse or subtly adapt existing candidate projects where possible.
+  Only invent new projects if no existing project can be aligned to the JD.
 - Skills: strict domain separation per category.
-- Company tech: min 8 per company, varied. Project techTags: min 8 per project.
+- Company tech: min 8 per company, varied, candidate-authentic. Project techTags: min 8 per project.
 - Seniority: {seniority_guidance.split(chr(10))[0]}
 - Projects 1-2: industry domain. Projects 3-4: JD technical requirements.
 - No company names in free-text. No em-dashes or non-ASCII punctuation.
-- Everything from the job description above.
+- Everything must be realistic, credible, and aligned with the candidate's actual background.
 """
     return system_prompt, user_prompt
 
