@@ -1457,7 +1457,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
 
     # Groq can be slow on large prompts; use a generous per-call timeout.
     # The outer httpx.AsyncClient timeout is the hard ceiling — this is per-attempt.
-    per_call_timeout = 45
+    per_call_timeout = 60
     mk = mask(key)
     provider_tag = url.split("/")[2].split(".")[0]   # e.g. "api" → use model instead
     tag = f"[{model}|{mk}|{stage}]"
@@ -1541,7 +1541,7 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
             # the model uses an internal reasoning/thinking mode.
             # Try "content" first; fall back to "reasoning_content"; raise a clear
             # error if neither yields a non-empty string.
-            raw = _msg.get("content") or _msg.get("reasoning_content") or ""
+            raw = _msg.get("content") or _msg.get("reasoning_content") or _msg.get("reasoning") or ""
             if not raw:
                 _log.error("%s Empty content — message keys: %s", tag, list(_msg.keys()))
                 raise ValueError(
@@ -1625,7 +1625,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
               provider_host, len(system_prompt), len(user_prompt))
 
     result = await call_llm_atomic(client, key, model, url, system_prompt, user_prompt,
-                                    "FullCV", headers, max_tokens=max_output_tokens or 4000, _deadline=_deadline)
+                                    "FullCV", headers, max_tokens=max_output_tokens or 8000, _deadline=_deadline)
 
     if not result:
         _log.error("[GenCV|%s] AI returned empty/unparseable response", provider_host)
@@ -1768,7 +1768,7 @@ async def call_cerebras(req: CVRequest) -> tuple:
     errors_by_key = []
     rate_limited_count = 0
 
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=50, write=15, pool=10)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=90, write=15, pool=10)) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
