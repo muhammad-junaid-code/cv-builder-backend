@@ -654,7 +654,7 @@ Use your knowledge of this company to create relevant projects.
             "degree":     (_pe.get("degree")      or "").strip(),
             "cgpa":       (_pe.get("cgpa")        or "").strip(),
             "years":      _e_yr,
-            "achievement":(_pe.get("achievement") or "").strip(),
+            "achievement":_clean_black_squares((_pe.get("achievement") or "").strip()),
         })
     if not _edu_entries_for_prompt:
         _edu_entries_for_prompt = [{
@@ -1247,7 +1247,22 @@ def sanitise_cv(cv: dict) -> dict:
     else:
         cv["education"] = []
 
+    # ── Deep-clean all string values in the entire CV dict ──────────────────
+    # Cerebras models embed black-square Unicode chars (■◼◾ etc.) as hyphen
+    # substitutes in any field. Run the cleaner on every string recursively
+    # so nothing slips through regardless of which field it appears in.
+    cv = _deep_clean_black_squares(cv)
     return cv
+
+def _deep_clean_black_squares(obj):
+    """Recursively apply _clean_black_squares to every string in a dict/list."""
+    if isinstance(obj, str):
+        return _clean_black_squares(obj)
+    if isinstance(obj, list):
+        return [_deep_clean_black_squares(i) for i in obj]
+    if isinstance(obj, dict):
+        return {k: _deep_clean_black_squares(v) for k, v in obj.items()}
+    return obj
 
 def final_polish(cv: dict, years_exp: str = "") -> dict:
     """Final polishing — deduplicates tech tags and ensures correct experience display.
@@ -1726,7 +1741,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
                 "degree":      (_pe.get("degree")       or "").strip(),
                 "cgpa":        (_pe.get("cgpa")         or "").strip(),
                 "years":       _yr_str,
-                "achievement": (_pe.get("achievement")  or "").strip(),
+                "achievement": _clean_black_squares((_pe.get("achievement")  or "").strip()),
             })
     else:
         # No profile education — fall back to whatever the AI returned
@@ -2021,7 +2036,7 @@ async def call_gemini(req: CVRequest) -> tuple:
                                 "degree":      (_pe_g.get("degree")       or "").strip(),
                                 "cgpa":        (_pe_g.get("cgpa")         or "").strip(),
                                 "years":       _yr_g,
-                                "achievement": (_pe_g.get("achievement")  or "").strip(),
+                                "achievement": _clean_black_squares((_pe_g.get("achievement")  or "").strip()),
                             })
                     else:
                         _ai_edu_g = result.get("education") or {}
