@@ -788,67 +788,15 @@ NON-NEGOTIABLE RULES
 [R5] HUMANISED WRITING
   Active voice. Varied sentence structure. No keyword stuffing. No em-dashes.
 
-[R6] KEY COMPETENCIES — MINIMUM 16, DIVERSE AND ROLE-SPECIFIC
-  Read the job title, seniority level, and every sentence of the JD carefully.
-  Generate a minimum of 16 competency phrases that are uniquely tailored to this exact role.
-  Each phrase must be 2-6 words, concise, and ATS-friendly.
-  All phrases must be separated by " • ".
-
-  MANDATORY COVERAGE — include at least one phrase from EACH of these dimensions,
-  weighted by how prominently each dimension appears in the JD:
-
-    TECHNICAL EXCELLENCE   — specific technical skill, architectural strength, or engineering
-                             practice central to this role (e.g. "Microservices Architecture",
-                             "RESTful API Design", "Cloud Infrastructure Engineering").
-                             Include 2-3 technical competencies; use precise terms from the JD.
-
-    CODE QUALITY & CRAFT   — practices like clean code, test coverage, peer review, debugging,
-                             refactoring, or documentation standards when the JD emphasises them.
-
-    SOLUTION DESIGN        — ability to architect systems, evaluate trade-offs, design scalable
-                             solutions, or translate requirements into technical specs.
-
-    REQUIREMENT ANALYSIS   — translating business needs, gathering requirements, aligning
-                             stakeholders, or writing technical specifications.
-
-    DELIVERY & EXECUTION   — shipping on time, managing complexity, owning outcomes end-to-end,
-                             sprint planning, or Agile/Scrum delivery discipline.
-
-    LEADERSHIP & OWNERSHIP — team leadership, mentoring, technical guidance, code ownership,
-                             or engineering culture contributions where the JD demands them.
-
-    COLLABORATION          — cross-functional teamwork, stakeholder communication, working with
-                             product, design, QA, or business teams.
-
-    ANALYTICAL THINKING    — data-driven decisions, root cause analysis, performance diagnosis,
-                             metrics interpretation, or problem decomposition.
-
-    PROCESS IMPROVEMENT    — optimising workflows, reducing tech debt, improving CI/CD,
-                             establishing best practices, or engineering process maturity.
-
-    COMMUNICATION          — technical writing, documentation, presenting to stakeholders,
-                             or translating complex ideas to non-technical audiences.
-
-    DOMAIN EXPERTISE       — industry or domain knowledge specific to this role and JD
-                             (e.g. "E-Commerce Domain Knowledge", "FinTech Compliance Awareness").
-
-    QUALITY ASSURANCE      — commitment to testing, reliability, observability, SLAs, or
-                             production stability where the JD requires it.
-
-  RULES:
-  • Every phrase must be unique — no two phrases may mean the same thing.
-  • Balance technical and professional phrases. Do NOT over-index on soft skills alone.
-  • Include 2-4 technical competency phrases drawn from the most critical JD technologies
-    or architectural patterns — written as professional competency labels, not raw tool names.
-    Example: "Distributed Systems Design" not just "Kafka"; "Cloud-Native Development" not just "AWS".
-  • Remaining phrases should cover professional, leadership, and delivery dimensions.
-  • Vary phrasing structure — mix nouns ("Stakeholder Alignment"), gerunds ("Mentoring Engineers"),
-    and adjective-noun forms ("Cross-Functional Collaboration").
-  • Do NOT include generic filler phrases like "Team Player", "Hard Worker", "Detail Oriented"
-    unless they are specifically and prominently demanded by the JD.
-  • Competencies must match the candidate's seniority level — junior roles emphasise learning,
-    delivery, and collaboration; senior roles emphasise ownership, architecture, and leadership.
-  • Every competency must feel like it was written for THIS specific role, not copied from a template.
+[R6] KEY COMPETENCIES — MINIMUM 14, BEHAVIORAL ONLY
+  Read the job title, seniority level, and every sentence of the JD.
+  Identify the professional qualities, leadership traits, delivery expectations,
+  collaboration requirements, and workplace effectiveness qualities the role demands.
+  Translate each quality into a concise 2-5 word professional phrase.
+  Generate a minimum of 14 such phrases, separated by " * ".
+  Each phrase must be unique and non-overlapping.
+  ABSOLUTE RULE: No technology names, languages, frameworks, tools, platforms,
+  databases, or methodologies. Every phrase is a human behavioral or professional trait.
 
 [R7] TECHNOLOGY CATEGORIZATION
   Derive 5 category labels from the JD. Strict domain separation — each technology
@@ -871,14 +819,10 @@ SECTION INSTRUCTIONS
    S5: Professional focus and value proposition.
    No first-person pronouns. No company names. 5-7 JD technologies woven naturally.
 
-③ competencies [MINIMUM 16 phrases, " • " separated]
-   Read the job title, seniority, and every sentence of the JD. Generate a diverse,
-   role-specific set of competencies covering technical excellence, solution design,
-   code quality, delivery, leadership, collaboration, communication, analytics, process
-   improvement, quality assurance, and domain expertise — as instructed in [R6].
-   Include 2-4 technical competency phrases (architectural or engineering patterns from
-   the JD, written as professional labels). All remaining phrases cover professional and
-   leadership dimensions. Every phrase unique. Minimum 16 total. Separator: " • ".
+③ competencies [MINIMUM 14 phrases, " * " separated]
+   Read every sentence of the JD. Identify what professional qualities the role demands.
+   Translate each into a 2-5 word phrase. Cover the full range of professional dimensions
+   in the JD. STRICT: no technology names, no tools, no platforms in this field.
 
 ④ keywords: 20-24 ATS terms from the JD.
 
@@ -906,7 +850,7 @@ JSON OUTPUT — raw JSON only, no markdown, no code fences
 {{
   "title": "Inferred role | tech1, tech2, tech3 | {years_display}",
   "summary": "{years_display} years of experience in [domain]. [4-5 sentences, 100-120 words, no I/my/me]",
-  "competencies": "Competency1 • Competency2 • Competency3 • Competency4 • Competency5 • Competency6 • Competency7 • Competency8 • Competency9 • Competency10 • Competency11 • Competency12 • Competency13 • Competency14 • Competency15 • Competency16",
+  "competencies": "Trait1 * Trait2 * Trait3 * Trait4 * Trait5 * Trait6 * Trait7 * Trait8 * Trait9 * Trait10 * Trait11 * Trait12 * Trait13 * Trait14",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18, kw19, kw20",
   "technologies": {{
     "mustHave":   ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10"],
@@ -973,9 +917,8 @@ JSON OUTPUT — raw JSON only, no markdown, no code fences
 CHECKLIST:
 ✓ title last segment exactly "{years_display}", no trailing comma, no double +
 ✓ summary opens with "{years_display} years of experience in", 100-120 words, no I/my/me
-✓ competencies: minimum 16 phrases, " • " separated, role-specific and non-duplicative
-✓ competencies: balanced mix — 2-4 technical (architectural/engineering labels), rest professional/leadership
-✓ competencies: every phrase unique, derived from JD, matched to seniority level
+✓ competencies: minimum 14 behavioral phrases, zero technology names
+✓ competencies: unique, non-overlapping, derived from JD
 ✓ skills: strict domain separation, each technology in exactly one category
 ✓ company tech: minimum 8 per company, varied per role
 ✓ project techTags: minimum 8 per project, different focus per project
@@ -993,10 +936,8 @@ Generate the CV JSON now.
 Reminders:
 - Title: inferred role | tech1, tech2, tech3 | {years_display} (no trailing comma)
 - Summary: 100-120 words, open with "{years_display} years of experience in". No I/my/me.
-- Competencies: minimum 16 phrases via " • ". Balanced mix: 2-4 technical labels
-  (written as professional competency phrases, not raw tool names), rest professional/
-  leadership/delivery dimensions. All derived from this JD and seniority level.
-  Every phrase unique. No filler generics.
+- Competencies: minimum 14 behavioral phrases via " * ". No technology names at all.
+  Derive every phrase from this specific JD and job title.
 - Skills: strict domain separation per category.
 - Company tech: min 8 per company, varied. Project techTags: min 8 per project.
 - Seniority: {seniority_guidance.split(chr(10))[0]}
