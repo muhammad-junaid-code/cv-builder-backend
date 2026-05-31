@@ -1534,7 +1534,21 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         _log.info("%s HTTP %d received in %.1fs", tag, r.status_code, elapsed)
 
         if r.status_code == 200:
-            raw = r.json()["choices"][0]["message"]["content"]
+            _resp_json = r.json()
+            _msg = _resp_json["choices"][0]["message"]
+            # Some models (e.g. Cerebras gpt-oss-120b) occasionally return the
+            # response text in "reasoning_content" or set "content" to None when
+            # the model uses an internal reasoning/thinking mode.
+            # Try "content" first; fall back to "reasoning_content"; raise a clear
+            # error if neither yields a non-empty string.
+            raw = _msg.get("content") or _msg.get("reasoning_content") or ""
+            if not raw:
+                _log.error("%s Empty content — message keys: %s", tag, list(_msg.keys()))
+                raise ValueError(
+                    f"Stage {stage}: model returned HTTP 200 but no text content "
+                    f"(message keys: {list(_msg.keys())}). "
+                    "Try a different model or provider."
+                )
             _log.info("%s SUCCESS — response %d chars", tag, len(raw))
             return extract_json(raw)
 
