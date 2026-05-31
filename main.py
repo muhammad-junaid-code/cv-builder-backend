@@ -790,7 +790,7 @@ NON-NEGOTIABLE RULES
 
 [R6] KEY COMPETENCIES — MINIMUM 14, BEHAVIORAL ONLY
   Read the job title, seniority level, and every sentence of the JD.
-  Identify the professional qualities, leadership traits, delivery expectations, Code Quality & Review Practices (Technical Roles),
+  Identify the professional qualities, leadership traits, delivery expectations,
   collaboration requirements, and workplace effectiveness qualities the role demands.
   Translate each quality into a concise 2-5 word professional phrase.
   Generate a minimum of 14 such phrases, separated by " * ".
