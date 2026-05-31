@@ -797,11 +797,6 @@ NON-NEGOTIABLE RULES
   Each phrase must be unique and non-overlapping.
   ABSOLUTE RULE: No technology names, languages, frameworks, tools, platforms,
   databases, or methodologies. Every phrase is a human behavioral or professional trait.
-  For technical and engineering roles only: also include competency phrases that reflect
-  code quality ownership, code review practices, and SDLC discipline where the JD
-  evidences them (e.g. "Code Quality Ownership", "Peer Code Review Culture",
-  "SDLC Process Adherence", "Engineering Best Practices") — still as behavioural
-  traits, never tool or language names.
 
 [R7] TECHNOLOGY CATEGORIZATION
   Derive 5 category labels from the JD. Strict domain separation — each technology
@@ -827,9 +822,7 @@ SECTION INSTRUCTIONS
 ③ competencies [MINIMUM 14 phrases, " * " separated]
    Read every sentence of the JD. Identify what professional qualities the role demands.
    Translate each into a 2-5 word phrase. Cover the full range of professional dimensions
-   in the JD. For technical and engineering roles only: include phrases reflecting code
-   quality ownership, code review practices, and SDLC discipline where evidenced by the JD.
-   STRICT: no technology names, no tools, no platforms in this field.
+   in the JD. STRICT: no technology names, no tools, no platforms in this field.
 
 ④ keywords: 20-24 ATS terms from the JD.
 
@@ -926,7 +919,6 @@ CHECKLIST:
 ✓ summary opens with "{years_display} years of experience in", 100-120 words, no I/my/me
 ✓ competencies: minimum 14 behavioral phrases, zero technology names
 ✓ competencies: unique, non-overlapping, derived from JD
-✓ competencies: for technical roles, includes code quality/review/SDLC phrases where JD evidences them
 ✓ skills: strict domain separation, each technology in exactly one category
 ✓ company tech: minimum 8 per company, varied per role
 ✓ project techTags: minimum 8 per project, different focus per project
@@ -946,8 +938,6 @@ Reminders:
 - Summary: 100-120 words, open with "{years_display} years of experience in". No I/my/me.
 - Competencies: minimum 14 behavioral phrases via " * ". No technology names at all.
   Derive every phrase from this specific JD and job title.
-  For technical and engineering roles only: include phrases for code quality ownership,
-  code review practices, and SDLC discipline where the JD evidences them.
 - Skills: strict domain separation per category.
 - Company tech: min 8 per company, varied. Project techTags: min 8 per project.
 - Seniority: {seniority_guidance.split(chr(10))[0]}
