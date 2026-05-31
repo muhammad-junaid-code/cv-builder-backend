@@ -824,19 +824,38 @@ NON-NEGOTIABLE RULES
 [R5] HUMANISED WRITING
   Active voice. Varied sentence structure. No keyword stuffing. No em-dashes.
 
-[R6] KEY COMPETENCIES — MINIMUM 14, BEHAVIORAL ONLY
-  Read the job title, seniority level, and every sentence of the JD.
-  Identify the professional qualities, leadership traits, delivery expectations,
-  collaboration requirements, and workplace effectiveness qualities the role demands.
-  Translate each quality into a concise 2-5 word professional phrase.
-  Generate a minimum of 14 such phrases, separated by " * ".
-  Each phrase must be unique and non-overlapping.
-  ABSOLUTE RULE: No technology names, languages, frameworks, tools, platforms,
-  databases, or methodologies. Every phrase is a human behavioral or professional trait.
-  For technical and engineering roles: where the JD evidences them, also include relevant
-  phrases reflecting code quality standards, SDLC practices, and technical documentation
-  discipline (e.g. "Engineering Quality Ownership", "SDLC Process Adherence",
-  "Documentation-First Engineering") — still as human behavioural traits, never tool names.
+[R6] KEY COMPETENCIES — MINIMUM 14, DYNAMICALLY DERIVED
+  Read the job title, seniority level, every responsibility, and every required skill in the JD.
+  Generate a minimum of 14 competency phrases that collectively reflect the FULL professional
+  profile demanded by this specific role. Never reuse the same competencies across different
+  roles unless they are genuinely relevant to both.
+
+  COMPETENCY COMPOSITION — derive the exact mix from the JD; do not apply a fixed template:
+  • Technical competencies: include only those technologies, methodologies, or engineering
+    disciplines that are explicitly prominent in the JD (e.g. "Microservices Architecture",
+    "CI/CD Pipeline Ownership", "RESTful API Design", "Cloud Infrastructure Management").
+    Use the actual domain language of the JD — never generic placeholders.
+  • Code quality & SDLC (technical roles only): include where evidenced by the JD
+    (e.g. "Code Review & Quality Assurance", "SDLC Process Implementation",
+    "Test-Driven Development Practices", "Technical Documentation Standards").
+  • Leadership & ownership: include seniority-appropriate phrases where the JD signals
+    ownership, mentoring, or team leadership expectations.
+  • Analytical & problem-solving: include where the JD mentions debugging, root cause
+    analysis, system design decisions, or complex problem resolution.
+  • Delivery & planning: include where the JD mentions agile delivery, sprint planning,
+    roadmap ownership, or release management.
+  • Collaboration & communication: include cross-functional, stakeholder, or client-facing
+    dimensions evidenced by the JD.
+  • Domain-specific: include industry or domain phrases unique to this role's sector
+    (e.g. fintech, healthcare, e-commerce, logistics) if the JD signals them.
+
+  BALANCE RULE: Do not over-focus on any single area. Spread across at least 4-5 of the
+  above dimensions. The final set must feel hand-crafted for this specific role, not
+  generated from a fixed list.
+
+  FORMAT: Each competency is a concise 2-5 word phrase. Separate with " * ".
+  Every phrase must be unique and non-duplicative across the entire competencies field.
+  Avoid filler phrases that add no role-specific value (e.g. "Team Player", "Hard Worker").
 
 [R7] TECHNOLOGY CATEGORIZATION
   Derive 5 category labels from the JD. Strict domain separation — each technology
@@ -860,11 +879,14 @@ SECTION INSTRUCTIONS
    No first-person pronouns. No company names. 5-7 JD technologies woven naturally.
 
 ③ competencies [MINIMUM 14 phrases, " * " separated]
-   Read every sentence of the JD. Identify what professional qualities the role demands.
-   Translate each into a 2-5 word phrase. Cover the full range of professional dimensions
-   in the JD. For technical and engineering roles only: also include phrases reflecting
-   code quality standards, SDLC implementation practices, and technical documentation discipline.
-   STRICT: no technology names, no tools, no platforms in this field.
+   Analyse the job title, seniority level, all responsibilities, and required skills in the JD.
+   Produce a balanced, role-specific set of competency phrases drawn from the full range of
+   dimensions the role demands: technical excellence, code quality & SDLC (for technical roles),
+   architecture & design, leadership & mentoring, analytical & problem-solving, delivery &
+   planning, collaboration & communication, process improvement, and domain-specific strengths.
+   Select only dimensions genuinely evidenced by this JD. Do not apply a fixed template.
+   Avoid generic filler (e.g. "Team Player"). Every phrase must be unique, ATS-friendly,
+   and feel hand-crafted for this specific role. 2-5 words per phrase, " * " separated.
 
 ④ keywords: 20-24 ATS terms from the JD.
 
@@ -968,9 +990,9 @@ JSON OUTPUT — raw JSON only, no markdown, no code fences
 CHECKLIST:
 ✓ title last segment exactly "{years_display}", no trailing comma, no double +
 ✓ summary opens with "{years_display} years of experience in", 100-120 words, no I/my/me
-✓ competencies: minimum 14 behavioral phrases, zero technology names
-✓ competencies: unique, non-overlapping, derived from JD
-✓ competencies: if technical role, at least 4 phrases reflect technical professional behaviours
+✓ competencies: minimum 14 phrases, balanced mix across technical, leadership, analytical, delivery, and collaboration dimensions evidenced by the JD
+✓ competencies: unique, non-duplicative, derived from this specific JD — no generic filler
+✓ competencies: technical and code quality / SDLC phrases included where role is technical
 ✓ skills: strict domain separation, each technology in exactly one category
 ✓ company tech: minimum 8 per company, varied per role
 ✓ company bullets: if technical role, at least 1 bullet per company addresses a distinct JD technical dimension with measurable outcome
@@ -991,11 +1013,11 @@ Generate the CV JSON now.
 Reminders:
 - Title: inferred role | tech1, tech2, tech3 | {years_display} (no trailing comma)
 - Summary: 100-120 words, open with "{years_display} years of experience in". No I/my/me.
-- Competencies: minimum 14 behavioral phrases via " * ". No technology names at all.
-  Derive every phrase from this specific JD and job title.
-  If this is a technical role: include ≥4 phrases capturing technical professional behaviours
-  (e.g. quality ownership, system thinking, testing discipline, performance mindset) —
-  phrased as human traits, not tool names.
+- Competencies: minimum 14 phrases via " * ". Derive a balanced, role-specific mix from
+  the JD spanning: technical skills, code quality & SDLC (technical roles), architecture,
+  leadership, analytical, delivery, collaboration, and domain-specific strengths.
+  Select only dimensions genuinely evidenced by this JD. No generic filler phrases.
+  Every phrase unique and ATS-friendly, 2-5 words each.
 - Company bullets: if technical role, each company must have ≥1 bullet addressing a distinct
   JD technical dimension (code quality, testing, system design, performance, debugging,
   documentation, requirement gathering, or code review) with a measurable result.
