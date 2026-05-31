@@ -1149,12 +1149,25 @@ def _normalize_job_title(title: str) -> str:
             seen_lower.append(w.lower())
     return " ".join(seen)
 
+_BLACK_SQ_RE = re.compile(
+    r'(?<=[A-Za-z0-9])[\u25A0\u25AA\u2588\u25FC\u25FE\u2B1B](?=[A-Za-z0-9])'
+)
+_BLACK_SQ_ANY = re.compile(r'[\u25A0\u25AA\u2588\u25FC\u25FE\u2B1B]')
+
+def _clean_black_squares(s: str) -> str:
+    """Remove black-square characters that Cerebras embeds as hyphen substitutes."""
+    if not s:
+        return s
+    s = _BLACK_SQ_RE.sub("", s)       # between letters: strip completely (test■driven → testdriven)
+    s = _BLACK_SQ_ANY.sub("-", s)     # elsewhere: replace with hyphen
+    return s
+
 def sanitise_cv(cv: dict) -> dict:
     if not isinstance(cv, dict):
         return {}
     
     for field in ("totalYears", "title", "summary", "competencies", "keywords"):
-        cv[field] = str(cv.get(field, "")).strip()
+        cv[field] = _clean_black_squares(str(cv.get(field, "")).strip())
     
     if cv.get("title"):
         _segs = [s.strip().rstrip(",").strip() for s in cv["title"].split("|")]
@@ -1177,7 +1190,7 @@ def sanitise_cv(cv: dict) -> dict:
                 "company": str(co.get("company", "")),
                 "role": str(co.get("role", "")),
                 "dateRange": str(co.get("dateRange", "")),
-                "bullets": [str(b).strip() for b in bullets if b],
+                "bullets": [_clean_black_squares(str(b).strip()) for b in bullets if b],
                 "tech": str(tech),
             })
         cv["companies"] = clean_companies
@@ -1198,7 +1211,7 @@ def sanitise_cv(cv: dict) -> dict:
                 clean_projects.append({
                     "name": str(p.get("name", "")),
                     "overview": str(p.get("overview", "")),
-                    "bullets": [str(b).strip() for b in (p.get("bullets") or []) if b],
+                    "bullets": [_clean_black_squares(str(b).strip()) for b in (p.get("bullets") or []) if b],
                     "techTags": p.get("techTags", []) if isinstance(p.get("techTags"), list) else [str(p.get("techTags", ""))],
                 })
         cv["projects"] = clean_projects
