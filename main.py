@@ -1,2392 +1,2237 @@
-"""
-CV Builder AI - FastAPI Backend v12
-Port: 8001  |  Start: uvicorn main:app --host 0.0.0.0 --port 8001
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from faster_whisper import WhisperModel
+import httpx, json, asyncio, re, hashlib
 
-Providers: Groq, Cerebras, Gemini, Qwen (DashScope), Ollama
-100% Dynamic - No hardcoded technologies, no static fallbacks, no predefined categories
-Everything derived from Job Description + Job Title only
-"""
-
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
-from pydantic import BaseModel
-from typing import Optional, List
-import httpx, json, re, math, io, asyncio, secrets, string, logging
-from datetime import date, datetime, timedelta
-
-# ── Structured logger — outputs to uvicorn/server console ────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-_log = logging.getLogger("cvai")
-
-# reportlab - PDF generation
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
-)
-from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
-from reportlab.lib import colors
-
-app = FastAPI(title="CV Builder AI", version="11.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
-GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
-CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
-GEMINI_URL   = "https://generativelanguage.googleapis.com/v1beta/models"
-OLLAMA_URL   = "http://localhost:11434"
-# Qwen / Alibaba DashScope — OpenAI-compatible international endpoint (Singapore region)
-# Sign up: https://bailian.console.aliyun.com → API Keys → Create API Key (sk-...)
-# Free tier: 1M input + 1M output tokens for 90 days on new accounts
-QWEN_URL     = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
-
-# Only static data: company names (users can edit via profile)
-CANDIDATE_COMPANIES = [
-    {"name": "MULTYLOGICS SOLUTIONS",        "start": "May 2024",  "end": "Present"},
-    {"name": "ENCS NETWORKS",                "start": "May 2022",  "end": "May 2024"},
-    {"name": "NOW TECHNOLOGIES (NOW.NET.PK)","start": "May 2020",  "end": "May 2022"},
+GROQ_API_KEYS = [
+    "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",
 ]
-
-# Month helpers
-_MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"]
-_MONTH_MAP = {m.lower(): i+1 for i, m in enumerate(_MONTH_NAMES)}
-_MONTH_MAP.update({m.lower()[:3]: i+1 for i, m in enumerate(_MONTH_NAMES)})
-
-def _month_name(n: int) -> str:
-    return _MONTH_NAMES[(n - 1) % 12]
-
-def _parse_month_year(s: str) -> date:
-    s = s.strip()
-    if s.lower() == "present":
-        return date.today()
-    parts = s.split()
-    if len(parts) == 2:
-        return date(int(parts[1]), _MONTH_MAP.get(parts[0].lower(), 1), 1)
-    raise ValueError(f"Cannot parse date: {s!r}")
-
-def _months_between(start: date, end: date) -> int:
-    return max(0, (end.year - start.year) * 12 + (end.month - start.month))
-
-def _add_months(d: date, months: int) -> date:
-    total = d.month - 1 + months
-    year = d.year + total // 12
-    month = total % 12 + 1
-    return date(year, month, 1)
-
-def _subtract_months(d: date, months: int) -> date:
-    return _add_months(d, -months)
-
-def _calc_total_years(years_exp: str = "") -> str:
-    """Always returns a clean number string WITHOUT trailing + (e.g. '5', '3', '6').
-    The + sign is added only at display time to avoid double-+ bugs."""
-    if years_exp:
-        try:
-            n = float(years_exp.strip().replace("+", ""))
-            return str(int(n)) if n == int(n) else str(round(n, 1))
-        except ValueError:
-            pass
-    total_months = 0
-    for co in CANDIDATE_COMPANIES:
-        try:
-            start = _parse_month_year(co["start"])
-            end = _parse_month_year(co["end"])
-            total_months += _months_between(start, end)
-        except Exception:
-            pass
-    y = total_months / 12
-    if y >= 5: return "5"
-    elif y >= 4: return "4"
-    elif y >= 3: return "3"
-    elif y >= 2: return "2"
-    else: return "1"
-
-def _build_dynamic_companies(years_exp: str, num_companies: int = 0,
-                              profile_work: list = None) -> list:
-    """
-    Build a list of company timeline dicts: [{"name":…, "start":…, "end":…}, …]
-
-    DATE CALCULATION — fully dynamic, never hardcoded:
-      1. Convert years_exp to total_months  (e.g. "2" → 24 months).
-      2. Anchor to date.today().
-      3. Walk backwards from today, assigning each company an equal share of months.
-      4. Result: company[0] ends "Present", company[-1] starts exactly
-         total_months before today.
-
-      Example (today = May 2026, years_exp = "2"):
-        total_months = 24, num_cos = 2, each = 12
-        company[0]: May 2025 → Present   (12 months)
-        company[1]: May 2024 → May 2025  (12 months)
-        Career start = May 2024 = today − 24 months  ✓
-
-    Priority / what profile_work contributes:
-      • profile_work entries            → company NAMES only. Dates in profile entries
-        are always ignored so that years_exp is the single source of truth for spans.
-        This guarantees "2 years selected → exactly 24 months shown", regardless of
-        what dates the user previously stored in their profile.
-      • years_exp (UI input)            → total duration + company count + date ranges.
-      • Neither provided                → compute duration from CANDIDATE_COMPANIES spans.
-
-    Company names: profile_work names → generic "Company N" (never hardcoded).
-    """
-    today = date.today()
-
-    def fmt(d: date) -> str:
-        return f"{_month_name(d.month)} {d.year}"
-
-    # ── Step 1: collect company names from profile (dates are ALWAYS recalculated) ──
-    # Profile work entries supply company names only.
-    # Their from/to dates are intentionally ignored here — dates are always
-    # derived from years_exp so the selected experience duration is always honoured.
-    # Example: user selects "2 years" but profile has "September 2025 → Present"
-    # (only 8 months) — without this rule the wrong span would appear on the CV.
-    if profile_work:
-        profile_names = [
-            (w.get("company") or "").strip() or f"Company {i + 1}"
-            for i, w in enumerate(profile_work)
-        ]
-    else:
-        profile_names = None
-
-    # ── Step 2: resolve numeric years from UI input ───────────────────────────
-    n: float | None = None
-    if years_exp:
-        raw = years_exp.strip().replace("+", "").strip()
-        try:
-            n = float(raw)
-        except ValueError:
-            n = None
-
-    if n is None:
-        # Fallback: compute from CANDIDATE_COMPANIES actual date spans
-        total_months_fb = 0
-        for co in CANDIDATE_COMPANIES:
-            try:
-                s = _parse_month_year(co["start"])
-                e = _parse_month_year(co["end"])
-                total_months_fb += _months_between(s, e)
-            except Exception:
-                pass
-        n = total_months_fb / 12 if total_months_fb else 3.0
-
-    # Total career duration in whole months — e.g. "2" → 24, "1.5" → 18
-    # Add 2 extra months so the experience always looks slightly more seasoned
-    # (e.g. "2 years" → 26 months, career starts ~2 months earlier than round figure).
-    # This is applied uniformly for every input so behaviour is fully dynamic.
-    total_months = int(round(n * 12)) + 2
-
-    # ── Step 3: determine company count — always driven by years_exp ────────────
-    # num_companies (explicit override) takes highest priority.
-    # Profile entry count is NOT used — it would let a 1-entry profile force
-    # a single company even when the user selects "5 years".
-    if num_companies > 0:
-        num_cos = num_companies
-    elif n <= 1.4:
-        num_cos = 1
-    elif n <= 2.4:
-        num_cos = 2
-    else:
-        num_cos = 3
-
-    # Guard: at least 1 company, and never more months than we have
-    num_cos = max(1, num_cos)
-
-    # ── Step 4: distribute months with natural, increasing progression ──────────
-    # Instead of equal splits we use percentage weights that grow from oldest to
-    # newest company, mirroring real career patterns (early jobs shorter, later
-    # roles progressively longer).
-    #
-    # Weights: index 0 = most recent company (listed first on CV, longest span),
-    #          index k-1 = oldest/earliest company (shortest span).
-    # The final (oldest) company always absorbs the true remainder so the total
-    # is always mathematically exact.
-    #
-    # Preset weight tables (most-recent → oldest):
-    #   1 company : [1.00]
-    #   2 companies: [0.55, 0.45]
-    #   3 companies: [0.40, 0.35, 0.25]
-    #   4 companies: [0.35, 0.30, 0.22, 0.13]
-    #   5+ : geometric decay r=0.80, normalised
-
-    _weight_presets = {
-        1: [1.00],
-        2: [0.55, 0.45],
-        3: [0.40, 0.35, 0.25],
-        4: [0.35, 0.30, 0.22, 0.13],
-    }
-    if num_cos in _weight_presets:
-        _weights = _weight_presets[num_cos]
-    else:
-        # Geometric decay: most recent largest, older progressively smaller
-        _r = 0.80
-        _raw = [_r ** i for i in range(num_cos)]
-        _tw  = sum(_raw)
-        _weights = [w / _tw for w in _raw]
-
-    # Convert weights to integer months (floor), then fix rounding in last slot
-    spans = [max(1, int(total_months * w)) for w in _weights]
-    spans[-1] = max(1, total_months - sum(spans[:-1]))   # exact remainder
-
-    # ── Step 5: walk backwards from today assigning date ranges ──────────────
-    result = []
-    cursor = today   # marks the *end* boundary for the current company
-    for i in range(num_cos):
-        span     = spans[i]
-        co_start = _subtract_months(cursor, span)
-        co_end   = "Present" if i == 0 else fmt(cursor)
-
-        # Name: UI-supplied → generic placeholder (never a hardcoded company name)
-        if profile_names and i < len(profile_names):
-            name = profile_names[i]
-        else:
-            name = f"Company {i + 1}"
-
-        result.append({"name": name, "start": fmt(co_start), "end": co_end})
-        cursor = co_start   # next company ends where this one started
-
-    return result
-
-def _normalise_edu_entry(e: dict) -> dict:
-    """
-    Normalise a profile edu entry so server-side code always uses consistent keys.
-
-    The UI stores education notes in the 'note' field (e.g. "Gold Medal, CGPA 3.97/4.0").
-    The server previously read 'achievement' and 'cgpa' which don't exist in the UI profile.
-
-    This function:
-      • Maps 'note' → 'achievement' (if 'achievement' not already set)
-      • Extracts a CGPA pattern from the note and stores it under 'cgpa' (if not set)
-      • Leaves all other fields untouched
-    """
-    if not e:
-        return e
-    out = dict(e)  # shallow copy — never mutate the original
-
-    # Pull raw note text
-    note = (out.get("note") or "").strip()
-
-    # achievement: prefer explicit field, fall back to note
-    if not out.get("achievement") and note:
-        out["achievement"] = note
-
-    # cgpa: prefer explicit field, then try to extract from note
-    if not out.get("cgpa") and note:
-        cgpa_match = re.search(r'(?:cgpa|gpa)[:\s]*(\d+\.\d+(?:/\d+(?:\.\d+)?)?)', note, re.IGNORECASE)
-        if cgpa_match:
-            out["cgpa"] = cgpa_match.group(1).strip()
-
-    return out
-
-
-def _infer_degree_duration(degree_str: str) -> int:
-    """
-    Infer typical program duration in years from the degree name.
-    Fully dynamic — no hardcoded institution or country assumptions.
-    Scans for standard academic level keywords and returns the most
-    commonly accepted duration for that level worldwide.
-
-    Returns an integer number of years (default 4 if unrecognised).
-    """
-    d = (degree_str or "").lower()
-
-    # ── Doctoral / research doctorates (5–6 yrs, use 4 for CV purposes) ──────
-    if any(k in d for k in ("phd", "ph.d", "d.phil", "doctor of philosophy",
-                             "dphil", "dsc", "d.sc", "doctor of science")):
-        return 4
-
-    # ── Professional doctorates & long integrated masters (3–4 yrs post-grad) ─
-    if any(k in d for k in ("md", "m.d", "doctor of medicine", "mbbs", "bds",
-                             "llb", "l.l.b", "juris doctor", "j.d")):
-        return 5
-
-    # ── Masters / postgraduate taught (1–2 yrs) ──────────────────────────────
-    if any(k in d for k in ("m.phil", "mphil", "m phil",
-                             "master", "msc", "m.sc", "m.s.", " ms ",
-                             "mba", "m.b.a", "med", "m.ed",
-                             "meng", "m.eng", "mtech", "m.tech",
-                             "ma ", "m.a.", "mfa", "m.f.a",
-                             "postgrad", "post-grad", "pgd", "pg dip")):
-        return 2
-
-    # ── Bachelor / undergraduate (3–4 yrs; default 4) ────────────────────────
-    if any(k in d for k in ("bachelor", "bsc", "b.sc", "b.s.",
-                             "beng", "b.eng", "btech", "b.tech",
-                             "ba ", "b.a.", "bba", "b.b.a",
-                             "bcom", "b.com", "bca", "b.ca",
-                             "bcs", "b.cs", "bscs", "b.s.c.s",
-                             "bsit", "b.s.i.t", "bsee", "bsce",
-                             "undergraduate", "honours", "hons")):
-        return 4
-
-    # ── Associate / diploma / certificate (1–2 yrs) ──────────────────────────
-    if any(k in d for k in ("associate", "diploma", "dip.", "certificate",
-                             "hnd", "hnc", "technician", "vocational")):
-        return 2
-
-    # ── Default: 4-year program if unrecognised ───────────────────────────────
-    return 4
-
-
-def _build_education_year(years_exp: str, profile_edu: list = None) -> dict:
-    """
-    Returns {"start": "YYYY", "end": "YYYY"} for the FIRST education entry.
-
-    Priority (per entry):
-      1. Both dates explicit in profile_edu[0]  → use exactly as provided.
-      2. Only one date provided                  → infer the other using
-         _infer_degree_duration() on the degree name — fully dynamic.
-      3. years_exp provided (UI input)           → graduation = current_year - years_exp + 1
-                                                   duration   = inferred from degree name
-      4. No info at all                          → graduation = current_year - 3,
-                                                   duration   = 4 years.
-
-    No hardcoded durations — duration is always derived from the degree string.
-    """
-    today = date.today()
-
-    # ── Priority 1 & 2: profile data ─────────────────────────────────────────
-    if profile_edu:
-        e      = profile_edu[0]
-        degree = (e.get("degree") or "").strip()
-        dur    = _infer_degree_duration(degree)
-        p_from = str(e.get("from", "") or "").strip()
-        p_to   = str(e.get("to",   "") or "").strip()
-        if p_from and p_to:
-            return {"start": p_from, "end": p_to}
-        if p_to and not p_from:
-            try:
-                end_yr = int(p_to[:4])
-                return {"start": str(end_yr - dur), "end": p_to}
-            except (ValueError, TypeError):
-                pass
-        if p_from and not p_to:
-            try:
-                start_yr = int(p_from[:4])
-                return {"start": p_from, "end": str(start_yr + dur)}
-            except (ValueError, TypeError):
-                pass
-
-    # ── Priority 3: years_exp from UI ────────────────────────────────────────
-    if years_exp:
-        try:
-            n      = int(float(years_exp.strip().replace("+", "")))
-            degree = (profile_edu[0].get("degree") or "") if profile_edu else ""
-            dur    = _infer_degree_duration(degree)
-            grad_year  = today.year - max(n, 0) + 1
-            start_year = grad_year - dur
-            return {"start": str(start_year), "end": str(grad_year)}
-        except (ValueError, TypeError):
-            pass
-
-    # ── Priority 4: no info ───────────────────────────────────────────────────
-    degree     = (profile_edu[0].get("degree") or "") if profile_edu else ""
-    dur        = _infer_degree_duration(degree)
-    grad_year  = today.year - 3 + 1
-    start_year = grad_year - dur
-    return {"start": str(start_year), "end": str(grad_year)}
-
-# ==============================================================================
-# AUTH SYSTEM
-# ==============================================================================
-import os
-
-_DATA_DIR = "/data" if os.path.isdir("/data") else os.path.dirname(os.path.abspath(__file__))
-AUTH_FILE = os.path.join(_DATA_DIR, "auth_keys.json")
-STATIC_ACCESS_KEY = "CVAI-A927-42F8-1E31"
-
-def _load_auth_keys() -> dict:
-    if os.path.exists(AUTH_FILE):
-        try:
-            with open(AUTH_FILE, "r") as f:
-                keys = json.load(f)
-        except Exception:
-            keys = {}
-    else:
-        keys = {}
-    if STATIC_ACCESS_KEY not in keys:
-        keys[STATIC_ACCESS_KEY] = {
-            "label": "Static Key",
-            "created_at": datetime.utcnow().isoformat(),
-            "expires_at": None,
-            "active": True,
-            "last_used": None,
-        }
-        _save_auth_keys(keys)
-    return keys
-
-def _save_auth_keys(keys: dict):
-    with open(AUTH_FILE, "w") as f:
-        json.dump(keys, f, indent=2)
-
-def _is_token_valid(token_data: dict) -> bool:
-    if not token_data.get("active", True):
-        return False
-    expires_at = token_data.get("expires_at")
-    if expires_at:
-        try:
-            exp = datetime.fromisoformat(expires_at)
-            if datetime.utcnow() > exp:
-                return False
-        except Exception:
-            return False
-    return True
-
-class GenerateKeyRequest(BaseModel):
-    label: str = "Access Key"
-    days_valid: int = 30
-    admin_pass: str = ""
-
-class LoginRequest(BaseModel):
-    token: str
-
-class VerifyRequest(BaseModel):
-    token: str
-
-class RevokeRequest(BaseModel):
-    token: str
-    admin_pass: str = ""
-
-ADMIN_PASSWORD = os.environ.get("CV_ADMIN_PASS", "admin1234")
-
-@app.post("/auth/generate-key")
-async def generate_key(req: GenerateKeyRequest):
-    if req.admin_pass != ADMIN_PASSWORD:
-        raise HTTPException(403, "Invalid admin password")
-    keys = _load_auth_keys()
-    raw = secrets.token_hex(8).upper()
-    token = f"CVAI-{raw[0:4]}-{raw[4:8]}-{raw[8:12]}"
-    now = datetime.utcnow()
-    expires_at = (now + timedelta(days=req.days_valid)).isoformat() if req.days_valid > 0 else None
-    keys[token] = {
-        "label": req.label,
-        "created_at": now.isoformat(),
-        "expires_at": expires_at,
-        "active": True,
-        "last_used": None,
-    }
-    _save_auth_keys(keys)
-    return {"token": token, "label": req.label, "expires_at": expires_at, "message": "Key generated successfully"}
-
-@app.post("/auth/login")
-async def login(req: LoginRequest):
-    keys = _load_auth_keys()
-    token = req.token.strip().upper()
-    entry = keys.get(token)
-    if not entry:
-        raise HTTPException(401, "Invalid key - not found")
-    if not _is_token_valid(entry):
-        raise HTTPException(401, "Key is expired or revoked")
-    entry["last_used"] = datetime.utcnow().isoformat()
-    keys[token] = entry
-    _save_auth_keys(keys)
-    return {"ok": True, "token": token, "label": entry.get("label", ""), "expires_at": entry.get("expires_at"), "message": "Login successful"}
-
-@app.post("/auth/verify")
-async def verify_token(req: VerifyRequest):
-    keys = _load_auth_keys()
-    token = req.token.strip().upper()
-    entry = keys.get(token)
-    if not entry or not _is_token_valid(entry):
-        return {"valid": False}
-    return {"valid": True, "label": entry.get("label", ""), "expires_at": entry.get("expires_at")}
-
-@app.post("/auth/revoke")
-async def revoke_key(req: RevokeRequest):
-    if req.admin_pass != ADMIN_PASSWORD:
-        raise HTTPException(403, "Invalid admin password")
-    keys = _load_auth_keys()
-    token = req.token.strip().upper()
-    if token not in keys:
-        raise HTTPException(404, "Key not found")
-    keys[token]["active"] = False
-    _save_auth_keys(keys)
-    return {"ok": True, "message": "Key revoked"}
-
-# ==============================================================================
-# KEY MANAGEMENT
-# ==============================================================================
-_key_usage: dict = {}
-_key_rate_limited_until: dict = {}
-_debug_log: list = []
-
-def mask(key: str) -> str:
-    k = (key or "").strip()
-    return k[:8] + "..." + k[-4:] if len(k) > 12 else "***"
-
-def est_tokens(text: str) -> int:
-    return math.ceil(len(text) / 3.8)
-
-def _log_generation(job_title: str, key_masked: str, key_index: int, prompt_tokens: int, model: str, success: bool, error: str = ""):
-    _debug_log.insert(0, {"job_title": job_title, "key_used": key_masked, "key_index": key_index, "model": model, "prompt_tokens": prompt_tokens, "success": success, "error": error})
-    if len(_debug_log) > 10:
-        _debug_log.pop()
-
-def _prioritised_keys(valid_keys: list) -> list:
-    import time
-    now = time.time()
-    def _sort_key(k):
-        mk = mask(k)
-        cooldown_until = _key_rate_limited_until.get(mk, 0)
-        is_limited = 1 if cooldown_until > now else 0
-        return (is_limited, _key_usage.get(mk, 0))
-    return sorted(valid_keys, key=_sort_key)
-
-# ==============================================================================
-# CV Request Model
-# ==============================================================================
-class CVRequest(BaseModel):
-    job_title: str
-    job_description: str
-    years_exp: Optional[str] = ""
-    provider: str = "cerebras"
-    model: str = "llama3.1-8b"
-    groq_keys: Optional[List[str]] = []
-    cerebras_keys: Optional[List[str]] = []
-    gemini_keys: Optional[List[str]] = []
-    qwen_keys: Optional[List[str]] = []
-    ollama_model: Optional[str] = "qwen2.5:7b"
-    profile: str = ""
-    profile_data: Optional[dict] = None
-    static_data: Optional[dict] = None
-    company_name: Optional[str] = ""
-    company_context: Optional[str] = ""
-    ui_template: Optional[str] = "ui1"   # "ui1" | "ui2" | "ui3"
-
-# ==============================================================================
-# DYNAMIC PROMPT BUILDER - EVERYTHING FROM JD ONLY
-# ==============================================================================
-def build_dynamic_prompt(req: CVRequest) -> tuple:
-    """
-    Build a prompt that forces the AI to derive EVERYTHING from the JD.
-    NO hardcoded technologies, NO regex extraction, NO static content.
-    The AI reads the JD and decides everything.
-    """
-    jd = req.job_description.strip()
-    job_title = req.job_title.strip()
-    years_exp = (req.years_exp or "").strip()
-    
-    # Normalise to a plain integer-like string ("5", "3", etc.) — NO trailing +
-    # This is the single source of truth; we add + only in display strings below.
-    raw_years = years_exp.replace("+", "").strip()
+# llama-3.3-70b-versatile: best quality on Groq, still very fast (~200 tok/s)
+GROQ_MODEL      = "llama-3.3-70b-versatile"
+# llama-3.1-8b-instant: used only for fast utility calls (fix, translate, extract)
+GROQ_FAST_MODEL = "llama-3.1-8b-instant"
+current_key_index = 0
+current_cerebras_key_index = 0
+
+DEEPGRAM_API_KEY = "cab42f46126a2def0c2a9c9086ba24b39f089117"
+DEEPGRAM_URL     = "https://api.deepgram.com/v1/listen"
+# nova-3 has significantly better accuracy for accented/Pakistani English speech.
+# It uses 'keyterm' param (not 'keywords') for boosting.
+DEEPGRAM_MODEL   = "nova-3"   # best accuracy for accented English; uses 'keyterm' param
+
+CEREBRAS_URL     = "https://api.cerebras.ai/v1/chat/completions"
+
+GEMINI_BASE_URL  = "https://generativelanguage.googleapis.com"
+# Gemini model → API name mapping (kept dynamic — just the base name used in URLs)
+# The popup sends "gemini-2.5-flash" or "gemini-2.5-flash-lite"; we pass straight through.
+
+# Models that rejected the enable_thinking flag with a 400 — learned at runtime.
+# Persists for the server lifetime so the same 400 round-trip never happens twice.
+_CEREBRAS_NO_THINKING: set = set()
+
+# Cross-session context extraction cache.
+# Key: sha1(job_title + job_desc + cv[:200]) → extracted dict.
+# Avoids the ~0.5s Groq round-trip on every reconnect for the same job.
+_SESSION_CTX_CACHE: dict = {}
+_SESSION_CTX_CACHE_MAX = 20  # cap memory use
+
+app = FastAPI()
+
+# ── Cross-reconnect session store ─────────────────────────────────────────────
+# Chrome's offscreen document WebSocket can be closed by the browser after ~30s
+# of apparent inactivity (no new audio arriving at the SERVER — chunks are still
+# buffered client-side in pendingChunks). When this happens the client reconnects
+# and sends a CONTEXT message containing the same sessionId as before.
+# We keep audio_chunks alive in this dict so the reconnect picks up where it left
+# off instead of starting with an empty buffer.
+#
+# Layout: { sessionId: { "chunks": [...], "history": [...], ...session fields } }
+# Sessions are evicted after 10 minutes of inactivity to prevent memory growth.
+import time as _time
+_SESSION_STORE: dict = {}
+_SESSION_TTL_S  = 600   # 10 minutes
+
+def _evict_stale_sessions():
+    now = _time.monotonic()
+    stale = [k for k, v in _SESSION_STORE.items() if now - v.get("_ts", 0) > _SESSION_TTL_S]
+    for k in stale:
+        del _SESSION_STORE[k]
+
+
+# Whisper model selection strategy:
+#   tiny.en  — English-only, fastest (~2-3s). Used for lang_mode == "english"
+#              AND as pass-1 in "auto" mode (language detection pass).
+#   small    — Best multilingual accuracy on CPU. Used for lang_mode == "urdu"
+#              AND as pass-2 in "auto" mode when Urdu/Roman-Urdu is detected.
+#              "small" beats "base" significantly for Urdu — base mishears common
+#              Roman Urdu words and hallucinates on accented Pakistani English.
+#              small is ~3x more parameters and much more accurate at ~5-7s CPU cost.
+#
+# Auto mode — two-pass strategy:
+#   Pass 1 (always):  tiny.en, forced "en" → detect_language() check (~2-3s)
+#   Pass 2 (if Urdu): small,   forced "ur" → accurate Roman Urdu transcript (~5-7s total)
+#   English-only speech = no extra cost. Urdu speech = pass-2 only when needed.
+# ── Model thread config ───────────────────────────────────────────────────────
+# cpu_threads: how many CPU threads each model's encoder/decoder may use.
+#   tiny.en: 4 threads is optimal — model is small enough that more threads
+#            add scheduling overhead without improving throughput.
+#   small:   8 threads — larger model benefits from more parallelism.
+#            On a 4-core CPU this uses hyperthreading; on 8-core it's ideal.
+# num_workers: parallel audio-chunk decode workers (PyAV demuxing).
+_model_en    = WhisperModel("tiny.en", device="cpu", compute_type="int8", num_workers=2, cpu_threads=4)
+_model_multi = WhisperModel("small",   device="cpu", compute_type="int8", num_workers=2, cpu_threads=8)
+
+# ── Warm up both Whisper models at startup ────────────────────────────────────
+# faster-whisper downloads/compiles weights lazily on the first .transcribe() call.
+# Without warmup the first WS session blocks for minutes while small (~460MB) loads,
+# causing "Server not connected". We trigger the load now using a valid silent WAV.
+import io as _io, struct as _struct, threading as _threading, wave as _wave
+
+def _make_silent_wav(duration_ms: int = 100) -> bytes:
+    """Return a valid mono 16kHz 16-bit WAV file containing silence."""
+    sample_rate  = 16000
+    n_samples    = sample_rate * duration_ms // 1000
+    buf = _io.BytesIO()
+    with _wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)        # 16-bit
+        wf.setframerate(sample_rate)
+        wf.writeframes(b"\x00\x00" * n_samples)
+    return buf.getvalue()
+
+_SILENT_WAV = _make_silent_wav(100)   # 100ms silence, created once
+
+def _warmup_model(m, label):
     try:
-        float(raw_years)      # validate it is numeric
-    except ValueError:
-        raw_years = _calc_total_years("")   # fallback: compute from CANDIDATE_COMPANIES
-    
-    # Human-readable display — always exactly "N+" (no double +)
-    years_display = raw_years + "+"
-
-    # ── Profile data extraction — must happen BEFORE companies/edu are computed ──
-    _p_data   = req.profile_data or {}
-    _raw_edu  = _p_data.get("edu") or []
-    _p_edu_l  = [_normalise_edu_entry(e) for e in _raw_edu] if _raw_edu else []
-    _p_edu0   = _p_edu_l[0] if _p_edu_l else {}
-    _p_work_l = _p_data.get("work") or []
-
-    companies = _build_dynamic_companies(years_exp, profile_work=_p_work_l or None)
-    num_cos = len(companies)
-    edu = _build_education_year(years_exp, profile_edu=_p_edu_l or None)
-    
-    # Build company list for the prompt
-    co_lines = "\n".join(
-        f'Company {i+1}: "{c["name"]}" (Dates: {c["start"]} - {c["end"]})'
-        for i, c in enumerate(companies)
-    )
-    
-    # Company context - just pass raw data, AI analyzes it
-    company_context_block = ""
-    if req.company_context and req.company_name:
-        company_context_block = f"""
-TARGET COMPANY CONTEXT:
-Company Name: {req.company_name}
-Company Data: {req.company_context[:1500]}
-
-Read and understand this company data. Use it to make projects relevant to this company.
-"""
-    elif req.company_name:
-        company_context_block = f"""
-TARGET COMPANY: {req.company_name}
-Use your knowledge of this company to create relevant projects.
-"""
-    else:
-        company_context_block = "No target company provided."
-
-    # ── Build education block for prompt — one entry per qualification ──────────
-    # Uses the same UI-first, auto-sequencing logic as the post-AI merge so the
-    # AI sees the exact years that will appear in the final CV.
-    import json as _json_mod
-
-    def _resolve_edu_yr_prompt(pe: dict, anchor_start_yr: int = None) -> str:
-        _ef  = str(pe.get("from") or "").strip()
-        _et  = str(pe.get("to")   or "").strip()
-        _deg = (pe.get("degree")  or "").strip()
-        _dur = _infer_degree_duration(_deg)
-        if _ef and _et:
-            return f"{_ef} - {_et}"
-        if _et and not _ef:
-            try:
-                return f"{int(_et[:4]) - _dur} - {_et}"
-            except (ValueError, TypeError):
-                pass
-        if _ef and not _et:
-            try:
-                return f"{_ef} - {int(_ef[:4]) + _dur}"
-            except (ValueError, TypeError):
-                pass
-        if anchor_start_yr is not None:
-            return f"{anchor_start_yr - _dur} - {anchor_start_yr}"
-        return f"{edu['start']} - {edu['end']}"
-
-    _edu_entries_for_prompt = []
-    _prev_start_p = None
-    for _pe in _p_edu_l:
-        _e_yr = _resolve_edu_yr_prompt(_pe, anchor_start_yr=_prev_start_p)
-        try:
-            _prev_start_p = int(_e_yr.split("-")[0].strip()[:4])
-        except (ValueError, TypeError, IndexError):
-            pass
-        _edu_entries_for_prompt.append({
-            "university": (_pe.get("institution") or "").strip(),
-            "degree":     (_pe.get("degree")      or "").strip(),
-            "cgpa":       (_pe.get("cgpa")        or "").strip(),
-            "years":      _e_yr,
-            "achievement":_clean_black_squares((_pe.get("achievement") or "").strip()),
-        })
-    if not _edu_entries_for_prompt:
-        _edu_entries_for_prompt = [{
-            "university": "", "degree": "", "cgpa": "",
-            "years": f"{edu['start']} - {edu['end']}", "achievement": ""
-        }]
-    _edu_json_block = _json_mod.dumps(_edu_entries_for_prompt, indent=4)
-    # Keep backward-compat alias for single-entry references still in scope
-    _p_edu0 = _p_edu_l[0] if _p_edu_l else {}
-
-    # Build work history context from profile work entries if provided
-    _work_ctx_lines = []
-    for _w in _p_work_l:
-        _wc = (_w.get("company") or "").strip()
-        _wr = (_w.get("role")    or "").strip()
-        _wf = (_w.get("from")    or "").strip()
-        _wt = (_w.get("to")      or "").strip()
-        if _wc:
-            _wline = f'  • {_wc}'
-            if _wr: _wline += f' — {_wr}'
-            if _wf or _wt: _wline += f' ({_wf}–{_wt})'
-            _work_ctx_lines.append(_wline)
-    _profile_work_ctx = (
-        "PROFILE WORK ENTRIES (use these company names exactly):\n" + "\n".join(_work_ctx_lines)
-        if _work_ctx_lines else ""
-    )
-    
-    # ── Seniority ladder — computed from numeric years, passed into the prompt ──
-    # Rule: derive a realistic progression so the AI has concrete guidance
-    # without any hardcoded role names.
-    try:
-        yrs_float = float(raw_years)
-    except (ValueError, TypeError):
-        yrs_float = 3.0
-
-    if yrs_float <= 1.0:
-        seniority_guidance = (
-            f"Total experience: {years_display}\n"
-            f"There is exactly 1 company entry — no more, no less.\n"
-            f"Position 1 (only role): use a JUNIOR-level seniority prefix "
-            f"in the role title (e.g. 'Junior [domain] [function]')."
+        segs, _ = m.transcribe(
+            _io.BytesIO(_SILENT_WAV),
+            language="en", beam_size=1,
+            vad_filter=True,
         )
-    elif yrs_float <= 2.0:
-        if num_cos == 1:
-            seniority_guidance = (
-                f"Total experience: {years_display}\n"
-                f"There is exactly 1 company entry.\n"
-                f"Position 1 (only / most recent role): use a JUNIOR-level seniority prefix."
-            )
-        else:
-            seniority_guidance = (
-                f"Total experience: {years_display}\n"
-                f"There are exactly 2 company entries — no more, no less.\n"
-                f"Position 1 (most recent role, listed first in JSON): NO seniority prefix — "
-                f"just the domain + function title derived from the JD.\n"
-                f"Position 2 (oldest/earliest role, listed second in JSON): use a JUNIOR-level seniority prefix."
-            )
-    else:
-        # > 2 years: realistic ascending progression
-        lines = []
-        for idx in range(num_cos):
-            pos_num   = idx + 1
-            # Oldest first (highest index = most recent for the candidate)
-            career_pos = num_cos - idx   # 1 = oldest job
-            if career_pos == 1:
-                lines.append(f"Position {pos_num} (earliest role): JUNIOR-level prefix.")
-            elif career_pos == num_cos and num_cos >= 3:
-                lines.append(
-                    f"Position {pos_num} (most recent role): use a SENIOR or LEAD-level prefix "
-                    f"only if {years_display} years justifies it and the JD responsibilities "
-                    f"align with senior-level ownership. Otherwise omit any prefix."
-                )
-            else:
-                lines.append(
-                    f"Position {pos_num} (mid-career role): NO seniority prefix — "
-                    f"just the domain + function title derived from the JD."
-                )
-        seniority_guidance = (
-            f"Total experience: {years_display}\n"
-            + "\n".join(lines)
-            + "\nSeniority labels must feel realistic, not inflated. "
-            + "Infer them from the JD responsibilities and the experience level above."
-        )
-
-    # Build candidate contact block for prompt
-    _p_name_str  = (_p_data.get("name") or "").strip()
-    _p_links_raw = _p_data.get("links") or []
-    _p_contact_str = ", ".join(
-        l.get("value", "") for l in _p_links_raw[:4] if l.get("value", "")
-    )
-
-    # ── Extract candidate's actual technology background from static_data / profile ──
-    # Used to prevent the AI from inventing technologies the candidate doesn't know.
-    _static = req.static_data or {}
-    _cand_skills_raw = _static.get("skills", "") or ""
-    # Also pull any skills listed directly on profile work entries
-    _cand_role_skills = []
-    for _w in _p_work_l:
-        _ws = (_w.get("skills") or _w.get("tech") or "").strip()
-        if _ws:
-            _cand_role_skills.append(_ws)
-    _cand_all_skills = ", ".join(filter(None, [_cand_skills_raw] + _cand_role_skills))
-
-    # Existing projects from static_data (if any) — used for the "keep or adjust" rule
-    _existing_projects_raw = _static.get("projects", []) or []
-    _existing_projects_block = ""
-    if _existing_projects_raw:
-        _proj_lines = []
-        for _ep in _existing_projects_raw[:6]:  # cap at 6 to keep prompt lean
-            _pn = (_ep.get("name") or "").strip()
-            _pd = (_ep.get("desc") or _ep.get("overview") or "").strip()
-            if _pn:
-                _proj_lines.append(f'  • {_pn}' + (f': {_pd[:120]}' if _pd else ''))
-        if _proj_lines:
-            _existing_projects_block = (
-                "CANDIDATE'S EXISTING PROJECTS (reference these first before inventing new ones):\n"
-                + "\n".join(_proj_lines)
-            )
-
-    # Detect if this is a technical/software engineering role for competency guidance
-    _tech_role_keywords = (
-        "engineer", "developer", "architect", "devops", "sre", "backend", "frontend",
-        "fullstack", "full stack", "software", "platform", "data", "ml", "ai", "cloud",
-        "infrastructure", "systems", "security", "embedded", "firmware", "mobile",
-        "web", "api", "database", "dba", "qa", "test", "automation", "sdet"
-    )
-    _is_tech_role = any(kw in job_title.lower() for kw in _tech_role_keywords)
-
-    _tech_competencies_instruction = ""
-    if _is_tech_role:
-        _tech_competencies_instruction = """
-[R6-TECH] TECHNICAL COMPETENCIES FOR ENGINEERING ROLES
-  Because this is a technical/software engineering role, the competencies field MUST also
-  include phrases that reflect software craftsmanship and engineering quality — for example:
-    Code Quality Assurance, Code Review Leadership, Clean Architecture Principles,
-    Software Design Patterns, Debugging and Troubleshooting, Performance Optimisation,
-    Best Development Practices, Test-Driven Development, Scalable System Design.
-  These must still be 2-5 word professional phrases — no raw tool or language names.
-  They count toward the 14-phrase minimum and must complement (not replace) the
-  behavioral traits derived from the JD.
-"""
-
-    system_prompt = f"""You are a world-class CV writer. Generate a single, complete, ATS-optimised, \
-humanised CV as a JSON object. All content must be aligned with both the job description AND the \
-candidate's actual background. Zero hardcoded content. Zero static templates. Zero predefined examples. \
-Every JD must produce a completely unique output.
-
-CONTEXT
-Job Title Provided : {job_title}
-Work Positions     : {num_cos}
-Education Period   : {edu['start']} to {edu['end']}
-{f"Candidate Name     : {_p_name_str}" if _p_name_str else ""}
-{f"Contact            : {_p_contact_str}" if _p_contact_str else ""}
-{f"Candidate Technologies : {_cand_all_skills}" if _cand_all_skills else ""}
-
-WORK HISTORY (use these exact names and date ranges — do not invent others):
-{co_lines}
-{_profile_work_ctx}
-
-{_existing_projects_block}
-
-{company_context_block}
-
-SENIORITY PROGRESSION RULES
-{seniority_guidance}
-Role titles must feel natural, realistic, and human. Infer the full role title from the JD.
-
-NON-NEGOTIABLE RULES
-
-[R1] EXPERIENCE FORMAT
-  Title last segment must be exactly "{years_display}" — no trailing comma, no double +.
-  Summary must open with "{years_display} years of experience in [JD domain]".
-
-[R2] TITLE FORMAT
-  Infer a role title from the JD (not verbatim). Identify 3 most critical JD technologies
-  that the candidate can genuinely claim from their background.
-  Assemble: inferred role | tech1, tech2, tech3 | {years_display}
-
-[R3] NO COMPANY NAMES IN FREE TEXT
-  Company names appear ONLY in the "company" JSON field — never in any other field.
-
-[R4] TECHNOLOGY AUTHENTICITY — STRICTLY ENFORCED
-  Only include technologies, languages, frameworks, and tools that either:
-    (a) appear explicitly in the JD AND can be reasonably inferred from the candidate's
-        background (work history, skills, domain), OR
-    (b) are clearly part of the candidate's stated technology stack.
-  NEVER introduce technologies that the JD requires but the candidate has no plausible
-  background in. For example: if the candidate is a C#/.NET backend developer and the JD
-  mentions JavaScript or Python peripherally, do NOT list JavaScript or Python as skills
-  unless the candidate's background supports it.
-  RULE: When in doubt about whether the candidate knows a technology, omit it.
-
-[R4b] PROJECT REUSE AND ALIGNMENT
-  If CANDIDATE'S EXISTING PROJECTS are provided above, always evaluate them first:
-    • If an existing project is already relevant to the JD domain or company — keep it
-      as-is, only lightly rewording the description to better reflect the JD.
-    • If an existing project is not strongly aligned — make subtle, realistic adjustments
-      to its description so it reflects the company's domain or JD requirements, without
-      inventing fake technologies or experiences the candidate cannot support.
-    • Only invent fully new projects when no existing project can be reasonably adapted.
-  Never fabricate technical capabilities the candidate does not possess.
-
-[R5] HUMANISED WRITING
-  Active voice. Varied sentence structure. No keyword stuffing. No em-dashes.
-
-[R6] KEY COMPETENCIES — MINIMUM 14, CLEAR AND ATS-FRIENDLY
-  Read the job title, seniority level, and every sentence of the JD.
-  Identify the professional qualities, leadership traits, delivery expectations,
-  collaboration requirements, and workplace effectiveness qualities the role demands.
-  Translate each quality into a clear, concise 2-5 word professional phrase.
-  Use plain, direct language — avoid overly complex or ornate phrasing.
-  Good examples: "Cross-Team Collaboration", "Stakeholder Communication",
-    "Agile Delivery", "Risk Management", "Continuous Improvement", "Ownership Mindset".
-  Bad examples: "Architectural Integrity Enforcement", "Edge Case Mastery" (too vague/ornate).
-  Generate a minimum of 14 such phrases, separated by " * ".
-  Each phrase must be unique and non-overlapping.
-  ABSOLUTE RULE: No raw technology names, language names, framework names, or tool names.
-  Every phrase describes a human professional or behavioural quality.
-{_tech_competencies_instruction}
-[R7] TECHNICAL SKILLS — MINIMUM 5 CATEGORIES, MINIMUM 10 ITEMS EACH
-  Derive a MINIMUM of 5 category labels dynamically from the job title, JD, company
-  domain, and candidate background. Do NOT hardcode category names — infer them from
-  what the JD and candidate background actually cover (e.g. "Backend Development",
-  "Database & Storage", "DevOps & CI/CD", "API & Integration", "Architecture & Design").
-  Rules:
-    • Minimum 5 categories — more are allowed if the JD supports them.
-    • Each category must contain at least 10 unique, comma-separated items.
-    • Strict domain separation — every item appears in exactly one category.
-    • Zero duplicates across categories.
-    • Only include technologies/tools/concepts the candidate can genuinely claim.
-    • All items must be ATS-friendly, realistic, and specific to the target role.
-
-[R8] TECHNOLOGY DEPTH
-  Every company: minimum 8 unique technologies, pipe-separated, varied per role.
-  Every project: minimum 8 unique technologies in techTags, different focus per project.
-  All must be consistent with both the JD AND the candidate's background. Never invented.
-
-SECTION INSTRUCTIONS
-
-① title: inferred role | tech1, tech2, tech3 | {years_display}
-
-② summary [100-120 words, 4-5 sentences]
-   S1: "{years_display} years of experience in [JD domain]" + discipline + seniority.
-   S2: Primary technical strengths from the JD.
-   S3: Meaningful career impact relevant to this role.
-   S4: Collaboration or leadership dimension from the JD.
-   S5: Professional focus and value proposition.
-   No first-person pronouns. No company names. 5-7 JD technologies woven naturally.
-
-③ competencies [MINIMUM 14 phrases, " * " separated]
-   Read every sentence of the JD. Identify what professional qualities the role demands.
-   Translate each into a clear, plain 2-5 word professional phrase. Use simple, direct
-   language that reads naturally on a CV. For technical roles also include engineering
-   quality traits (code quality, design principles, etc.) as professional phrases.
-   STRICT: no technology names, no tools, no platforms in this field.
-
-④ keywords: 20-24 ATS terms from the JD.
-
-⑤ technologies: mustHave (10-14), niceToHave (8-12), additional (8-10) — from JD only,
-   limited to what the candidate's background can genuinely support.
-
-⑥ skills [MINIMUM 5 categories, MINIMUM 10 items each]
-   Dynamically derive category names from the JD, job title, company domain, and candidate
-   background. Do NOT use generic or hardcoded category names — infer them from what the
-   role actually requires.
-   Format: "Category Label: item1, item2, item3, item4, item5, item6, item7, item8, item9, item10"
-   Rules: minimum 5 categories (more allowed), minimum 10 items per category, strict domain
-   separation (each item in exactly one category), zero duplicates, candidate-authentic only.
-
-⑦ companies [one per company, in order]
-   role: full title from JD with correct seniority.
-   bullets: 4 unique achievement bullets, 20-30 words each.
-   tech: minimum 8 unique technologies the candidate knows, pipe-separated, varied per role.
-
-⑧ projects [EXACTLY 4]
-   First, review CANDIDATE'S EXISTING PROJECTS (if provided). Prioritise adapting relevant
-   existing projects to fit this JD's domain. Only invent new projects if no existing
-   project can be plausibly aligned. Subtle domain rewording is encouraged; inventing
-   new technologies the candidate does not know is FORBIDDEN.
-   Projects 1-2: JD industry domain. Projects 3-4: JD technical requirements.
-   Each: name, overview (3-4 sentences), 3 bullets, techTags (min 8, different focus).
-
-⑨ relatedTech: 5 category objects, 5 items each, all from JD.
-
-⑩ education: copy EXACTLY from the pre-filled array below, unchanged.
-
-JSON OUTPUT — raw JSON only, no markdown, no code fences
-
-{{
-  "title": "Inferred role | tech1, tech2, tech3 | {years_display}",
-  "summary": "{years_display} years of experience in [domain]. [4-5 sentences, 100-120 words, no I/my/me]",
-  "competencies": "Trait1 * Trait2 * Trait3 * Trait4 * Trait5 * Trait6 * Trait7 * Trait8 * Trait9 * Trait10 * Trait11 * Trait12 * Trait13 * Trait14",
-  "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18, kw19, kw20",
-  "technologies": {{
-    "mustHave":   ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10"],
-    "niceToHave": ["t1","t2","t3","t4","t5","t6","t7","t8"],
-    "additional": ["t1","t2","t3","t4","t5","t6","t7","t8"]
-  }},
-  "skills": [
-    "CategoryA: t1, t2, t3, t4, t5, t6, t7, t8, t9, t10",
-    "CategoryB: t1, t2, t3, t4, t5, t6, t7, t8, t9, t10",
-    "CategoryC: t1, t2, t3, t4, t5, t6, t7, t8, t9, t10",
-    "CategoryD: t1, t2, t3, t4, t5, t6, t7, t8, t9, t10",
-    "CategoryE: t1, t2, t3, t4, t5, t6, t7, t8, t9, t10"
-  ],
-  "companies": [
-    {{
-      "company": "",
-      "role": "Role from JD with correct seniority",
-      "dateRange": "",
-      "bullets": [
-        "Achievement with JD technology and measurable result (20-30 words).",
-        "Different achievement with different technology and quantified impact (20-30 words).",
-        "Delivery improvement with technology and outcome (20-30 words).",
-        "Business or stakeholder impact with result (20-30 words)."
-      ],
-      "tech": "t1 | t2 | t3 | t4 | t5 | t6 | t7 | t8"
-    }}
-  ],
-  "projects": [
-    {{
-      "name": "Project from JD industry domain",
-      "overview": "3-4 sentences: problem, approach, technologies, outcome.",
-      "bullets": ["Outcome 1 (20-30 words).","Outcome 2 (20-30 words).","Outcome 3 (20-30 words)."],
-      "techTags": ["t1","t2","t3","t4","t5","t6","t7","t8"]
-    }},
-    {{
-      "name": "Second project from JD domain",
-      "overview": "3-4 sentences covering a different domain aspect.",
-      "bullets": ["Outcome 1","Outcome 2","Outcome 3"],
-      "techTags": ["t1","t2","t3","t4","t5","t6","t7","t8"]
-    }},
-    {{
-      "name": "Project from JD technical requirements",
-      "overview": "3-4 sentences aligned with JD technical skills.",
-      "bullets": ["Outcome 1","Outcome 2","Outcome 3"],
-      "techTags": ["t1","t2","t3","t4","t5","t6","t7","t8"]
-    }},
-    {{
-      "name": "Second project from JD technical requirements",
-      "overview": "3-4 sentences covering a different JD technical capability.",
-      "bullets": ["Outcome 1","Outcome 2","Outcome 3"],
-      "techTags": ["t1","t2","t3","t4","t5","t6","t7","t8"]
-    }}
-  ],
-  "education": {_edu_json_block},
-  "relatedTech": [
-    {{"category": "cat1", "items": ["t1","t2","t3","t4","t5"]}},
-    {{"category": "cat2", "items": ["t1","t2","t3","t4","t5"]}},
-    {{"category": "cat3", "items": ["t1","t2","t3","t4","t5"]}},
-    {{"category": "cat4", "items": ["t1","t2","t3","t4","t5"]}},
-    {{"category": "cat5", "items": ["t1","t2","t3","t4","t5"]}}
-  ]
-}}
-
-CHECKLIST:
-✓ title last segment exactly "{years_display}", no trailing comma, no double +
-✓ summary opens with "{years_display} years of experience in", 100-120 words, no I/my/me
-✓ competencies: minimum 14 clear, plain behavioral phrases (+ technical quality phrases for tech roles)
-✓ competencies: no technology names, no tool names — only human professional traits
-✓ competencies: simple, direct language — not ornate or overly complex phrasing
-✓ technologies and skills: only those consistent with the candidate's actual background
-✓ no technologies introduced that the candidate cannot plausibly support
-✓ projects: existing candidate projects reused/adapted where relevant, not replaced
-✓ skills: minimum 5 dynamically-named categories, minimum 10 items each, strict domain separation
-✓ skills: category names derived from JD/role — not hardcoded, not generic
-✓ company tech: minimum 8 per company, varied per role, candidate-authentic
-✓ project techTags: minimum 8 per project, different focus per project
-✓ projects 1-2 industry domain, projects 3-4 JD technical requirements
-✓ zero company names outside the company field
-✓ no em-dashes, en-dashes, or non-ASCII punctuation
-✓ NO geometric symbols or Unicode block characters (■◼◾▮▬●▸ etc.) — use plain hyphens instead
-✓ raw JSON only
-"""
-
-    user_prompt = f"""JOB DESCRIPTION:
-{jd}
-
-Generate the CV JSON now.
-
-Reminders:
-- Title: inferred role | tech1, tech2, tech3 | {years_display} (no trailing comma)
-- Summary: 100-120 words, open with "{years_display} years of experience in". No I/my/me.
-- Competencies: minimum 14 clear, plain behavioral phrases via " * ". No technology names.
-  For tech/engineering roles also include software quality traits (e.g. "Code Quality Assurance",
-  "Clean Architecture Principles", "Debugging and Troubleshooting") as professional phrases.
-  Use simple, direct language — avoid ornate or overly abstract phrasing.
-- Technologies/Skills: only include what the candidate's background genuinely supports.
-  Do NOT introduce foreign languages, frameworks, or platforms the candidate hasn't used.
-- Projects: reuse or subtly adapt existing candidate projects where possible.
-  Only invent new projects if no existing project can be aligned to the JD.
-- Skills: minimum 5 categories (dynamically named from JD/role), minimum 10 items each.
-  Strict domain separation — no item repeated across categories. Candidate-authentic only.
-- Company tech: min 8 per company, varied, candidate-authentic. Project techTags: min 8 per project.
-- Seniority: {seniority_guidance.split(chr(10))[0]}
-- Projects 1-2: industry domain. Projects 3-4: JD technical requirements.
-- No company names in free-text. No em-dashes, non-ASCII punctuation, or geometric/symbol characters (■◼◾ etc.). Use plain hyphens only.
-- Everything must be realistic, credible, and aligned with the candidate's actual background.
-"""
-    return system_prompt, user_prompt
-
-# ==============================================================================
-# HELPER FUNCTIONS
-# ==============================================================================
-def extract_json(raw: str) -> dict:
-    """Parse JSON from an LLM response, repairing truncated output if needed."""
-    raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
-    raw = re.sub(r"```(?:json)?", "", raw).strip().strip("`").strip()
-    start = raw.find("{")
-    if start == -1:
-        raise ValueError("No JSON object in model response")
-    raw = raw[start:]
-
-    # Try direct parse first (the happy path)
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        pass
-
-    # ── Attempt to repair truncated / incomplete JSON ─────────────────────────
-    # 1. Remove trailing comma artefacts
-    j = re.sub(r",\s*([}\]])", r"\1", raw)
-    # 2. Control-character cleanup
-    j = re.sub(r'[\x00-\x1f\x7f]', ' ', j)
-
-    # 3. If the JSON was cut off (no closing brace), close all open structures
-    #    by counting unmatched { and [ and appending the right closers.
-    try:
-        return json.loads(j)
-    except json.JSONDecodeError:
-        pass
-
-    # Count unclosed brackets (ignoring those inside strings)
-    opens = []
-    in_str = False
-    escape = False
-    for ch in j:
-        if escape:
-            escape = False
-            continue
-        if ch == "\\" and in_str:
-            escape = True
-            continue
-        if ch == '"':
-            in_str = not in_str
-            continue
-        if in_str:
-            continue
-        if ch in "{[":
-            opens.append("}" if ch == "{" else "]")
-        elif ch in "}]":
-            if opens and opens[-1] == ch:
-                opens.pop()
-
-    # Strip any trailing incomplete string / value that might confuse the parser
-    j_repaired = j.rstrip().rstrip(",").rstrip()
-    # Close all unclosed structures in reverse order
-    j_repaired += "".join(reversed(opens))
-
-    try:
-        return json.loads(j_repaired)
-    except json.JSONDecodeError:
-        # Last resort: extract up to the last complete top-level value
-        end = j_repaired.rfind("}")
-        if end != -1:
-            candidate = j_repaired[:end + 1]
-            candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
-            return json.loads(candidate)
-        raise ValueError("Could not parse or repair JSON from model response")
-
-def esc_html(s: str) -> str:
-    if not s:
-        return ""
-    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
-
-def _is_real_tech(token: str) -> bool:
-    token = token.strip()
-    if len(token) < 2:
-        return False
-    if token.isdigit():
-        return False
-    return True
-
-def _normalize_job_title(title: str) -> str:
-    if not title:
-        return title
-    words = title.split()
-    seen = []
-    seen_lower = []
-    for w in words:
-        if w.lower() not in seen_lower:
-            seen.append(w)
-            seen_lower.append(w.lower())
-    return " ".join(seen)
-
-# Matches ANY non-ASCII, non-Latin-extended character appearing between two word
-# characters — these are geometric/symbol chars the model uses as hyphen substitutes.
-_INLINE_SYMBOL_RE = re.compile(
-    r'(?<=[A-Za-z0-9])([^\x20-\x7E\u00C0-\u024F])(?=[A-Za-z0-9])'
-)
-# Matches entire Unicode blocks that render as solid shapes/glyphs anywhere in text:
-# Block Elements, Geometric Shapes, Misc Symbols, Dingbats, Misc Technical,
-# Supplemental Arrows-B, Misc Math Symbols, Enclosed Alphanumerics.
-_SYMBOL_BLOCKS_RE = re.compile(
-    r'[\u2300-\u27BF\u2B00-\u2BFF\u2E00-\u2E7F]'
-)
-
-def _clean_black_squares(s: str) -> str:
-    """Remove any geometric/symbol character that Cerebras embeds as a hyphen substitute.
-    Uses Unicode block ranges so it catches all variants regardless of exact codepoint."""
-    if not s:
-        return s
-    s = _INLINE_SYMBOL_RE.sub("", s)    # between letters: strip (test■driven → testdriven)
-    s = _SYMBOL_BLOCKS_RE.sub("-", s)   # geometric block chars anywhere: replace with hyphen
-    return s
-
-def sanitise_cv(cv: dict) -> dict:
-    if not isinstance(cv, dict):
-        return {}
-    
-    for field in ("totalYears", "title", "summary", "competencies", "keywords"):
-        cv[field] = _clean_black_squares(str(cv.get(field, "")).strip())
-    
-    if cv.get("title"):
-        _segs = [s.strip().rstrip(",").strip() for s in cv["title"].split("|")]
-        cv["title"] = " | ".join(s for s in _segs if s)
-        cv["title"] = _normalize_job_title(cv["title"])
-    
-    companies = cv.get("companies")
-    if isinstance(companies, list):
-        clean_companies = []
-        for co in companies:
-            if not isinstance(co, dict):
-                continue
-            bullets = co.get("bullets", [])
-            if not isinstance(bullets, list):
-                bullets = [str(bullets)]
-            tech = co.get("tech", "")
-            if isinstance(tech, list):
-                tech = " | ".join(str(t) for t in tech if t)
-            clean_companies.append({
-                "company": str(co.get("company", "")),
-                "role": str(co.get("role", "")),
-                "dateRange": str(co.get("dateRange", "")),
-                "bullets": [_clean_black_squares(str(b).strip()) for b in bullets if b],
-                "tech": str(tech),
-            })
-        cv["companies"] = clean_companies
-    
-    skills = cv.get("skills", [])
-    if isinstance(skills, list):
-        clean_skills = []
-        for s in skills:
-            if s and isinstance(s, str):
-                clean_skills.append(s.strip())
-        cv["skills"] = clean_skills
-    
-    projects = cv.get("projects", [])
-    if isinstance(projects, list):
-        clean_projects = []
-        for p in projects:
-            if isinstance(p, dict):
-                clean_projects.append({
-                    "name": str(p.get("name", "")),
-                    "overview": str(p.get("overview", "")),
-                    "bullets": [_clean_black_squares(str(b).strip()) for b in (p.get("bullets") or []) if b],
-                    "techTags": p.get("techTags", []) if isinstance(p.get("techTags"), list) else [str(p.get("techTags", ""))],
-                })
-        cv["projects"] = clean_projects
-    
-    related = cv.get("relatedTech", [])
-    if isinstance(related, list):
-        clean_related = []
-        for r in related:
-            if isinstance(r, dict):
-                items = r.get("items", [])
-                if isinstance(items, list):
-                    clean_related.append({
-                        "category": str(r.get("category", "")),
-                        "items": [str(i).strip() for i in items if i],
-                    })
-        cv["relatedTech"] = clean_related
-    
-    techs = cv.get("technologies", {})
-    if isinstance(techs, dict):
-        cv["technologies"] = {
-            "mustHave": [str(t).strip() for t in (techs.get("mustHave") or []) if t],
-            "niceToHave": [str(t).strip() for t in (techs.get("niceToHave") or []) if t],
-            "additional": [str(t).strip() for t in (techs.get("additional") or []) if t],
-        }
-
-    # education: normalise to a list of dicts regardless of what came in
-    raw_edu = cv.get("education")
-    if isinstance(raw_edu, dict):
-        # Legacy single-dict — wrap in a list
-        cv["education"] = [raw_edu]
-    elif isinstance(raw_edu, list):
-        cv["education"] = [e for e in raw_edu if isinstance(e, dict)]
-    else:
-        cv["education"] = []
-
-    # ── Deep-clean all string values in the entire CV dict ──────────────────
-    # Cerebras models embed black-square Unicode chars (■◼◾ etc.) as hyphen
-    # substitutes in any field. Run the cleaner on every string recursively
-    # so nothing slips through regardless of which field it appears in.
-    cv = _deep_clean_black_squares(cv)
-    return cv
-
-def _deep_clean_black_squares(obj):
-    """Recursively apply _clean_black_squares to every string in a dict/list."""
-    if isinstance(obj, str):
-        return _clean_black_squares(obj)
-    if isinstance(obj, list):
-        return [_deep_clean_black_squares(i) for i in obj]
-    if isinstance(obj, dict):
-        return {k: _deep_clean_black_squares(v) for k, v in obj.items()}
-    return obj
-
-def final_polish(cv: dict, years_exp: str = "") -> dict:
-    """Final polishing — deduplicates tech tags and ensures correct experience display.
-    
-    Core rule: experience is stored internally WITHOUT the trailing + sign.
-    The display value (e.g. '5+') is only assembled when writing to cv fields.
-    This prevents any possible '5++' bug.
-    """
-
-    # ── Resolve clean numeric years (no + sign) ───────────────────────────────
-    raw = (years_exp or "").strip().replace("+", "")
-    try:
-        float(raw)   # validate numeric
-    except (ValueError, TypeError):
-        raw = _calc_total_years("")   # returns plain digits e.g. "5"
-
-    # The one authoritative display string — always "N+" with exactly one +
-    years_display = raw + "+"
-    cv["totalYears"] = years_display
-
-    # ── Fix title ─────────────────────────────────────────────────────────────
-    title = cv.get("title", "")
-    if title and raw:
-        if "|" in title:
-            parts = [p.strip() for p in title.split("|")]
-
-            # Pattern 1 — whole trailing segment is ONLY an experience token
-            # e.g. "2+", "5", "3+ years"  (no letters except optional "years")
-            _exp_only = re.compile(
-                r'^\s*\d+(\.\d+)?\+?\s*(years?)?\s*$',
-                re.IGNORECASE
-            )
-            while len(parts) > 1 and _exp_only.match(parts[-1]):
-                parts.pop()
-
-            # Pattern 2 — experience token is embedded at the END of the last
-            # segment (AI sometimes writes "LLM Architecture 2+" or "Tech 2+ ").
-            # Strip it from that last segment so we can append cleanly.
-            _exp_suffix = re.compile(
-                r'\s+\d+(\.\d+)?\+?\s*(years?)?\s*$',
-                re.IGNORECASE
-            )
-            if parts:
-                parts[-1] = _exp_suffix.sub("", parts[-1]).strip()
-
-            # Append the authoritative display value exactly once
-            parts.append(years_display)
-            cv["title"] = " | ".join(parts)
-        else:
-            # No pipes — strip any trailing experience from the bare title first
-            _exp_suffix_bare = re.compile(
-                r'\s+\d+(\.\d+)?\+?\s*(years?)?\s*$',
-                re.IGNORECASE
-            )
-            title = _exp_suffix_bare.sub("", title).strip()
-            cv["title"] = f"{title} | {years_display}"
-
-    # ── Fix summary ───────────────────────────────────────────────────────────
-    summary = cv.get("summary", "")
-    if summary and raw:
-        # Replace any existing "N years", "N+ years", "N++ years" pattern at start
-        summary = re.sub(
-            r'^\d+\+*\s+years?\s+of',
-            f"{years_display} years of",
-            summary.strip(),
-            flags=re.IGNORECASE
-        )
-        # Also handle "With N+... years" or "Over N+... years" openers
-        summary = re.sub(
-            r'\b(with|over)\s+\d+\+*\s+years?\s+of',
-            f"\\1 {years_display} years of",
-            summary,
-            count=1,
-            flags=re.IGNORECASE
-        )
-        # Catch any remaining stray double ++ in the summary
-        summary = summary.replace("++", "+")
-        cv["summary"] = summary
-
-    # ── Sanitise any stray ++ that slipped through elsewhere ─────────────────
-    for field in ("title", "summary", "competencies", "keywords"):
-        val = cv.get(field, "")
-        if isinstance(val, str):
-            cv[field] = val.replace("++", "+")
-
-    # Build pool from CV's own JD-derived technologies for padding
-    _tech_pool: list = []
-    for _bucket in ("mustHave", "niceToHave", "additional"):
-        for _t in (cv.get("technologies", {}).get(_bucket) or []):
-            if _t and _t.strip() and _t.strip() not in _tech_pool:
-                _tech_pool.append(_t.strip())
-    # Enforce minimum 8 technologies per company
-    MIN_CO_TECH = 8
-    companies = cv.get("companies", [])
-    for co in companies:
-        tech_str = co.get("tech", "")
-        techs = [str(t).strip() for t in
-                 (tech_str if isinstance(tech_str, list) else str(tech_str).split("|"))
-                 if str(t).strip()]
-        seen_co: set = set(); unique_techs: list = []
-        for t in techs:
-            if t.lower() not in seen_co: unique_techs.append(t); seen_co.add(t.lower())
-        for t in _tech_pool:
-            if len(unique_techs) >= MIN_CO_TECH: break
-            if t.lower() not in seen_co: unique_techs.append(t); seen_co.add(t.lower())
-        if unique_techs: co["tech"] = " | ".join(unique_techs[:12])
-
-    # Enforce minimum 8 technologies per project
-    MIN_PROJ_TECH = 8
-    for proj in cv.get("projects", []):
-        tags = proj.get("techTags", []) or []
-        if not isinstance(tags, list): tags = [str(tags)]
-        seen_proj: set = set(); unique_tags: list = []
-        for t in tags:
-            t = str(t).strip()
-            if t and t.lower() not in seen_proj: unique_tags.append(t); seen_proj.add(t.lower())
-        for t in _tech_pool:
-            if len(unique_tags) >= MIN_PROJ_TECH: break
-            if t.lower() not in seen_proj: unique_tags.append(t); seen_proj.add(t.lower())
-        proj["techTags"] = unique_tags[:12]
-
-    return cv
-
-def fix_companies(cv: dict, companies_list: list = None, years_exp: str = "") -> dict:
-    """
-    Enforce correct company names/dates and clean up AI-generated role strings.
-
-    Priority for names and dates:
-      • companies_list (runtime-calculated from years_exp) — always preferred.
-      • CANDIDATE_COMPANIES static fallback — only if companies_list is absent.
-
-    Seniority logic (dynamic path only — when companies_list is provided):
-      1 year  → 1 company:  Junior <role>
-      2 years → 2 companies: index 0 = bare role, index 1 = Junior <role>
-      3+ yrs  → 3 companies: index 0 = Senior, index 1 = bare, index 2 = Junior
-    When years_exp is missing or zero, seniority is left as the AI generated it.
-    When profile work entries supply hardcoded dates, years_exp still drives the
-    label, preserving consistent behaviour across both paths.
-    """
-    companies = cv.get("companies", [])
-
-    # ── Hard-enforce company count from companies_list ───────────────────────
-    # The AI sometimes generates more companies than instructed (e.g. 3 when told 2).
-    # Truncate to the exact count calculated from years_exp so the UI value is
-    # always respected.  Profile-hardcoded paths also use companies_list, so the
-    # count remains consistent on both paths.
-    if companies_list:
-        companies = companies[:len(companies_list)]
-        cv["companies"] = companies
-
-    # ── Resolve numeric years ───────────────────────────────────────────────────────
-    apply_seniority = bool(companies_list)
-    _yraw = (years_exp or "").strip().replace("+", "")
-    if not _yraw:
-        _yraw = str(cv.get("totalYears", "")).replace("+", "").strip()
-    try:
-        _n_years = float(_yraw)
-    except (ValueError, TypeError):
-        _n_years = 0.0
-
-    _seniority_re = re.compile(
-        r"^(Senior|Sr\.?|Lead|Principal|Junior|Jr\.?|Associate)\s+",
-        re.IGNORECASE
-    )
-
-    def _seniority_prefix(idx: int, n_cos: int) -> str:
-        """Prefix for company at idx (0 = most recent / top of CV)."""
-        if n_cos == 1:
-            return "Junior"
-        if n_cos == 2:
-            return "" if idx == 0 else "Junior"
-        # 3+ companies
-        if idx == 0:
-            return "Senior"
-        if idx == n_cos - 1:
-            return "Junior"
-        return ""
-
-    for i, co in enumerate(companies):
-        # ── Name & dateRange: runtime list first, static fallback second ──────
-        if companies_list and i < len(companies_list):
-            calc = companies_list[i]
-            co["company"]   = calc["name"]
-            co["dateRange"] = f"{calc['start']} - {calc['end']}"
-        elif i < len(CANDIDATE_COMPANIES):
-            real = CANDIDATE_COMPANIES[i]
-            co["company"]   = real["name"]
-            co["dateRange"] = f"{real['start']} - {real['end']}"
-        elif not co.get("company"):
-            co["company"] = f"Company {i + 1}"
-
-        # ── Clean AI artefacts from role string (e.g. "Co1 ", "Co2 ") ────
-        role = co.get("role", "")
-        role = re.sub(r'\bCo\d+\s*', '', role).strip()
-
-        # ── Apply experience-based seniority (dynamic path only) ─────────────
-        if apply_seniority and _n_years > 0:
-            n_cos  = len(companies)
-            prefix = _seniority_prefix(i, n_cos)
-            bare_role = _seniority_re.sub("", role).strip()
-            role = f"{prefix} {bare_role}".strip() if prefix else bare_role
-
-        co["role"] = role
-
-    return cv
-
-# ==============================================================================
-# UNIVERSAL LLM CALLER
-# ==============================================================================
-
-class _RateLimitError(Exception):
-    """Raised when a key is rate-limited so callers can skip to the next key."""
-    pass
-
-async def call_llm_atomic(client, key: str, model: str, url: str,
-                          system: str, user: str, stage: str,
-                          headers: dict, max_tokens: int = 4000,
-                          _deadline: float = 0.0) -> dict:
-    import time as _t
-
-    # Groq can be slow on large prompts; use a generous per-call timeout.
-    # The outer httpx.AsyncClient timeout is the hard ceiling — this is per-attempt.
-    per_call_timeout = 60
-    mk = mask(key)
-    provider_tag = url.split("/")[2].split(".")[0]   # e.g. "api" → use model instead
-    tag = f"[{model}|{mk}|{stage}]"
-
-    if _deadline and _t.time() >= _deadline:
-        _log.warning("%s Skipped — deadline exceeded before attempt", tag)
-        raise ValueError(f"Stage {stage} skipped — deadline exceeded")
-
-    last_error = None
-    prompt_chars = len(system) + len(user)
-    _log.info("%s Starting LLM call — prompt ~%d chars, max_tokens=%d, timeout=%ds",
-              tag, prompt_chars, max_tokens, per_call_timeout)
-
-    # Up to 3 attempts: handles transient 429s and single timeout blips
-    for attempt in range(3):
-        attempt_num = attempt + 1
-        _log.info("%s Attempt %d/3 …", tag, attempt_num)
-        t_start = _t.time()
-
-        try:
-            r = await client.post(
-                url,
-                headers=headers,
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user",   "content": user}
-                    ],
-                    "temperature": 0.2,
-                    "max_tokens": max_tokens,
-                },
-                timeout=per_call_timeout,
-            )
-
-        except httpx.TimeoutException as exc:
-            elapsed = round(_t.time() - t_start, 1)
-            last_error = f"TimeoutException on attempt {attempt_num} after {elapsed}s"
-            _log.warning("%s TIMEOUT — %s — elapsed %.1fs  (exc: %s)",
-                         tag, last_error, elapsed, type(exc).__name__)
-            if attempt < 2:
-                wait = 2 + attempt * 1   # 2s, 3s
-                _log.info("%s Waiting %ds before retry …", tag, wait)
-                await asyncio.sleep(wait)
-                continue
-            _log.error("%s All 3 timeout attempts exhausted for key %s", tag, mk)
-            raise ValueError(
-                f"Stage {stage} timed out after {per_call_timeout}s "
-                f"(3 attempts). Try a different key or provider."
-            )
-
-        except httpx.ReadTimeout as exc:
-            elapsed = round(_t.time() - t_start, 1)
-            last_error = f"ReadTimeout on attempt {attempt_num} after {elapsed}s"
-            _log.warning("%s READ-TIMEOUT — %s", tag, last_error)
-            if attempt < 2:
-                wait = 2 + attempt * 1
-                _log.info("%s Waiting %ds before retry …", tag, wait)
-                await asyncio.sleep(wait)
-                continue
-            _log.error("%s All 3 read-timeout attempts exhausted for key %s", tag, mk)
-            raise ValueError(
-                f"Stage {stage} read-timeout after {per_call_timeout}s "
-                f"(3 attempts). Model took too long to respond."
-            )
-
-        except Exception as e:
-            elapsed = round(_t.time() - t_start, 1)
-            _log.error("%s NETWORK ERROR after %.1fs — %s: %s", tag, elapsed, type(e).__name__, e)
-            raise ValueError(f"Stage {stage} network error: {str(e)}")
-
-        # ── Handle HTTP response ──────────────────────────────────────────────
-        elapsed = round(_t.time() - t_start, 1)
-        _log.info("%s HTTP %d received in %.1fs", tag, r.status_code, elapsed)
-
-        if r.status_code == 200:
-            _resp_json = r.json()
-            _msg = _resp_json["choices"][0]["message"]
-            # Some models (e.g. Cerebras gpt-oss-120b) occasionally return the
-            # response text in "reasoning_content" or set "content" to None when
-            # the model uses an internal reasoning/thinking mode.
-            # Try "content" first; fall back to "reasoning_content"; raise a clear
-            # error if neither yields a non-empty string.
-            raw = _msg.get("content") or _msg.get("reasoning_content") or _msg.get("reasoning") or ""
-            if not raw:
-                _log.error("%s Empty content — message keys: %s", tag, list(_msg.keys()))
-                raise ValueError(
-                    f"Stage {stage}: model returned HTTP 200 but no text content "
-                    f"(message keys: {list(_msg.keys())}). "
-                    "Try a different model or provider."
-                )
-            _log.info("%s SUCCESS — response %d chars", tag, len(raw))
-            return extract_json(raw)
-
-        elif r.status_code == 429:
-            retry_after = int(r.headers.get("retry-after", 0))
-            _log.warning("%s RATE-LIMITED (429) — retry-after=%ds — attempt %d/3",
-                         tag, retry_after, attempt_num)
-            if attempt < 2 and retry_after > 0:
-                wait = min(retry_after, 25)
-                _log.info("%s Sleeping %ds (retry-after) …", tag, wait)
-                await asyncio.sleep(wait)
-                continue
-            elif attempt < 2:
-                wait = 2 ** attempt * 3
-                _log.info("%s No retry-after header — exponential backoff %ds …", tag, wait)
-                await asyncio.sleep(wait)
-                continue
-            # Retries exhausted — mark key in cooldown and signal caller
-            import time as _t2
-            cooldown = max(retry_after, 60)
-            _key_rate_limited_until[mk] = _t2.time() + cooldown
-            _log.error("%s Key %s marked rate-limited for %ds", tag, mk, cooldown)
-            raise _RateLimitError(f"Key rate-limited on {stage}")
-
-        elif r.status_code in (401, 403):
-            _log.error("%s INVALID/EXPIRED KEY — HTTP %d for key %s", tag, r.status_code, mk)
-            raise ValueError(f"Invalid/expired key on {stage} (HTTP {r.status_code})")
-
-        else:
-            last_error = f"HTTP {r.status_code} on {stage}"
-            _log.warning("%s Unexpected status %d on attempt %d — %s",
-                         tag, r.status_code, attempt_num, r.text[:200])
-            if attempt < 2:
-                await asyncio.sleep(3)
-                continue
-            raise ValueError(last_error)
-
-    _log.error("%s Failed after 3 attempts. Last error: %s", tag, last_error)
-    raise ValueError(f"Stage {stage} failed after 3 attempts. Last error: {last_error}")
-
-# ==============================================================================
-# PROVIDER CALLERS
-# ==============================================================================
-async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
-                               url: str, headers: dict,
-                               max_output_tokens: int = None) -> dict:
-    """Generate CV using single dynamic prompt - everything from JD"""
-    import time as _t
-
-    _deadline = _t.time() + 92
-    years_exp = (req.years_exp or "").strip()
-    years_exp_clean = years_exp.replace("+", "").strip()
-
-    mk = mask(key)
-    provider_host = url.split("/")[2]
-    _log.info("[GenCV|%s] Starting — model=%s key=%s years_exp=%r job=%r",
-              provider_host, model, mk, years_exp_clean, req.job_title[:50])
-
-    # Pull profile education if available (priority data — never override with calc)
-    _raw_profile_edu = (req.profile_data or {}).get("edu", []) if req.profile_data else []
-    # Normalise: maps UI 'note' field → 'achievement' and extracts cgpa from note text
-    profile_edu = [_normalise_edu_entry(e) for e in _raw_profile_edu] if _raw_profile_edu else []
-
-    total_years    = _calc_total_years(years_exp_clean)
-    _profile_work  = (req.profile_data or {}).get("work", []) if req.profile_data else []
-    companies_list = _build_dynamic_companies(years_exp_clean, profile_work=_profile_work or None)
-    edu            = _build_education_year(years_exp_clean, profile_edu=profile_edu or None)
-
-    _log.info("[GenCV|%s] Computed — total_years=%s companies=%d edu=%s–%s",
-              provider_host, total_years, len(companies_list), edu["start"], edu["end"])
-    
-    system_prompt, user_prompt = build_dynamic_prompt(req)
-    _log.info("[GenCV|%s] Prompt built — sys=%d chars, usr=%d chars",
-              provider_host, len(system_prompt), len(user_prompt))
-
-    result = await call_llm_atomic(client, key, model, url, system_prompt, user_prompt,
-                                    "FullCV", headers, max_tokens=max_output_tokens or 8000, _deadline=_deadline)
-
-    if not result:
-        _log.error("[GenCV|%s] AI returned empty/unparseable response", provider_host)
-        raise ValueError("AI returned empty response")
-
-    _log.info("[GenCV|%s] AI response parsed — companies=%d projects=%d",
-              provider_host,
-              len(result.get("companies", [])),
-              len(result.get("projects",  [])))
-
-    if "companies" not in result:
-        result["companies"] = []
-
-    # Hard-truncate AI output to exact count immediately — the AI frequently
-    # ignores the "N companies" instruction and returns more entries.
-    # This is the primary guard; fix_companies() is a second pass.
-    result["companies"] = result["companies"][:len(companies_list)]
-
-    for i, co in enumerate(result.get("companies", [])):
-        if i < len(companies_list):
-            co["company"]   = companies_list[i]["name"]
-            co["dateRange"] = f"{companies_list[i]['start']} - {companies_list[i]['end']}"
-
-    if "projects" not in result:
-        result["projects"] = []
-
-    # ── Build education list — all entries, dates always UI-first ───────────────
-    # Priority per entry:
-    #   1. Both from/to in UI  → use exactly as provided.
-    #   2. One date missing     → infer from degree duration via _infer_degree_duration().
-    #   3. Both dates missing   → place immediately before the entry above it started,
-    #      using that entry's start year as the anchor (chronological auto-sequencing).
-    _p_edu_list = profile_edu or []
-
-    def _resolve_edu_years(pe: dict, anchor_start_yr: int = None) -> str:
-        """
-        Return a "YYYY - YYYY" string for one education entry.
-        anchor_start_yr: the start year of the PREVIOUS (higher on CV) entry,
-        used as the upper bound when this entry has no dates at all.
-        """
-        _ef  = str(pe.get("from") or "").strip()
-        _et  = str(pe.get("to")   or "").strip()
-        _deg = (pe.get("degree")  or "").strip()
-        _dur = _infer_degree_duration(_deg)
-
-        # Case 1: both dates provided — use as-is
-        if _ef and _et:
-            return f"{_ef} - {_et}"
-
-        # Case 2: only end year provided — infer start from duration
-        if _et and not _ef:
-            try:
-                return f"{int(_et[:4]) - _dur} - {_et}"
-            except (ValueError, TypeError):
-                pass
-
-        # Case 3: only start year provided — infer end from duration
-        if _ef and not _et:
-            try:
-                return f"{_ef} - {int(_ef[:4]) + _dur}"
-            except (ValueError, TypeError):
-                pass
-
-        # Case 4: no dates at all — place this degree before the anchor entry
-        if anchor_start_yr is not None:
-            end_yr   = anchor_start_yr      # ends where the previous entry started
-            start_yr = end_yr - _dur
-            return f"{start_yr} - {end_yr}"
-
-        # Case 5: no anchor either — use calculated years from the first entry
-        return f"{edu['start']} - {edu['end']}"
-
-    if _p_edu_list:
-        _merged_edu = []
-        _prev_start_yr = None   # start year of the entry just added (for sequencing)
-        for _pe in _p_edu_list:
-            _yr_str = _resolve_edu_years(_pe, anchor_start_yr=_prev_start_yr)
-            # Extract the start year of THIS entry to anchor the next one
-            try:
-                _prev_start_yr = int(_yr_str.split("-")[0].strip()[:4])
-            except (ValueError, TypeError, IndexError):
-                pass
-            _merged_edu.append({
-                "university":  (_pe.get("institution") or "").strip(),
-                "degree":      (_pe.get("degree")       or "").strip(),
-                "cgpa":        (_pe.get("cgpa")         or "").strip(),
-                "years":       _yr_str,
-                "achievement": _clean_black_squares((_pe.get("achievement")  or "").strip()),
-            })
-    else:
-        # No profile education — fall back to whatever the AI returned
-        _ai_edu_raw = result.get("education") or {}
-        if isinstance(_ai_edu_raw, list):
-            _merged_edu = _ai_edu_raw
-        else:
-            _merged_edu = [{
-                "university":  (_ai_edu_raw.get("university") or "").strip(),
-                "degree":      (_ai_edu_raw.get("degree")     or "").strip(),
-                "cgpa":        (_ai_edu_raw.get("cgpa")       or "").strip(),
-                "years":       f"{edu['start']} - {edu['end']}",
-                "achievement": "",
-            }]
-    result["education"] = _merged_edu
-
-    cv = {
-        "totalYears":  total_years,
-        "title":       result.get("title",       req.job_title),
-        "summary":     result.get("summary",     ""),
-        "skills":      result.get("skills",      []),
-        "competencies":result.get("competencies",""),
-        "keywords":    result.get("keywords",    ""),
-        "technologies":result.get("technologies",{"mustHave": [], "niceToHave": [], "additional": []}),
-        "companies":   result.get("companies",   []),
-        "projects":    result.get("projects",    []),
-        "relatedTech": result.get("relatedTech", []),
-        "education":   _merged_edu,   # always use merged (profile-priority) education
-    }
-
-    cv_sanitised = sanitise_cv(cv)
-    cv_companies = fix_companies(cv_sanitised, companies_list=companies_list, years_exp=years_exp_clean)
-    cv_polished  = final_polish(cv_companies, years_exp=years_exp_clean)
-
-    _log.info("[GenCV|%s] CV post-processing complete — title=%r totalYears=%r",
-              provider_host,
-              cv_polished.get("title", "")[:60],
-              cv_polished.get("totalYears", ""))
-    return cv_polished
-
-async def call_cerebras(req: CVRequest) -> tuple:
-    import time as _t
-    raw_keys = req.cerebras_keys or []
-    if not raw_keys:
-        raise HTTPException(400, "No Cerebras keys provided.")
-    valid_keys = [k.strip() for k in raw_keys if k and k.strip()]
-    if not valid_keys:
-        raise HTTPException(400, "No valid Cerebras keys found.")
-
-    model = req.model or "llama3.1-8b"
-    sorted_keys = _prioritised_keys(valid_keys)
-    errors_by_key = []
-    rate_limited_count = 0
-
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=90, write=15, pool=10)) as client:
-        for i, key in enumerate(sorted_keys):
-            mk = mask(key)
-            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-
-            # Skip keys still in their rate-limit cooldown window (same pattern as Groq)
-            cooldown_until = _key_rate_limited_until.get(mk, 0)
-            if cooldown_until > _t.time():
-                remaining = int(cooldown_until - _t.time())
-                rate_limited_count += 1
-                msg = f"Key {i+1} ({mk}): still rate-limited ({remaining}s remaining)"
-                errors_by_key.append(msg)
-                _log.warning("[Cerebras] %s — skipping", msg)
-                continue
-
-            # Quick probe to skip obviously bad/rate-limited keys
-            try:
-                probe = await client.post(
-                    CEREBRAS_URL,
-                    headers=headers,
-                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
-                    timeout=15,
-                )
-                if probe.status_code in (401, 403):
-                    errors_by_key.append(f"Key {i+1} ({mk}): invalid key")
-                    continue
-                if probe.status_code == 429:
-                    rate_limited_count += 1
-                    retry_after = int(probe.headers.get("retry-after", 60))
-                    _key_rate_limited_until[mk] = _t.time() + min(retry_after, 120)
-                    errors_by_key.append(f"Key {i+1} ({mk}): rate limited (retry-after {retry_after}s)")
-                    # Small gap before trying next key
-                    if i < len(sorted_keys) - 1:
-                        await asyncio.sleep(2)
-                    continue
-            except Exception as e:
-                errors_by_key.append(f"Key {i+1} ({mk}): probe failed - {str(e)[:50]}")
-                continue
-
-            try:
-                cv = await generate_cv_dynamic(req, client, key, model, CEREBRAS_URL, headers)
-                _key_usage[mk] = _key_usage.get(mk, 0) + 1
-                _log_generation(req.job_title, mk, i, 0, model, True)
-                return cv, mk, i
-            except _RateLimitError as e:
-                rate_limited_count += 1
-                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)}")
-                if i < len(sorted_keys) - 1:
-                    await asyncio.sleep(3)
-                continue
-            except Exception as e:
-                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:100]}")
-                continue
-
-    if rate_limited_count == len(sorted_keys):
-        raise HTTPException(429, f"All Cerebras keys are rate-limited. Wait a moment and try again. Details: {'; '.join(errors_by_key[:3])}")
-    raise HTTPException(502, f"All Cerebras keys failed: {'; '.join(errors_by_key[:3])}")
-
-async def call_groq(req: CVRequest) -> tuple:
-    import time as _t
-    raw_keys = req.groq_keys or []
-    if not raw_keys:
-        _log.error("[Groq] No Groq keys provided in request")
-        raise HTTPException(400, "No Groq keys provided.")
-    valid_keys = [k.strip() for k in raw_keys if k and k.strip().startswith("gsk_")]
-    if not valid_keys:
-        _log.error("[Groq] %d keys provided but none start with 'gsk_' — all invalid format",
-                   len(raw_keys))
-        raise HTTPException(400, "No valid Groq keys (must start with gsk_).")
-
-    model = req.model or "llama-3.1-8b-instant"
-    sorted_keys = _prioritised_keys(valid_keys)
-    errors_by_key = []
-    rate_limited_count = 0
-
-    _log.info("[Groq] Starting generation — model=%s, keys=%d, job_title=%r",
-              model, len(sorted_keys), req.job_title[:60])
-
-    # read=50 gives each attempt up to 50s; call_llm_atomic uses 45s per try
-    # with its own retry loop, so the outer client must not cut it short
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=15, read=50, write=20, pool=10)
-    ) as client:
-        for i, key in enumerate(sorted_keys):
-            mk = mask(key)
-            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-
-            # Skip keys still in their rate-limit cooldown window
-            cooldown_until = _key_rate_limited_until.get(mk, 0)
-            if cooldown_until > _t.time():
-                remaining = int(cooldown_until - _t.time())
-                rate_limited_count += 1
-                msg = f"Key {i+1} ({mk}): still rate-limited ({remaining}s remaining)"
-                errors_by_key.append(msg)
-                _log.warning("[Groq] %s — skipping", msg)
-                continue
-
-            _log.info("[Groq] Trying key %d/%d (%s) with model %s",
-                      i + 1, len(sorted_keys), mk, model)
-            try:
-                cv = await generate_cv_dynamic(req, client, key, model, GROQ_URL, headers)
-                _key_usage[mk] = _key_usage.get(mk, 0) + 1
-                _log_generation(req.job_title, mk, i, 0, model, True)
-                _log.info("[Groq] SUCCESS — key %d (%s)", i + 1, mk)
-                return cv, mk, i
-
-            except _RateLimitError as e:
-                rate_limited_count += 1
-                msg = f"Key {i+1} ({mk}): {str(e)}"
-                errors_by_key.append(msg)
-                _log.warning("[Groq] RATE-LIMIT on key %d (%s): %s", i + 1, mk, e)
-                if i < len(sorted_keys) - 1:
-                    _log.info("[Groq] Sleeping 3s before next key …")
-                    await asyncio.sleep(3)
-                continue
-
-            except Exception as e:
-                msg = f"Key {i+1} ({mk}): {str(e)[:120]}"
-                errors_by_key.append(msg)
-                _log.error("[Groq] FAILED key %d (%s): %s", i + 1, mk, str(e)[:200])
-                continue
-
-    _log.error("[Groq] All %d key(s) failed. rate_limited=%d. Errors: %s",
-               len(sorted_keys), rate_limited_count, " | ".join(errors_by_key))
-
-    if rate_limited_count > 0 and rate_limited_count == len(sorted_keys):
-        raise HTTPException(
-            429,
-            f"All Groq keys are currently rate-limited. "
-            f"Wait ~60 seconds and try again, or switch to Cerebras/Gemini in Settings. "
-            f"Details: {'; '.join(errors_by_key[:3])}"
-        )
-    # Check if all failures were timeouts
-    timeout_count = sum(1 for e in errors_by_key if "timed out" in e.lower() or "timeout" in e.lower())
-    if timeout_count == len(sorted_keys):
-        raise HTTPException(
-            504,
-            f"Groq timed out on all keys — the model took too long to respond. "
-            f"Try: (1) switch to a faster model in Settings, "
-            f"(2) use Cerebras or Gemini instead, or "
-            f"(3) shorten the job description. "
-            f"Details: {'; '.join(errors_by_key[:2])}"
-        )
-    raise HTTPException(502, f"All Groq keys failed: {'; '.join(errors_by_key[:3])}")
-
-async def call_gemini(req: CVRequest) -> tuple:
-    raw_keys = req.gemini_keys or []
-    if not raw_keys:
-        raise HTTPException(400, "No Gemini keys provided.")
-    valid_keys = [k.strip() for k in raw_keys if k and k.strip()]
-    if not valid_keys:
-        raise HTTPException(400, "No valid Gemini keys found.")
-
-    model = req.model or "gemini-2.0-flash"
-    sorted_keys = _prioritised_keys(valid_keys)
-    errors_by_key = []
-    rate_limited_count = 0
-
-    async with httpx.AsyncClient(timeout=50) as client:
-        for i, key in enumerate(sorted_keys):
-            mk = mask(key)
-
-            try:
-                sys_p, usr_p = build_dynamic_prompt(req)
-                url = f"{GEMINI_URL}/{model}:generateContent?key={key}"
-                payload = {
-                    "systemInstruction": {"parts": [{"text": sys_p}]},
-                    "contents": [{"role": "user", "parts": [{"text": usr_p}]}],
-                    "generationConfig": {"temperature": 0.2, "maxOutputTokens": 8000},
-                }
-                r = await client.post(url, headers={"Content-Type": "application/json"}, json=payload)
-
-                if r.status_code == 429:
-                    rate_limited_count += 1
-                    retry_after = int(r.headers.get("retry-after", 60))
-                    import time as _t2
-                    _key_rate_limited_until[mk] = _t2.time() + min(retry_after, 120)
-                    errors_by_key.append(f"Key {i+1} ({mk}): rate limited (retry-after {retry_after}s)")
-                    if i < len(sorted_keys) - 1:
-                        await asyncio.sleep(3)
-                    continue
-
-                if r.status_code == 200:
-                    raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-                    result = extract_json(raw)
-
-                    years_exp = (req.years_exp or "").strip()
-                    years_exp_clean = years_exp.replace("+", "").strip()
-                    total_years = _calc_total_years(years_exp_clean)
-                    _g_profile_work = (req.profile_data or {}).get("work", []) if req.profile_data else []
-                    companies_list = _build_dynamic_companies(years_exp_clean, profile_work=_g_profile_work or None)
-                    _raw_g_edu = (req.profile_data or {}).get("edu", []) if req.profile_data else []
-                    profile_edu = [_normalise_edu_entry(e) for e in _raw_g_edu] if _raw_g_edu else []
-                    edu = _build_education_year(years_exp_clean, profile_edu=profile_edu or None)
-
-                    # Hard-truncate Gemini AI output to exact company count
-                    result["companies"] = result.get("companies", [])[:len(companies_list)]
-
-                    for j, co in enumerate(result.get("companies", [])):
-                        if j < len(companies_list):
-                            co["company"] = companies_list[j]["name"]
-                            co["dateRange"] = f"{companies_list[j]['start']} - {companies_list[j]['end']}"
-
-                    # Education: merge AI result with profile data; profile always wins
-                    # ── Gemini edu merge — same UI-first, auto-sequencing logic ──
-                    def _resolve_edu_years_g(pe: dict, anchor_start_yr: int = None) -> str:
-                        _ef  = str(pe.get("from") or "").strip()
-                        _et  = str(pe.get("to")   or "").strip()
-                        _deg = (pe.get("degree")  or "").strip()
-                        _dur = _infer_degree_duration(_deg)
-                        if _ef and _et:
-                            return f"{_ef} - {_et}"
-                        if _et and not _ef:
-                            try:
-                                return f"{int(_et[:4]) - _dur} - {_et}"
-                            except (ValueError, TypeError):
-                                pass
-                        if _ef and not _et:
-                            try:
-                                return f"{_ef} - {int(_ef[:4]) + _dur}"
-                            except (ValueError, TypeError):
-                                pass
-                        if anchor_start_yr is not None:
-                            return f"{anchor_start_yr - _dur} - {anchor_start_yr}"
-                        return f"{edu['start']} - {edu['end']}"
-
-                    if profile_edu:
-                        _merged_edu_g = []
-                        _prev_s_g = None
-                        for _pe_g in profile_edu:
-                            _yr_g = _resolve_edu_years_g(_pe_g, anchor_start_yr=_prev_s_g)
-                            try:
-                                _prev_s_g = int(_yr_g.split("-")[0].strip()[:4])
-                            except (ValueError, TypeError, IndexError):
-                                pass
-                            _merged_edu_g.append({
-                                "university":  (_pe_g.get("institution") or "").strip(),
-                                "degree":      (_pe_g.get("degree")       or "").strip(),
-                                "cgpa":        (_pe_g.get("cgpa")         or "").strip(),
-                                "years":       _yr_g,
-                                "achievement": _clean_black_squares((_pe_g.get("achievement")  or "").strip()),
-                            })
-                    else:
-                        _ai_edu_g = result.get("education") or {}
-                        if isinstance(_ai_edu_g, list):
-                            _merged_edu_g = _ai_edu_g
-                        else:
-                            _merged_edu_g = [{
-                                "university":  (_ai_edu_g.get("university") or "").strip(),
-                                "degree":      (_ai_edu_g.get("degree")     or "").strip(),
-                                "cgpa":        (_ai_edu_g.get("cgpa")       or "").strip(),
-                                "years":       f"{edu['start']} - {edu['end']}",
-                                "achievement": "",
-                            }]
-
-                    cv = {
-                        "totalYears":   total_years,
-                        "title":        result.get("title",        req.job_title),
-                        "summary":      result.get("summary",      ""),
-                        "skills":       result.get("skills",       []),
-                        "competencies": result.get("competencies", ""),
-                        "keywords":     result.get("keywords",     ""),
-                        "technologies": result.get("technologies", {}),
-                        "companies":    result.get("companies",    []),
-                        "projects":     result.get("projects",     []),
-                        "relatedTech":  result.get("relatedTech",  []),
-                        "education":    _merged_edu_g,
-                    }
-
-                    cv_sanitised = sanitise_cv(cv)
-                    cv_companies = fix_companies(cv_sanitised, companies_list=companies_list, years_exp=years_exp_clean)
-                    cv_polished = final_polish(cv_companies, years_exp=years_exp_clean)
-
-                    _key_usage[mk] = _key_usage.get(mk, 0) + 1
-                    return cv_polished, mk, i
-                else:
-                    errors_by_key.append(f"Key {i+1} ({mk}): HTTP {r.status_code}")
-                    continue
-            except Exception as e:
-                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:100]}")
-                continue
-
-    if rate_limited_count == len(sorted_keys):
-        raise HTTPException(429, f"All Gemini keys are rate-limited. Try again shortly. Details: {'; '.join(errors_by_key[:3])}")
-    raise HTTPException(502, f"All Gemini keys failed: {'; '.join(errors_by_key[:3])}")
-
-async def call_qwen(req: CVRequest) -> tuple:
-    """
-    Qwen / Alibaba DashScope — OpenAI-compatible international endpoint.
-    Free tier: 1M input + 1M output tokens for 90 days on new accounts.
-    API key:   https://bailian.console.aliyun.com → API Keys → Create API Key
-    Key format: sk-XXXXXXXXXXXXXXXXXX
-    """
-    import time as _t
-    raw_keys = req.qwen_keys or []
-    if not raw_keys:
-        raise HTTPException(400, "No Qwen / DashScope keys provided.")
-    valid_keys = [k.strip() for k in raw_keys if k and k.strip()]
-    if not valid_keys:
-        raise HTTPException(400, "No valid Qwen keys found.")
-
-    model = req.model or "qwen-plus"
-    sorted_keys = _prioritised_keys(valid_keys)
-    errors_by_key = []
-    rate_limited_count = 0
-
-    _log.info("[Qwen] model=%s keys=%d job=%r", model, len(sorted_keys), req.job_title[:60])
-
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=10, read=50, write=10, pool=5)
-    ) as client:
-        for i, key in enumerate(sorted_keys):
-            mk = mask(key)
-            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-
-            cooldown_until = _key_rate_limited_until.get(mk, 0)
-            if cooldown_until > _t.time():
-                remaining = int(cooldown_until - _t.time())
-                rate_limited_count += 1
-                errors_by_key.append(f"Key {i+1} ({mk}): rate-limited ({remaining}s left)")
-                continue
-
-            try:
-                cv = await generate_cv_dynamic(req, client, key, model, QWEN_URL, headers,
-                                               max_output_tokens=8000)
-                _key_usage[mk] = _key_usage.get(mk, 0) + 1
-                _log_generation(req.job_title, mk, i, 0, model, True)
-                _log.info("[Qwen] SUCCESS key %d (%s)", i + 1, mk)
-                return cv, mk, i
-            except _RateLimitError as e:
-                rate_limited_count += 1
-                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)}")
-                if i < len(sorted_keys) - 1:
-                    await asyncio.sleep(3)
-                continue
-            except Exception as e:
-                errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:120]}")
-                _log.error("[Qwen] FAILED key %d (%s): %s", i + 1, mk, str(e)[:200])
-                continue
-
-    if rate_limited_count == len(sorted_keys):
-        raise HTTPException(429, f"All Qwen keys are rate-limited. Wait ~60s then retry. Details: {'; '.join(errors_by_key[:3])}")
-    raise HTTPException(502, f"All Qwen keys failed: {'; '.join(errors_by_key[:3])}")
-
-# ==============================================================================
-# HEALTH CHECK
-# ==============================================================================
-@app.get("/health")
-async def health():
-    ollama_ok = False
-    try:
-        async with httpx.AsyncClient(timeout=3) as c:
-            r = await c.get(f"{OLLAMA_URL}/api/tags")
-            ollama_ok = r.status_code == 200
-    except Exception:
-        pass
-    return {"status": "ok", "ollama": "ok" if ollama_ok else "unreachable"}
-
-# ==============================================================================
-# MAIN GENERATION ENDPOINT
-# ==============================================================================
-@app.post("/generate-cv")
-async def generate_cv(req: CVRequest):
-    try:
-        if req.provider == "cerebras":
-            cv_data, key_used, key_idx = await call_cerebras(req)
-        elif req.provider == "groq":
-            cv_data, key_used, key_idx = await call_groq(req)
-        elif req.provider == "gemini":
-            cv_data, key_used, key_idx = await call_gemini(req)
-        elif req.provider == "qwen":
-            cv_data, key_used, key_idx = await call_qwen(req)
-        else:
-            raise HTTPException(400, f"Unsupported provider: {req.provider}")
-        
-        return {
-            "cv": cv_data,
-            "provider": req.provider,
-            "model": req.model,
-            "key_used": key_used,
-            "key_index": key_idx,
-            "ui_template": req.ui_template or "ui1",
-        }
-    except asyncio.TimeoutError:
-        raise HTTPException(504, "CV generation timed out (> 5 minutes). Try again or switch provider.")
-    except HTTPException:
-        raise
+        list(segs)   # consume iterator to force full model load
+        print(f"[Warmup] {label} ready")
     except Exception as e:
-        raise HTTPException(500, str(e))
+        print(f"[Warmup] {label} warmup error (will retry on first use): {e}")
 
-# ==============================================================================
-# PDF GENERATION
-# ==============================================================================
-class PDFRequest(BaseModel):
-    cv: dict
-    filename: str = "CV.pdf"
-    profileData: Optional[dict] = None
-    ui_template: Optional[str] = "ui1"   # "ui1" | "ui2" | "ui3"
+# Daemon threads — uvicorn starts immediately; models load in background.
+# tiny.en finishes in ~1-2s. small may take longer on first run (downloads ~460MB).
+# Wait for "[Warmup] small ready" in the log before using the extension.
+_threading.Thread(target=_warmup_model, args=(_model_en,    "tiny.en"), daemon=True).start()
+_threading.Thread(target=_warmup_model, args=(_model_multi, "small"),   daemon=True).start()
 
+http_client = httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=120, write=120, pool=10))
 
-# ==============================================================================
-# SHARED CONTACT LINK HELPER — used by UI1, UI2, and UI3
-# Detects phone numbers (any value with more than 4 digit characters) and
-# returns a tel: URI. Also handles email (mailto:) and URLs (https://).
-# ==============================================================================
-import re as _contact_re
+# Dedicated client for Gemini STT.
+# Read/write timeouts scale with audio size at call time via the per-request override
+# (see transcribe_with_gemini). Base timeout is generous so large payloads are not
+# cut short; Gemini always falls back to Whisper on any error.
+_gemini_stt_client = httpx.AsyncClient(
+    timeout=httpx.Timeout(connect=5, read=60, write=60, pool=5),
+)
 
-def _contact_href(val: str) -> str:
-    """Return a clickable URI for a contact value, or '' if not linkable.
+# Dedicated executor for Whisper transcription.
+# max_workers=2: allows a second WS session to start pass-1 while the first is
+# running pass-2, preventing head-of-line blocking between sessions.
+# Each worker is a dedicated OS thread; two threads share CPU time but don't
+# contend on Python's GIL since faster-whisper releases it during C inference.
+import concurrent.futures as _cf
+_whisper_executor = _cf.ThreadPoolExecutor(max_workers=2, thread_name_prefix="whisper")
 
-    Rules (applied in order):
-      1. Already a full URI (https://, http://, mailto:, tel:) → use as-is.
-      2. Contains @ → email → mailto:
-      3. Contains more than 4 digit characters → phone → tel:
-         Accepts any formatting: +92 318 4885878, (021) 1234-5678, etc.
-      4. No spaces, contains a dot, looks like a domain → https://
-      5. Anything else (location, freeform text) → '' (render as plain text).
-    """
-    v = (val or "").strip()
-    if not v:
-        return ""
-    # Case 1: already a full URI
-    if v.startswith(("https://", "http://", "mailto:", "tel:")):
-        return v
-    # Case 2: email
-    if "@" in v:
-        return f"mailto:{v}"
-    # Case 3: phone — strip everything except digits, check count > 4
-    _digits = _contact_re.sub(r"[^\d]", "", v)
-    if len(_digits) > 4:
-        # Keep +, digits, spaces, dashes, parens for the tel: value
-        _tel_val = _contact_re.sub(r"\s+", "", v)
-        return f"tel:{_tel_val}"
-    # Case 4: bare URL
-    if " " not in v and "." in v and _contact_re.search(r"[a-zA-Z0-9]\.[a-zA-Z]{2,}", v):
-        return f"https://{v}"
-    return ""
+# ── Keyword sets for fast O(1) single-word lookups ───────────────────────────
+# Multi-word phrases (e.g. "difference between") still need substring search.
+# Single-word entries are split out into frozensets for faster membership tests.
+def _split_kw_list(lst):
+    """Split keyword list into (single_words_set, multi_word_phrases_list)."""
+    singles = frozenset(w for w in lst if " " not in w)
+    multis  = [w for w in lst if " " in w]
+    return singles, multis
 
+# (populated below after word-list constants are fully defined)
 
-# ==============================================================================
-# UI PDF BUILDERS — imported from UI/ package
-# To add a new template: create UI/UI4.py with a build_cv_pdf_ui4 function,
-# then register it in _PDF_BUILDERS below.
-# ==============================================================================
+def _fast_match(transcript_lower: str, singles: frozenset, multis: list) -> bool:
+    """Check transcript against a precompiled keyword set + phrase list."""
+    words = transcript_lower.split()
+    if any(w in singles for w in words):
+        return True
+    return any(phrase in transcript_lower for phrase in multis)
 
-# Inject shared helpers into the UI._shared shim BEFORE importing the builders,
-# so each builder module can do `from UI._shared import ...` at module level.
-import UI._shared as _ui_shared
-_ui_shared._normalise_edu_entry = _normalise_edu_entry
-_ui_shared._infer_degree_duration = _infer_degree_duration
-_ui_shared._contact_href = _contact_href
+import urllib.parse
 
-from UI.UI1 import build_cv_pdf
-from UI.UI2 import build_cv_pdf_ui2
-from UI.UI3 import build_cv_pdf_ui3
-from UI.UI4 import build_cv_pdf_ui4
-from UI.UI5 import build_cv_pdf_ui5
-from UI.UI6 import build_cv_pdf_ui6
-
-# ==============================================================================
-# PDF BUILDER REGISTRY — add new templates here only
-# ==============================================================================
-_PDF_BUILDERS = {
-    "ui1": build_cv_pdf,       # Classic Executive (original)
-    "ui2": build_cv_pdf_ui2,   # Modern Sidebar (teal two-column)
-    "ui3": build_cv_pdf_ui3,   # Contemporary Card (slate-blue / gold)
-    "ui4": build_cv_pdf_ui4,   # Executive Dark (charcoal sidebar / gold)
-    "ui5": build_cv_pdf_ui5,   # Clean Minimal (white / emerald)
-    "ui6": build_cv_pdf_ui6,   # Bold Split (indigo header / coral)
+# ── Language detection ────────────────────────────────────────────────────────
+URDU_UNICODE_RANGE  = re.compile(r'[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]')
+HINDI_UNICODE_RANGE = re.compile(r'[\u0900-\u097F\uA8E0-\uA8FF\u1CD0-\u1CFF]')
+ROMAN_SOUTH_ASIAN_WORDS = {
+    # Core question words
+    "kya","kyun","kaise","kab","kahan","kaun","kitna","konsa","kitne",
+    # Pronouns / address
+    "aap","ap","mujhe","mera","meri","mere","yeh","woh","hum","tum","unka",
+    # Common verbs / verb forms
+    "hai","hain","tha","thi","the","ho","hoga","hogi","hote","hoti",
+    "bata","batao","bataiye","samajh","samjhao","samjhaiye","pata","maloom",
+    "karo","karna","karta","karti","karein","karte","kiya","kiye","karo",
+    "saktay","sakta","sakti","saken","chahiye","chahie",
+    "use","istemaal","lagao","likhain","dikhao","dekho",
+    # Particles / connectors
+    "toh","phir","lekin","aur","ya","ke","ka","ki","ko","se","par","mein",
+    "ek","isko","usko","inhe","unhe","jo","jab","jaise","warna","phir","matlab",
+    # Responses / affirmations
+    "ji","jee","haan","nahi","nahin","bilkul","zaroor","theek","achha","accha",
+    "shayad","waise","isliye","abhi","pehle","baad","saath",
+    # Interview-specific Roman Urdu
+    "farq","fark","mukhtalif","complexity","mushkil","asaan","behtar","zyada",
+    "thoda","bahut","zyada","kam","bari","choti","puri","poori",
+    "interview","sawaal","jawab","baat","kaam","karo","lagta","lagti",
+    # Ownership / identity
+    "apna","apni","apne","humara","hamara","tumhara","mera","tera","unka",
+    "shukriya","meherbani","please","acha",
 }
 
+# Universal terms that are commonly misheared regardless of tech stack
+UNIVERSAL_KEYWORDS = [
+    "API", "REST", "GraphQL", "WebSocket", "HTTP", "HTTPS",
+    "JWT", "OAuth", "CORS", "CI/CD", "Docker", "Kubernetes",
+    "microservices", "SQL", "NoSQL", "Redis", "MongoDB",
+    "Git", "GitHub", "GitLab", "Agile", "Scrum", "TDD",
+    "async", "await", "concurrency", "thread", "deadlock",
+    "dependency injection", "design pattern", "SOLID",
+    "load balancer", "cache", "CDN", "cloud", "serverless",
+]
 
-@app.post("/generate-pdf")
-async def generate_pdf(req: PDFRequest):
+# Pre-compiled regex for multi-concept detection — compiled once at startup,
+# reused on every PROCESS call instead of being compiled inside the hot loop.
+_CONCEPT_SPLIT_RE = re.compile(r',\s*|\s+and\s+|\s+or\s+')
+
+
+def detect_language(text: str) -> str:
+    if not text:
+        return "english"
+    total_chars = len(text.replace(" ", ""))
+    urdu_chars  = len(URDU_UNICODE_RANGE.findall(text))
+    if total_chars > 0 and urdu_chars / total_chars > 0.2:
+        return "foreign_script"
+    hindi_chars = len(HINDI_UNICODE_RANGE.findall(text))
+    if total_chars > 0 and hindi_chars / total_chars > 0.2:
+        return "foreign_script"
+    words_lower = text.lower().split()
+    hits = sum(1 for w in words_lower if w in ROMAN_SOUTH_ASIAN_WORDS)
+    if hits >= 2 or (hits >= 1 and len(words_lower) <= 5):
+        return "roman_south_asian"
+    return "english"
+
+
+# ── Session context extraction ────────────────────────────────────────────────
+# Called ONCE per session when job context is received.
+# Extracts: tech stack, programming language, domain keywords — all dynamically.
+# Result is cached on the session object so no repeated LLM calls.
+
+async def extract_session_context(job_title: str, job_desc: str, cv: str, api_key: str) -> dict:
+    """
+    Uses a fast LLM to extract structured context from the job posting.
+    Returns:
+      - tech_keywords: list of terms to boost in STT (Deepgram keyterms / Whisper prompt)
+      - primary_language: main programming language (Python, JavaScript, C#, Java, etc.)
+      - domain: short domain label (backend, frontend, fullstack, data, devops, mobile, etc.)
+      - stack_summary: one-line summary of the tech stack for use in prompts
+    """
+    if not job_title and not job_desc:
+        return {
+            "tech_keywords": [],
+            "primary_language": "the relevant language",
+            "domain": "software engineering",
+            "stack_summary": "a general software engineering role",
+        }
+
+    input_text = f"Job Title: {job_title}\n"
+    if job_desc:
+        input_text += f"Job Description:\n{job_desc}"
+    if cv:
+        input_text += f"\n\nCandidate CV / Resume:\n{cv}"
+
     try:
-        builder = _PDF_BUILDERS.get(req.ui_template or "ui1", build_cv_pdf)
-        pdf_bytes = builder(req.cv, profile_data=req.profileData)
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{req.filename}"'}
+        resp = await http_client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": GROQ_FAST_MODEL,
+                "messages": [{
+                    "role": "user",
+                    "content": (
+                        "Extract structured info from this job posting and CV. "
+                        "Respond with ONLY valid JSON, no explanation, no markdown.\n\n"
+                        "JSON format:\n"
+                        "{\n"
+                        '  "tech_keywords": ["list", "of", "40", "domain-specific", "terms"],\n'
+                        '  "primary_language": "for tech roles: main language e.g. Python/C#/JS. For non-tech: write \'none\'",\n'
+                        '  "domain": "one of: backend, frontend, fullstack, mobile, data, devops, ml, embedded, qa, seo, marketing, sales, hr, finance, design, content, product, operations, customer_success",\n'
+                        '  "domain_type": "one of: technical OR non_technical",\n'
+                        '  "role_category": "one descriptive phrase e.g. \'SEO & Content Strategist\' or \'Senior .NET Developer\'",\n'
+                        '  "stack_summary": "one sentence summarising the core skills/tools e.g. \'SEO strategy with Ahrefs, Semrush, Google Analytics and content marketing\' or \'Python Django REST API with PostgreSQL and AWS\'"\n'
+                        "}\n\n"
+                        "Rules for tech_keywords — CRITICAL:\n"
+                        "- For TECHNICAL roles: include every framework, library, ORM, tool, service, database, pattern\n"
+                        "- For NON-TECHNICAL roles (SEO, marketing, sales, HR, finance, design, content, product):\n"
+                        "  include every tool (Ahrefs, Semrush, Google Analytics, HubSpot, Salesforce, Figma etc.)\n"
+                        "  every methodology (on-page SEO, link building, A/B testing, content strategy etc.)\n"
+                        "  every platform (Google Ads, Meta Ads, LinkedIn, Shopify etc.)\n"
+                        "  every metric (CTR, CPC, ROAS, DA, DR, conversion rate, bounce rate etc.)\n"
+                        "- Include terms a speech-to-text model might mishear (proper nouns, acronyms, brand names)\n"
+                        "- Max 40 items, most important first\n"
+                        "- Do NOT include generic words like 'experience', 'team', 'skills'\n\n"
+                        f"{input_text}"
+                    )
+                }],
+                "max_tokens": 600,
+                "temperature": 0.0,
+            }
         )
+        raw = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        # Strip any markdown fences if the model adds them despite instructions
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
+        parsed = json.loads(raw)
+        print(f"[Session] Stack: {parsed.get('stack_summary','?')} | Lang: {parsed.get('primary_language','?')} | Domain: {parsed.get('domain','?')}")
+        print(f"[Session] Keywords extracted: {parsed.get('tech_keywords',[])}")
+        return parsed
     except Exception as e:
-        raise HTTPException(500, f"PDF generation failed: {e}")
+        print(f"[Session extract error] {e}")
+        # Fallback: extract capitalised tokens from job desc directly
+        fallback_keywords = []
+        if job_title:
+            fallback_keywords += [w.strip("().,") for w in job_title.split() if len(w) > 2]
+        if job_desc:
+            tokens = re.findall(r'\b[A-Z][A-Za-z.]*[A-Z]\w*|\b[A-Z]{2,}\b', job_desc[:500])
+            fallback_keywords += tokens[:15]
+        return {
+            "tech_keywords": list(dict.fromkeys(fallback_keywords))[:20],
+            "primary_language": "the relevant language",
+            "domain": "software engineering",
+            "stack_summary": job_title or "a technical role",
+        }
 
-# ==============================================================================
-# KEY CHECK ENDPOINTS (simplified)
-# ==============================================================================
-@app.post("/check-cerebras-keys")
-async def check_cerebras_keys(body: dict):
-    keys = body.get("keys", [])
-    model = body.get("model", "llama3.1-8b")
-    results = []
-    async with httpx.AsyncClient(timeout=10) as client:
-        for key in keys:
-            key = (key or "").strip()
-            if not key:
-                results.append({"key": "***", "status": "empty"})
-                continue
+
+# ── STT ───────────────────────────────────────────────────────────────────────
+
+async def transcribe_with_deepgram(
+    audio_blob: bytes,
+    session_ctx: dict,
+    lang_mode:   str = "auto",
+) -> str:
+    dg_language = "ur" if lang_mode == "urdu" else "en"
+
+    # Combine universal terms + session-specific tech keywords
+    tech_kw  = session_ctx.get("tech_keywords", [])
+    keywords = list(dict.fromkeys(UNIVERSAL_KEYWORDS + tech_kw))[:40]
+
+    # nova-3 base params — no 'keywords' param (that's nova-2 only)
+    # nova-3 uses 'keyterm' for boosting specific terms
+    params = {
+        "model":            DEEPGRAM_MODEL,
+        "language":         dg_language,
+        "smart_format":     "true",
+        "punctuate":        "true",
+        "filler_words":     "false",
+        "diarize":          "false",
+        "profanity_filter": "false",
+    }
+
+    url = DEEPGRAM_URL + "?" + "&".join(f"{k}={v}" for k, v in params.items())
+    if keywords:
+        # nova-3 uses 'keyterm=term' (no boost value, just the term)
+        url += "&" + "&".join(
+            "keyterm=" + urllib.parse.quote(kw) for kw in keywords
+        )
+
+    blob_mb = len(audio_blob) / (1024 * 1024)
+    print(f"[Deepgram] {blob_mb:.1f} MB | Lang: {dg_language} | Keyterms: {len(keywords)}")
+
+    try:
+        resp = await http_client.post(
+            url,
+            headers={"Authorization": f"Token {DEEPGRAM_API_KEY}", "Content-Type": "audio/webm"},
+            content=audio_blob,
+        )
+        if resp.status_code != 200:
+            print(f"[Deepgram] HTTP {resp.status_code}: {resp.text[:200]}")
+            return ""
+
+        transcript = (
+            resp.json()
+                .get("results", {})
+                .get("channels", [{}])[0]
+                .get("alternatives", [{}])[0]
+                .get("transcript", "")
+                .strip()
+        )
+        print(f"[Deepgram] {len(transcript)} chars")
+        return transcript
+
+    except httpx.TimeoutException as e:
+        print(f"[Deepgram timeout] {e}")
+        return ""
+    except Exception as e:
+        print(f"[Deepgram error] {e}")
+        return ""
+
+
+async def transcribe_with_whisper(
+    audio_blob:  bytes,
+    session_ctx: dict,
+    lang_mode:   str = "auto",
+) -> str:
+    # Pass audio as BytesIO — no temp file, no disk I/O.
+    # faster-whisper's decode_audio() accepts BinaryIO via PyAV's av.open(),
+    # which handles webm/opus in-memory exactly like a file path.
+    # On Windows this saves ~150-400ms of NTFS write + fsync latency per call.
+
+    # ── Model + parameter selection ───────────────────────────────────────────
+    #
+    # english → tiny.en, forced "en", English tech-keyword prompt.
+    #           Fastest possible path — no language detection overhead.
+    #
+    # urdu    → base multilingual, forced "ur", Urdu-script hint prompt.
+    #           Always uses the multilingual model since input is Urdu only.
+    #
+    # auto    → TWO-PASS strategy for best speed + accuracy:
+    #   Pass 1: tiny.en (forced "en") — runs in ~2s, identical to English mode.
+    #           We check the result with detect_language().
+    #           • If English  → done. Return immediately (same speed as english mode).
+    #           • If South Asian (Roman Urdu / Urdu script) → run Pass 2.
+    #   Pass 2: base multilingual (forced "ur") — only runs when Urdu detected.
+    #           Produces accurate Roman Urdu transcription.
+    #           ~4-5s total (2s pass-1 + 2-3s pass-2), only paid when needed.
+    #
+    # This means auto mode is IDENTICAL in speed to english mode for English
+    # speech, and only incurs the multilingual overhead when Urdu is actually spoken.
+
+    loop = asyncio.get_event_loop()
+    _estimated_duration_s = len(audio_blob) / 3_000
+    _en_prompt  = build_whisper_prompt(session_ctx)
+    # Rich bilingual prompt — Urdu script sets the domain register; Roman Urdu
+    # phrases prime the decoder for the exact vocabulary used in Pakistani tech
+    # interviews. Whisper uses this as prior context before hearing any audio,
+    # dramatically reducing phonetic substitution errors on words like "kya",
+    # "bata", "samjhao", "farq", "kaise", "hota", "use", "karna", "matlab".
+    # Roman Urdu prompt: starts with English characters so Whisper's decoder
+    # initialises in Latin-script mode, strongly biasing it to output Roman Urdu
+    # (Urdu words spelled with English letters) rather than native Urdu script.
+    # The Urdu script phrase at the end anchors the language identity.
+    _ur_prompt  = (
+        "Roman Urdu interview. Kya aap bata saktay hain? Farq kya hai? "
+        "Kaise kaam karta hai? Kab use karna chahiye? Samjhao, explain karo. "
+        "Main Python use karta hoon. Entity Framework mein complexity aa sakti hai. "
+        "Performance, architecture, deployment. "
+        "یہ ایک جاب انٹرویو ہے۔"
+    )
+
+    def _run_whisper(wmodel, wlang, wprompt):
+        """Run Whisper synchronously — called via executor."""
+        import io as _io
+        _long = _estimated_duration_s > 25
+        # is_multi: True when this is the small multilingual model (pass-2 / urdu mode).
+        # The small model gets tighter VAD to strip silence faster — the main
+        # speed cost on CPU is encoder passes on silent frames, not decoder steps.
+        _is_multi = (wmodel is _model_multi)
+        kwargs = dict(
+            beam_size=1,          # greedy — fastest; accuracy gap vs beam=5 is minimal
+            best_of=1,
+            vad_filter=True,
+            vad_parameters=dict(
+                min_silence_duration_ms=150 if _is_multi else 250,  # trim silence faster
+                speech_pad_ms=200         if _is_multi else 300,    # less padding
+                threshold=0.50            if _is_multi else 0.45,   # stricter speech gate
+            ),
+            no_speech_threshold=0.65,
+            compression_ratio_threshold=2.4,  # was 2.8 — reject more repetition faster
+            word_timestamps=False,
+            condition_on_previous_text=False,  # disable — saves ~15% time, not needed for Q&A
+            temperature=0.0,
+            initial_prompt=wprompt,
+        )
+        if wlang:
+            kwargs["language"] = wlang
+        return wmodel.transcribe(_io.BytesIO(audio_blob), **kwargs)
+
+    def _is_hallucination(text: str, detected_lang: str, scope_lang_mode: str) -> bool:
+        """Return True if the transcript looks like multilingual-model hallucination."""
+        if not text:
+            return False
+        words = text.lower().split()
+        if len(words) >= 4:
+            from collections import Counter as _Counter
+            top_count = _Counter(words).most_common(1)[0][1]
+            if top_count / len(words) > 0.5:
+                return True
+        # Unexpected language detection (Arabic, Chinese, etc.) = noise hallucination
+        _out_of_scope = {"ar", "zh", "ja", "ko", "he", "fa", "hi"}
+        if scope_lang_mode in ("auto", "urdu") and detected_lang in _out_of_scope:
+            return True
+        return False
+
+    # ── English mode ──────────────────────────────────────────────────────────
+    if lang_mode == "english":
+        segs, info = await loop.run_in_executor(
+            _whisper_executor, _run_whisper, _model_en, "en", _en_prompt
+        )
+        transcript = " ".join(s.text for s in segs).strip()
+        print(f"[Whisper/en] Lang: {getattr(info,'language','?')} | {len(transcript)} chars | {len(audio_blob)//1024}KB")
+        return transcript
+
+    # ── Urdu mode ─────────────────────────────────────────────────────────────
+    if lang_mode == "urdu":
+        segs, info = await loop.run_in_executor(
+            _whisper_executor, _run_whisper, _model_multi, "ur", _ur_prompt
+        )
+        transcript = " ".join(s.text for s in segs).strip()
+        detected_wlang = getattr(info, 'language', '?')
+        print(f"[Whisper/ur] Lang: {detected_wlang} | {len(transcript)} chars | {len(audio_blob)//1024}KB")
+        if _is_hallucination(transcript, detected_wlang, "urdu"):
+            print(f"[Whisper/ur] Hallucination — discarding")
+            return ""
+        return transcript
+
+    # ── Auto mode — two-pass (English-first, Urdu fallback) ──────────────────
+    # Pass 1: tiny.en — fast English transcription
+    segs1, info1 = await loop.run_in_executor(
+        _whisper_executor, _run_whisper, _model_en, "en", _en_prompt
+    )
+    transcript1    = " ".join(s.text for s in segs1).strip()
+    detected_lang1 = getattr(info1, 'language', 'en')
+    print(f"[Whisper/auto-pass1] Lang: {detected_lang1} | {len(transcript1)} chars | {len(audio_blob)//1024}KB")
+
+    # Detect whether audio contains South Asian (Urdu/Roman-Urdu) speech.
+    #
+    # Strategy: run detect_language() on pass-1 output first (catches clean Roman Urdu).
+    # Additionally: pass the RAW audio through the small multilingual model's own
+    # language-detect path by checking what language "small" would assign — this catches
+    # cases where tiny.en garbled the Urdu words beyond recognition (e.g. "kya" → "chia").
+    # We do this lightweight check by running a tiny segment of the multilingual model's
+    # language-id step, which is far cheaper than a full transcription.
+    #
+    # Practical trigger rules (any one is sufficient to run pass-2):
+    #   1. detect_language() on pass-1 text returns roman_south_asian / foreign_script.
+    #   2. The pass-1 transcript looks suspiciously garbled for its length
+    #      (many short non-English-looking tokens — heuristic for Urdu being forced to "en").
+
+    lang_check = detect_language(transcript1)
+    is_south_asian = lang_check in ("roman_south_asian", "foreign_script")
+
+    # ── Pass-2 trigger heuristics ─────────────────────────────────────────────
+    # When tiny.en is forced to transcribe Urdu audio it does one of three things:
+    #   A) Produces recognisable Roman Urdu words  → caught by detect_language()
+    #   B) Produces phonetic English garbage       → caught by _GARBLED_URDU_SIGNALS
+    #   C) Hallucinates a repeated English phrase  → caught by _is_pass1_repetitive
+    #      e.g. "I'm going to show you how to do it. I'm going to show you..."
+    #      This is the most common failure mode for Urdu audio through tiny.en.
+    # Any one trigger is sufficient to run pass-2.
+
+    # Trigger A: detect_language found Roman Urdu vocabulary (already computed above)
+
+    # Trigger B: transcript contains known phonetic distortions tiny.en makes for Urdu
+    _GARBLED_URDU_SIGNALS = {
+        "chia", "chya", "kya", "ap", "aap", "hai", "hain", "toh",
+        "samjh", "bata", "karo", "lekin", "matlab", "theek", "bilkul",
+        "zaroor", "farq", "mushkil", "puri", "bahut", "zyada", "abhi",
+    }
+    words1 = transcript1.lower().split()
+    _garbled_hits = sum(1 for w in words1 if w.strip(".,?!") in _GARBLED_URDU_SIGNALS)
+
+    # Trigger C: pass-1 output is repetitive — tiny.en hallucinating on Urdu audio.
+    # "I'm going to show you how to do it. I'm going to show you how to do it."
+    # Detect by checking if any 4-gram (sequence of 4 words) appears 2+ times.
+    _is_pass1_repetitive = False
+    if len(words1) >= 8:
+        from collections import Counter as _Counter2
+        _ngrams = [" ".join(words1[i:i+4]) for i in range(len(words1) - 3)]
+        _top_ngram_count = _Counter2(_ngrams).most_common(1)[0][1] if _ngrams else 0
+        if _top_ngram_count >= 2:
+            _is_pass1_repetitive = True
+            print(f"[Whisper/auto] Pass-1 repetition detected — Urdu audio forced through tiny.en")
+
+    # Trigger D: audio long enough for a question but pass-1 returned almost nothing
+    _short_for_audio = len(words1) < 4 and len(audio_blob) > 30_000
+
+    if not is_south_asian and _garbled_hits < 1 and not _is_pass1_repetitive and not _short_for_audio:
+        # Confident English — return pass-1 result immediately, zero extra latency.
+        print(f"[Whisper/auto] English detected — returning pass-1 result")
+        return transcript1
+
+    if is_south_asian:       reason = lang_check
+    elif _is_pass1_repetitive: reason = "pass1_repetitive"
+    elif _garbled_hits:      reason = f"garbled_hits={_garbled_hits}"
+    else:                    reason = "short_for_audio"
+
+    # Pass 2: small multilingual — accurate Urdu-mode re-transcription
+    print(f"[Whisper/auto] Urdu detected (reason='{reason}') — running Urdu pass")
+    segs2, info2 = await loop.run_in_executor(
+        _whisper_executor, _run_whisper, _model_multi, "ur", _ur_prompt
+    )
+    transcript2    = " ".join(s.text for s in segs2).strip()
+    detected_lang2 = getattr(info2, 'language', '?')
+    print(f"[Whisper/auto-pass2] Lang: {detected_lang2} | {len(transcript2)} chars | {len(audio_blob)//1024}KB")
+
+    if _is_hallucination(transcript2, detected_lang2, "auto"):
+        print(f"[Whisper/auto] Pass-2 hallucination — falling back to pass-1")
+        return transcript1  # prefer imperfect English over hallucinated nonsense
+
+    # ── Urdu script → Roman Urdu conversion ──────────────────────────────────
+    # The "small" model forced to "ur" often outputs native Urdu script (Arabic
+    # letters) instead of Roman Urdu. Detect this and transliterate via a fast
+    # lookup table so the AI receives readable Roman Urdu text.
+    # If the transcript is mostly Latin already, this is a no-op.
+    _urdu_char_count = sum(1 for c in transcript2 if '\u0600' <= c <= '\u06FF' or '\uFB50' <= c <= '\uFDFF')
+    if _urdu_char_count > len(transcript2) * 0.25:
+        print(f"[Whisper/auto] Urdu script detected in pass-2 ({_urdu_char_count} chars) — keeping as-is for AI")
+        # Keep the Urdu script — translate_to_english will handle it in the PROCESS pipeline
+        # (it checks detected_lang and translates foreign_script to English before AI call)
+    return transcript2
+
+
+async def transcribe_with_gemini(
+    audio_blob:  bytes,
+    session_ctx: dict,
+    lang_mode:   str = "auto",
+    gemini_key:  str = "",
+    stt_model:   str = "",
+) -> str:
+    """
+    Transcribe audio using Google Gemini multimodal API.
+    Uses stt_model if provided (e.g. the user's selected ai_model when provider=gemini),
+    otherwise falls back to gemini-2.0-flash which has native audio understanding.
+    Falls back to Whisper if no API key or on any error.
+    """
+    if not gemini_key:
+        print("[Gemini STT] No API key — falling back to Whisper")
+        return await transcribe_with_whisper(audio_blob, session_ctx, lang_mode)
+
+    import base64
+    # Prefer the user's selected model; fall back to gemini-2.0-flash (strong audio model)
+    _stt_gemini_model = stt_model if stt_model else "gemini-2.0-flash"
+
+    # Keep STT prompt minimal — fewer input tokens = lower TTFT from Gemini.
+    # Only 8 top keywords (enough for proper-noun bias), no stack summary.
+    tech_kw = session_ctx.get("tech_keywords", [])
+    kw_hint = (", ".join(tech_kw[:8]) + ". ") if tech_kw else ""
+
+    if lang_mode == "urdu":
+        lang_hint = "Urdu/Roman-Urdu audio. "
+    elif lang_mode == "english":
+        lang_hint = "English audio. "
+    else:
+        lang_hint = ""
+
+    prompt = (
+        f"Transcribe verbatim. {lang_hint}{kw_hint}"
+        "Return ONLY the transcript text."
+    )
+
+    blob_mb = len(audio_blob) / (1024 * 1024)
+    print(f"[Gemini STT] {blob_mb:.1f} MB | Lang: {lang_mode}")
+
+    # Scale maxOutputTokens with audio size so long recordings aren't truncated.
+    # webm/opus at ~32kbps ≈ 4KB/s → ~150 tokens/min of speech.
+    # We estimate generously (5 tokens/s) and add a 200-token headroom buffer.
+    # Clamped between 300 (minimum useful) and 4096 (Gemini output cap).
+    _estimated_duration_s = len(audio_blob) / 4_000   # conservative: 4KB/s
+    _max_output_tokens    = max(300, min(4096, int(_estimated_duration_s * 5) + 200))
+
+    # Offload base64 encoding + JSON serialisation to thread executor.
+    # b64encode on 150KB + json.dumps of the full payload blocks the event loop
+    # for 10-30ms — offloading keeps the loop free for other coroutines.
+    import base64 as _b64mod
+    def _build_stt_payload():
+        _audio_b64 = _b64mod.b64encode(audio_blob).decode("utf-8")
+        return {
+            "contents": [{
+                "parts": [
+                    {"inline_data": {"mime_type": "audio/webm", "data": _audio_b64}},
+                    {"text": prompt},
+                ]
+            }],
+            "generationConfig": {"temperature": 0.0, "maxOutputTokens": _max_output_tokens},
+        }
+
+    _loop_stt = asyncio.get_event_loop()
+    stt_payload = await _loop_stt.run_in_executor(None, _build_stt_payload)
+
+    # Dynamic per-request timeout: 10s base + 1s per estimated 10s of audio.
+    # This lets short clips fail fast to Whisper while long recordings get the time
+    # they need. Capped at 55s so we always respond before the client gives up.
+    _dyn_read_timeout = max(10, min(55, 10 + int(_estimated_duration_s / 10)))
+
+    try:
+        resp = await _gemini_stt_client.post(
+            f"{GEMINI_BASE_URL}/v1beta/models/{_stt_gemini_model}:generateContent?key={gemini_key}",
+            headers={"Content-Type": "application/json"},
+            json=stt_payload,
+            timeout=httpx.Timeout(connect=5, read=_dyn_read_timeout, write=60, pool=5),
+        )
+        if resp.status_code != 200:
+            print(f"[Gemini STT] HTTP {resp.status_code}: {resp.text[:200]} — falling back to Whisper")
+            return await transcribe_with_whisper(audio_blob, session_ctx, lang_mode)
+
+        transcript = (
+            resp.json()
+                .get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "")
+                .strip()
+        )
+        print(f"[Gemini STT] {len(transcript)} chars")
+        return transcript
+
+    except httpx.TimeoutException as e:
+        print(f"[Gemini STT timeout] {e} — falling back to Whisper")
+        return await transcribe_with_whisper(audio_blob, session_ctx, lang_mode)
+    except Exception as e:
+        print(f"[Gemini STT error] {e} — falling back to Whisper")
+        return await transcribe_with_whisper(audio_blob, session_ctx, lang_mode)
+
+
+def build_whisper_prompt(session_ctx: dict) -> str:
+    """
+    Build a Whisper initial_prompt from extracted session context.
+
+    Whisper's initial_prompt is prepended to the audio as fake prior context.
+    The decoder uses it to bias token probabilities before hearing a single frame.
+    A prompt that reads like natural interview dialogue containing the domain's
+    technical terms is dramatically more effective than a bare keyword list:
+
+      - A keyword list ("ASP.NET, Singleton, Scoped, Transient") gives each term
+        equal weight with no surrounding grammar — the decoder can still drift to
+        phonetically similar common words ("simpleton", "school", "trust").
+      - A sentence like "Can you explain the difference between Singleton, Scoped,
+        and Transient lifetimes in ASP.NET Core dependency injection?" makes the
+        decoder expect those exact tokens in an interview question frame, making
+        substitution far less likely.
+
+    We build two sentences:
+      1. A role/stack sentence that sets the domain register.
+      2. A sample question sentence that naturally embeds the top keywords —
+         the most likely interview question forms for this role.
+    """
+    stack   = session_ctx.get("stack_summary", "")
+    kw      = session_ctx.get("tech_keywords", [])
+    primary = session_ctx.get("primary_language", "")
+    domain  = session_ctx.get("domain", "")
+
+    # Sentence 1: domain register
+    if stack:
+        sentence1 = f"This is a job interview for a {stack} role."
+    else:
+        sentence1 = "This is a technical job interview."
+
+    # Sentence 2: embed top keywords in a natural question frame so the decoder
+    # sees them as expected tokens rather than out-of-vocabulary surprises.
+    # Use the first 12 keywords — enough to cover the core vocabulary without
+    # making the prompt so long it pushes real audio context out of the window.
+    if kw:
+        # Split into two natural groups: first 6 as a "can you explain" question,
+        # next 6 as a "what is the difference" question — covers both question forms.
+        group_a = ", ".join(kw[:6])
+        group_b = ", ".join(kw[6:12]) if len(kw) > 6 else ""
+        sentence2 = f"Can you explain {group_a}?"
+        if group_b:
+            sentence2 += f" What is the difference between {group_b}?"
+    elif primary:
+        sentence2 = f"Can you explain dependency injection, design patterns, and architecture in {primary}?"
+    else:
+        sentence2 = "Can you explain the architecture, design patterns, and deployment approach you used?"
+
+    return f"{sentence1} {sentence2}"
+
+
+# ── Rule-based STT corrections (instant, zero latency) ────────────────────────
+# These catch the most common Deepgram/Whisper mishears for .NET stack
+# without needing an LLM call. Runs BEFORE the AI correction step.
+
+RULE_FIXES = [
+    # ── Deepgram nova-2/3 mishears "can you" as "Cache you" or "James" ────────
+    # These were observed directly in logs: "Cache you tell me" / "Hey, James. Cache you"
+    (r"(?i)\bcache\s+you\b",              "can you"),
+    (r"(?i)\bhey[,\s]+james[,\s]+",       "Hey, "),   # "Hey, James. Can you" → "Hey, can you"
+    (r"(?i)\bspeed\s+up\b",              "faster"),   # "more speed up" → "faster"
+    # ── .NET / .NET Core ──────────────────────────────────────────────────────
+    (r"(?i)\bdot\s*net\s+cors\b",        ".NET Core"),
+    (r"(?i)\bdot\s*net\s+core\b",        ".NET Core"),
+    (r"(?i)\bdot\s*net\s+framework\b",   ".NET Framework"),
+    (r"(?i)\bdot\s*net\b",                ".NET"),
+    # ASP.NET
+    (r"(?i)\basp\s+dot\s+net\b",         "ASP.NET"),
+    # ── Common phonetic mishears ──────────────────────────────────────────────
+    (r"(?i)\bpost\s*grace\b",             "Postgres"),
+    (r"(?i)\bpost\s*gress\b",             "Postgres"),
+    (r"(?i)\bmy\s+sequel\b",              "MySQL"),
+    (r"(?i)\bno\s+sequel\b",              "NoSQL"),
+    (r"(?i)\bpie\s+torch\b",              "PyTorch"),
+    (r"(?i)\bget\s+hub\b",               "GitHub"),
+    (r"(?i)\bget\s+lab\b",               "GitLab"),
+    (r"(?i)\bjay\s+son\b",               "JSON"),
+    (r"(?i)\brest\s+full\b",             "RESTful"),
+    (r"(?i)\brest\s+ful\b",              "RESTful"),
+    (r"(?i)\bseek\s+well\b",             "sequel"),
+    (r"(?i)\bci\s+cd\b",                 "CI/CD"),
+    (r"(?i)\bkubernetes\b",               "Kubernetes"),
+    # ── C / C++ / C# mishears ─────────────────────────────────────────────────
+    (r"\bc\s+plus\s+plus\b",             "C++"),
+    (r"\bc\s*#",                          "C#"),
+    (r"(?i)\bc\s+sharp\b",               "C#"),
+]
+
+_RULE_FIXES_COMPILED = None
+
+def _get_compiled_rules():
+    global _RULE_FIXES_COMPILED
+    if _RULE_FIXES_COMPILED is None:
+        import re as _re
+        compiled = []
+        for pattern, replacement in RULE_FIXES:
             try:
-                r = await client.post(CEREBRAS_URL,
-                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1})
-                status = "ok" if r.status_code == 200 else "rate_limited" if r.status_code == 429 else "invalid"
-                results.append({"key": mask(key), "status": status})
-            except Exception:
-                results.append({"key": mask(key), "status": "error"})
-    return {"results": results}
+                compiled.append((_re.compile(pattern), replacement))
+            except Exception as e:
+                print(f"[RuleFix] Bad regex skipped: {pattern!r} — {e}")
+        _RULE_FIXES_COMPILED = compiled
+    return _RULE_FIXES_COMPILED
 
-@app.post("/check-groq-keys")
-async def check_groq_keys(body: dict):
-    keys = body.get("keys", [])
-    model = body.get("model", "llama-3.1-8b-instant")
-    results = []
-    async with httpx.AsyncClient(timeout=10) as client:
-        for key in keys:
-            key = (key or "").strip()
-            if not key or not key.startswith("gsk_"):
-                results.append({"key": mask(key), "status": "invalid_format"})
-                continue
-            try:
-                r = await client.post(GROQ_URL,
-                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1})
-                status = "ok" if r.status_code == 200 else "rate_limited" if r.status_code == 429 else "invalid"
-                results.append({"key": mask(key), "status": status})
-            except Exception:
-                results.append({"key": mask(key), "status": "error"})
-    return {"results": results}
+def apply_rule_based_fixes(transcript: str, session_ctx: dict) -> str:
+    """
+    Apply fast regex-based corrections for the most common STT mishears.
+    These fire before the AI correction step — zero latency.
+    One bad pattern cannot crash the server — each is try/catched at compile time.
+    """
+    result = transcript
+    try:
+        for pattern, replacement in _get_compiled_rules():
+            result = pattern.sub(replacement, result)
+    except Exception as e:
+        print(f"[RuleFix] Error applying fixes: {e}")
+        return transcript
+    return result
 
-@app.post("/check-gemini-keys")
-async def check_gemini_keys(body: dict):
-    keys = body.get("keys", [])
-    model = body.get("model", "gemini-2.0-flash")
-    results = []
-    async with httpx.AsyncClient(timeout=15) as client:
-        for key in keys:
-            key = (key or "").strip()
-            if not key:
-                results.append({"key": "***", "status": "empty"})
-                continue
-            try:
-                url = f"{GEMINI_URL}/{model}:generateContent?key={key}"
-                r = await client.post(url, headers={"Content-Type": "application/json"},
-                    json={"contents": [{"parts": [{"text": "hi"}]}], "generationConfig": {"maxOutputTokens": 1}})
-                status = "ok" if r.status_code == 200 else "rate_limited" if r.status_code == 429 else "invalid"
-                results.append({"key": mask(key), "status": status})
-            except Exception:
-                results.append({"key": mask(key), "status": "error"})
-    return {"results": results}
 
-@app.post("/check-qwen-keys")
-async def check_qwen_keys(body: dict):
-    """Verify Qwen / DashScope API keys. Uses qwen-turbo with max_tokens=1 (cheapest check)."""
-    keys  = body.get("keys", [])
-    model = body.get("model", "qwen-turbo")
-    results = []
-    async with httpx.AsyncClient(timeout=15) as client:
-        for key in keys:
-            key = (key or "").strip()
-            if not key:
-                results.append({"key": "***", "status": "empty"})
-                continue
-            try:
-                r = await client.post(
-                    QWEN_URL,
-                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
-                )
-                if r.status_code == 200:
-                    status = "ok"
-                elif r.status_code == 429:
-                    status = "rate_limited"
-                elif r.status_code in (401, 403):
-                    status = "invalid"
-                else:
-                    status = f"http_{r.status_code}"
-                results.append({"key": mask(key), "status": status})
-            except Exception:
-                results.append({"key": mask(key), "status": "error"})
-    return {"results": results}
+async def fix_transcript_with_ai(
+    transcript:  str,
+    session_ctx: dict,
+    api_key:     str,
+    job_desc:    str = "",
+    cv:          str = "",
+) -> str:
+    """
+    Minimal LLM pass: fix ONLY clear phonetic mishears — nothing else.
+    The model MUST NOT change the question topic, add content, or rewrite meaning.
+    If there is any doubt, return the original unchanged.
+    """
+    kw = session_ctx.get("tech_keywords", [])
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    # Keep context short — the model only needs to know valid tech terms,
+    # not the full job desc (which previously caused it to "redirect" questions)
+    known_terms = ", ".join(kw[:25]) if kw else "none"
+
+    prompt = (
+        "You are a spell-checker for speech-to-text output in a technical interview. "
+        "Your job is to fix words that were phonetically mis-transcribed.\n\n"
+        "STRICT RULES:\n"
+        "1. NEVER change the topic, subject, or meaning of the sentence.\n"
+        "2. NEVER add, remove, or reorder words unless it is a clear phonetic mistake.\n"
+        "3. NEVER replace a correctly-spelled technical term with a different one.\n"
+        "   EXCEPTION: if a word looks like a phonetic mishear of a well-known tech term, fix it.\n"
+        "   Example: 'Depper' → 'Dapper' (micro-ORM for .NET, sounds identical)\n"
+        "   Example: 'Sequelize' heard as 'Sequel Eyes' → 'Sequelize'\n"
+        "4. NEVER rephrase or improve the sentence.\n"
+        "5. If the sentence makes sense as-is with no obvious mishear, return it EXACTLY.\n"
+        "6. Known valid tech terms (do NOT change these): " + known_terms + "\n\n"
+        "Examples of what you SHOULD fix:\n"
+        "  'Cache you tell me' → 'Can you tell me'\n"
+        "  'post grace sequel' → 'PostgreSQL'\n"
+        "  'pie torch' → 'PyTorch'\n"
+        "  'Depper' → 'Dapper'  (sounds like 'Dapper', the .NET micro-ORM)\n\n"
+        "Return ONLY the corrected text. No explanation. No quotes. No preamble.\n\n"
+        f"Transcript: {transcript}"
+    )
+
+    try:
+        resp = await http_client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": GROQ_FAST_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 200,
+                "temperature": 0.0,
+            }
+        )
+        fixed = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+
+        if not fixed:
+            return transcript
+
+        # ── Safety gates — if ANY of these fail, discard the fix ─────────────
+
+        orig_words  = transcript.split()
+        fixed_words = fixed.split()
+
+        # 1. Length ratio: fixed must be within 20% of original word count
+        #    (previous 0.6–1.8 was far too loose — allowed full rewrites)
+        ratio = len(fixed_words) / max(len(orig_words), 1)
+        if not (0.80 <= ratio <= 1.20):
+            print(f"[STT Fix] Rejected (word ratio {ratio:.2f}): '{fixed[:60]}'")
+            return transcript
+
+        # 2. First content word must be preserved (prevents topic substitution)
+        #    Compare lowercased, stripped of punctuation
+        import string
+        def first_word(s):
+            for w in s.lower().split():
+                w = w.strip(string.punctuation)
+                if len(w) > 2:  # skip short filler like "a", "is"
+                    return w
+            return ""
+
+        # Allow first-word change only if it looks like a clear mishear fix
+        # (e.g. "Cache" → "Can"). Block if it's a completely different word.
+        orig_fw  = first_word(transcript)
+        fixed_fw = first_word(fixed)
+        if orig_fw and fixed_fw and orig_fw != fixed_fw:
+            # Allow only if the fixed version is clearly a phonetic cousin
+            # (share at least 2 chars at start, or original was a known bad word)
+            known_bad_first = {"cache", "james", "hey james"}
+            if orig_fw not in known_bad_first and not (
+                len(orig_fw) > 2 and len(fixed_fw) > 2 and
+                (orig_fw[:2] == fixed_fw[:2] or orig_fw[-2:] == fixed_fw[-2:])
+            ):
+                print(f"[STT Fix] Rejected (first-word change '{orig_fw}'→'{fixed_fw}'): '{fixed[:60]}'")
+                return transcript
+
+        # 3. Key nouns/verbs from original must still appear in fixed
+        #    (prevents replacing the entire question subject)
+        orig_lower  = transcript.lower()
+        fixed_lower = fixed.lower()
+        # Check that programming languages / key subjects are preserved
+        for lang_term in ["c++", "c#", "c ", "python", "java", "javascript", "sql",
+                          "react", "node", "angular", "vue", "docker", "kubernetes"]:
+            if lang_term in orig_lower and lang_term not in fixed_lower:
+                print(f"[STT Fix] Rejected (key term '{lang_term}' removed): '{fixed[:60]}'")
+                return transcript
+
+        if fixed != transcript:
+            print(f"[STT Fix] '{transcript[:80]}' → '{fixed[:80]}'")
+        return fixed
+
+    except Exception:
+        return transcript
+
+
+async def translate_to_english(text: str, api_key: str, source_lang: str) -> str:
+    lang_label = (
+        "Hindi or Urdu (non-Latin script)"
+        if source_lang == "foreign_script"
+        else "Roman Urdu or Roman Hindi"
+    )
+    try:
+        resp = await http_client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": GROQ_FAST_MODEL,
+                "messages": [{"role": "user", "content": (
+                    f"Translate the following {lang_label} text to English.\n"
+                    "Context: This is a job interview question.\n"
+                    "Keep all technical terms in English as-is.\n"
+                    "Return ONLY the English translation. No explanation. No quotes.\n\n"
+                    f"Text: {text}"
+                )}],
+                "max_tokens": 300,
+                "temperature": 0.1,
+            }
+        )
+        translated = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        return translated if translated else text
+    except Exception as e:
+        print(f"[Translation error] {e}")
+        return text
+
+
+# ── Intent classification ─────────────────────────────────────────────────────
+
+FOLLOWUP_WORDS = [
+    "explain more","more detail","elaborate","tell me more","can you explain",
+    "what do you mean","give example","give me example","expand","continue",
+    "go on","more about","in detail","detail me","explain further","deeper",
+    "dig deeper","please explain","each layer","explain each","purpose of each",
+    "what about","and also","what else","go deeper","more on that",
+    "elaborate more","keep going","aur batao","aur bataiye","mazeed batao",
+    "thoda aur","example do","example dein","samjhao","samjhaiye","detail mein",
+    "what do you mean by","what is meant by","what does that mean",
+    "what is a","what are","what is the","what is an",
+]
+
+CODE_WORDS = [
+    "write a","write me","write simple","write function","write code",
+    "show me code","give code","code example","implement","create a function",
+    "create a class","write a query","write a method","show implementation",
+    "code likho","code likhein","code dikhao","function likho",
+]
+
+GREETING_WORDS = [
+    "how are you","how do you do","good morning","good afternoon","good evening",
+    "how is it going","what's up","hey how are","hi how are","hello how are",
+    "nice to meet","pleased to meet","how have you been","hope you are",
+    "hope you're","can you hear me","are you there","can you hear","hello hello",
+    "assalam","salam","walaikum","assalamualaikum","asslam walaikum",
+    "kaise hain","kaise ho","theek ho","aap kaise","ap kaise",
+    "subah bakhair","shab bakhair","khuda hafiz","allah hafiz","aadaab","namaste",
+]
+
+TECHNICAL_WORDS = [
+    # generic question signals (apply to all domains)
+    "difference","explain","what is","how does","how do","why","when","which",
+    "compare","define","example","describe","tell me about","have you","did you",
+    "experience","used","worked","built","designed","implemented","developed",
+    "managed","led","deployed","integrated","architecture","pattern","performance",
+    "security","testing","ci/cd","agile","scrum","api","rest","database","cloud",
+    "devops","docker","microservice","frontend","backend","fullstack","framework",
+    # SEO / digital marketing
+    "seo","sem","ppc","ctr","cpc","cpm","roas","roi","serp","keyword","backlink",
+    "on-page","off-page","technical seo","link building","anchor text","domain authority",
+    "page rank","crawl","index","sitemap","robots","canonical","redirect","meta",
+    "ahrefs","semrush","moz","google analytics","search console","google ads",
+    "content strategy","content marketing","organic","paid","conversion","bounce rate",
+    # marketing / social / ads
+    "campaign","funnel","lead generation","email marketing","a/b test","ab test",
+    "facebook ads","meta ads","linkedin ads","instagram","tiktok","influencer",
+    "brand","copywriting","landing page","hubspot","mailchimp","salesforce",
+    # sales / business
+    "pipeline","quota","revenue","crm","cold call","outreach","proposal","objection",
+    "closing","upsell","cross-sell","account management","b2b","b2c","saas",
+    # HR / people
+    "recruitment","talent","onboarding","performance review","kpi","okr","culture",
+    "retention","engagement","compensation","payroll","hris","ats",
+    # finance / ops
+    "budget","forecast","p&l","cash flow","financial model","excel","reporting",
+    # design / product
+    "ux","ui","figma","user research","wireframe","prototype","roadmap","sprint",
+    "product strategy","stakeholder","requirement","user story",
+    # urdu/roman equivalents
+    "kya hai","kya hota","farq kya","kaise kaam","kaise hota",
+    "explain karo","samjhao","kyon use","kab use",
+]
+
+EXPERIENCE_WORDS = [
+    "tell me about yourself","introduce yourself","your background",
+    "walk me through","your experience","your projects","have you worked",
+    "your role","your responsibilities","your achievements","your strengths",
+    "your weaknesses","why should we hire","why do you want","what motivates",
+    # behavioural / situational questions
+    "tell me about a time","describe a situation","give me an example",
+    "what problems","problems you faced","challenges you faced","biggest challenge",
+    "difficult situation","how did you handle","how did you deal","what went wrong",
+    "what would you do","how do you approach","what was the hardest","toughest project",
+    "what did you learn","what would you do differently","how did you overcome",
+    "conflict with","disagreement","mistake you made","failure","what failed",
+    "under pressure","tight deadline","how do you prioritize","team conflict",
+    "worked with difficult","worked under pressure","what have you built",
+    "most proud of","biggest accomplishment","proudest moment",
+    # urdu equivalents
+    "apne baare mein","apna background","apna tajurba","apna experience",
+    "aap ne kya kiya","aap ki strengths","aap ki weaknesses",
+    "kyun hire karein","apna kaam","projects batao",
+    "kya problems aayi","kya challenges the","mushkil situation",
+    "kaise handle kiya","kya seekha","galti kya hui",
+]
+
+
+# ── Build fast lookup structures after all word-list constants are defined ────
+_FOLLOWUP_SINGLES,   _FOLLOWUP_MULTI   = _split_kw_list(FOLLOWUP_WORDS)
+_CODE_SINGLES,       _CODE_MULTI       = _split_kw_list(CODE_WORDS)
+_GREETING_SINGLES,   _GREETING_MULTI   = _split_kw_list(GREETING_WORDS)
+_TECHNICAL_SINGLES,  _TECHNICAL_MULTI  = _split_kw_list(TECHNICAL_WORDS)
+_EXPERIENCE_SINGLES, _EXPERIENCE_MULTI = _split_kw_list(EXPERIENCE_WORDS)
+
+
+def strip_numbers_from_cv(cv: str) -> str:
+    cv = re.sub(r'\b\d+(\.\d+)?%', '', cv)
+    cv = re.sub(r'\b\d+x\b', '', cv)
+    cv = re.sub(r'\$[\d,]+', '', cv)
+    return cv
+
+
+def build_response_lang_instruction(lang_mode: str, detected_lang: str = "english") -> str:
+    """
+    Return a strong response-language instruction block for the AI prompt.
+
+    english → empty string (model responds in English by default).
+    urdu    → Roman Urdu always, regardless of input.
+    auto    → Roman Urdu always (user chose auto = mixed Urdu+English is expected;
+              the interviewer may speak English but the candidate answers in Roman Urdu
+              so both sides understand naturally).
+              Technical terms, code, and library/framework names stay in English.
+    """
+    if lang_mode == "english":
+        return ""
+
+    # Both "urdu" and "auto" require Roman Urdu responses.
+    # The instruction is deliberately explicit and multi-line so it overrides
+    # any conflicting "respond in English" rules cached in context_block.
+    roman_urdu_instruction = (
+        "=== ZABAAN KA RULE (LANGUAGE RULE — HIGHEST PRIORITY) ===\n"
+        "Yeh interview Roman Urdu mein ho raha hai.\n"
+        "HAMESHA Roman Urdu mein jawab do — yaani Urdu alfaaz ko English haroof mein likho.\n"
+        "Misal ke taur par: 'Main pehle data pipeline check karta hoon. "
+        "Phir consistency validate karta hoon using KS tests.'\n"
+        "RULES:\n"
+        "• Jawab Roman Urdu mein hona chahiye — pure English NAHI.\n"
+        "• Technical terms, library names, code (jaise: Entity Framework, REST API, Docker, "
+        "  Python, SQL) English mein rakhein — unka Urdu translation MAT karo.\n"
+        "• Codeblocks ya pseudocode English mein likhein — sirf explanation Roman Urdu mein.\n"
+        "• Pehla lafz ya sentence Urdu mein shuru karo, English se nahi.\n"
+        "• Poora jawab complete karo — beech mein mat choro.\n"
+        "=== END LANGUAGE RULE ===\n"
+    )
+    return roman_urdu_instruction
+
+
+def build_system_context(profile: str, job_title: str, job_desc: str, cv: str, session_ctx: dict,
+                          lang_mode: str = "english") -> str:
+    stack_summary = session_ctx.get("stack_summary", "")
+
+    # Language rule — injected here so it is part of the cached context_block.
+    # For English mode: explicit English-only rule.
+    # For Urdu/Auto: NO English-only rule (the PERSONA block carries the Roman Urdu instruction).
+    if lang_mode == "english":
+        lang_rule = "1. Always respond in English only.\n"
+    else:
+        lang_rule = (
+            "1. LANGUAGE: Jawab hamesha Roman Urdu mein do "
+            "(Urdu words written in English/Latin letters). "
+            "Technical terms aur code English mein rakhein.\n"
+        )
+
+    parts = [
+        "CRITICAL RULES:\n"
+        + lang_rule +
+        "2. NEVER comment on the question. Never say 'It seems like', 'The original question was', 'I notice'. Just answer.\n"
+        "3. ANSWER STRUCTURE — depends on the question type:\n"
+        "   CONCEPTUAL (what is X, why does X work this way, how does X behave):\n"
+        "     a) State the fact, reason, or answer directly — not what you check or do to find it\n"
+        "     b) Explain the mechanism or reason behind it\n"
+        "     c) Short natural closing or practical nuance\n"
+        "   EXPERIENCE (tell me about a time, what have you built, have you worked with X):\n"
+        "     a) State your action or approach directly\n"
+        "     b) Brief reasoning or methodology\n"
+        "     c) Outcome or result\n"
+        "4. OPENER RULE — match the question, not a template:\n"
+        "   Conceptual: GOOD: 'REST is synchronous because the client blocks waiting for the response.'\n"
+        "   Experience: GOOD: 'I start by validating the pipeline consistency end to end.'\n"
+        "   NEVER open with: a company name, employer, project name, or 'I check X first' for a conceptual question.\n"
+        "   NEVER narrate your thought process to answer a factual question — just answer it.\n"
+        "5. COMPANY/PROJECT/TOOL NAMES — may only appear mid-answer as brief supporting evidence:\n"
+        "   Use natural phrases like 'for example', 'in one project', 'on a recent deployment'.\n"
+        "   Never let company name, project name, or tool name be the subject of the opening sentence.\n"
+        "6. EXPERIENCE REFERENCES — only use CV details when the question genuinely calls for it:\n"
+        "   • Conceptual or technical questions (what is X, how does X work, why is X used): answer the concept directly. Do NOT default to pulling in past roles, company names, or project names.\n"
+        "   • Experience or behavioural questions (tell me about a time, have you worked with, what have you built): then draw from the CV — but keep company/project references generic ('in one project', 'on a recent system') unless the interviewer specifically asks for company names.\n"
+        "   • NEVER mention a company name or specific organisation unprompted. If experience is relevant, describe it generically.\n"
+        "   • Do NOT open with or default to 'in my previous company' or 'at [Company]' as a habit — only reference past work when the question explicitly calls for it.\n"
+        "7. ALWAYS finish the answer completely — never trail off or end mid-sentence.\n"
+        "8. SPEAKING REGISTER — you are talking in a live interview, not writing documentation:\n"
+        "   BANNED anywhere in the answer:\n"
+        "   • 'I determine...' / 'I would determine...' → say 'I check' / 'I look at' / 'it depends on'\n"
+        "   • 'Understanding X is crucial' / 'It is important to understand X' → skip the preamble, just say it\n"
+        "   • 'One must consider...' → say 'you have to think about' or just state it directly\n"
+        "   • 'This approach/solution/architecture/method enables/ensures/allows...' → say what it does plainly\n"
+        "   • Any sentence that sounds like a textbook definition or blog post conclusion\n"
+        "   • 'By doing so,...' / 'In this way,...' / 'As a result of this approach,...' → use 'so', 'which', 'that way'\n"
+        "   Every sentence must sound like something a real engineer would say out loud in an interview.\n"
+        "9. STT MISHEAR TOLERANCE — the question came from speech-to-text and may contain typos or near-miss spellings:\n"
+        "   • Always interpret the question charitably. If a term looks like a phonetic near-miss of a known technology, library, tool, or concept, answer for the most likely intended term.\n"
+        "   • Do NOT say a term is 'not recognized', 'doesn't exist', or 'not a real framework' when it is plausibly a mishear of something real.\n"
+        "   • If genuinely ambiguous between two real things, briefly note the ambiguity and answer both, or pick the most contextually likely one.\n"
+        "   • The interviewer's intent is always more important than the exact spelling of the transcript."
+    ]
+    if profile:
+        parts.append(f"CANDIDATE PROFILE (use this to personalise every answer):\n{profile}")
+    if job_title:
+        line = f"APPLYING FOR: {job_title}"
+        if stack_summary:
+            line += f"\nROLE CONTEXT: {stack_summary}"
+        parts.append(line)
+    if job_desc:
+        parts.append(f"JOB DESCRIPTION:\n{job_desc.strip()}")
+    if cv:
+        clean_cv = strip_numbers_from_cv(cv)
+        parts.append(f"CANDIDATE CV / RESUME (ground all experience answers in this):\n{clean_cv.strip()}")
+    return "\n\n".join(parts)
+
+
+def build_history_block(conversation_history: list, current_transcript: str = "") -> str:
+    if not conversation_history:
+        return ""
+    recent = conversation_history[-2:]
+
+    # When a current transcript is provided, filter to only history turns that
+    # share meaningful topic overlap with the current question, so unrelated
+    # prior exchanges do not pollute the prompt context.
+    if current_transcript:
+        current_words = set(w.lower().strip(".,?!") for w in current_transcript.split() if len(w) > 3)
+        filtered = []
+        for q, a in recent:
+            prior_words = set(w.lower().strip(".,?!") for w in q.split() if len(w) > 3)
+            # Include turn if at least 2 content words overlap, or if the prior
+            # question is very short (likely a follow-up like "elaborate" / "more").
+            overlap = current_words & prior_words
+            if len(overlap) >= 2 or len(q.split()) <= 6:
+                filtered.append((q, a))
+        if not filtered:
+            return ""
+        recent = filtered
+
+    lines = ["RECENT INTERVIEW CONVERSATION (last 1-2 relevant exchanges):"]
+    for i, (q, a) in enumerate(recent, 1):
+        lines.append(f"[Turn {i}] Interviewer: {q}")
+        lines.append(f"[Turn {i}] Your answer:  {a}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+# ── WebSocket endpoint ────────────────────────────────────────────────────────
+
+@app.websocket("/ws")
+async def ws_endpoint(ws: WebSocket):
+    global current_key_index, current_cerebras_key_index
+    await ws.accept()
+
+    audio_chunks         = []
+    conversation_history = []
+    _session_id          = ""   # set from CONTEXT; used for cross-reconnect store
+    profile   = ""
+    job_title = ""
+    job_desc  = ""
+    cv        = ""
+    stt_mode  = "whisper"
+    lang_mode = "auto"
+    ai_provider  = "groq"
+    ai_model     = GROQ_MODEL
+    cerebras_key = ""
+    groq_key     = ""
+    gemini_key   = ""
+    qwen_key     = ""
+
+    # Cached per-session extracted context.
+    # We kick off extraction as a background task when CONTEXT arrives,
+    # so it's ready by the time the first PROCESS comes in.
+    session_ctx: dict | None = None
+    _ctx_container = {
+        "ctx":          None,   # extracted session context (keywords, stack, domain)
+        "context_block": None,  # pre-built system context string — rebuilt only when ctx changes
+        "persona":       None,  # PERSONA string — constant per session
+        "style":         None,  # STYLE string — constant per session
+    }
+
+    try:
+        while True:
+            msg = await ws.receive()
+            if msg.get("type") == "websocket.disconnect":
+                break
+
+            if "bytes" in msg and msg["bytes"]:
+                audio_chunks.append(msg["bytes"])
+                # Keep session store alive while chunks are flowing
+                if _session_id and _session_id in _SESSION_STORE:
+                    _SESSION_STORE[_session_id]["_ts"] = _time.monotonic()
+
+            elif "text" in msg:
+                text = msg["text"]
+
+                if text == "PING":
+                    await ws.send_text("PONG")
+                    continue
+
+                if text.startswith("CONTEXT:"):
+                    try:
+                        ctx       = json.loads(text[8:])
+                        profile   = ctx.get("profile",   "")
+                        job_title = ctx.get("jobTitle",  "")
+                        job_desc  = ctx.get("jobDesc",   "")
+                        cv        = ctx.get("cv",        "")
+                        stt_mode  = ctx.get("sttMode",   "whisper")
+                        lang_mode = ctx.get("langMode",  "auto")
+                        ai_provider  = ctx.get("provider",    "groq")
+                        ai_model     = ctx.get("aiModel",     GROQ_MODEL)
+                        cerebras_key = ctx.get("cerebrasKey", "")
+                        groq_key     = ctx.get("groqKey",     "")
+                        gemini_key   = ctx.get("geminiKey",   "")
+                        qwen_key     = ctx.get("qwenKey",     "")
+                        # If user supplied their own Groq key, use it; else fall back to built-in
+                        if groq_key:
+                            GROQ_API_KEYS[0] = groq_key
+
+                        # ── Reconnect-safe session store ──────────────────────
+                        # Chrome closes the offscreen WS after ~30s; the client
+                        # reconnects and re-sends CONTEXT with the same sessionId.
+                        # If we recognise the ID we restore the audio buffer so
+                        # chunks recorded before the drop are not lost.
+                        _session_id = ctx.get("sessionId", "")
+                        _evict_stale_sessions()
+                        if _session_id and _session_id in _SESSION_STORE:
+                            # Reconnect: restore accumulated audio buffer and history.
+                            # audio_chunks is reassigned to the stored list so new chunks
+                            # from flushPending() go straight into the same object.
+                            _stored              = _SESSION_STORE[_session_id]
+                            audio_chunks         = _stored["chunks"]
+                            conversation_history = _stored["history"]
+                            _ctx_container.update({
+                                k: _stored.get(k) for k in ("ctx","context_block","persona","style")
+                            })
+                            _SESSION_STORE[_session_id]["_ts"] = _time.monotonic()
+                            _kb = sum(len(c) for c in audio_chunks) // 1024
+                            print(f"[Reconnect] Session {_session_id[:8]}… resumed — {len(audio_chunks)} chunks ({_kb} KB) already buffered")
+                        elif _session_id:
+                            # New session: register the live lists in the store.
+                            # Storing references (not copies) means any append to
+                            # audio_chunks is immediately visible via _SESSION_STORE.
+                            _SESSION_STORE[_session_id] = {
+                                "chunks":        audio_chunks,        # live reference
+                                "history":       conversation_history, # live reference
+                                "ctx":           None,
+                                "context_block": None,
+                                "persona":       None,
+                                "style":         None,
+                                "_ts":           _time.monotonic(),
+                            }
+                            print(f"[Session] New session {_session_id[:8]}… registered")
+
+                        print(f"[Context] Job: '{job_title}' | STT: {stt_mode} | Lang: {lang_mode} | AI: {ai_provider}/{ai_model}")
+
+                        # Extract session context in background — ready before first PROCESS.
+                        # We also pre-build context_block, PERSONA, and STYLE here so that
+                        # every PROCESS call just reads cached strings instead of rebuilding them.
+                        _api = GROQ_API_KEYS[current_key_index]
+                        _container   = _ctx_container
+                        _profile_s   = profile
+                        _job_title_s = job_title
+                        _job_desc_s  = job_desc
+                        _cv_s        = cv
+                        _lang_mode_s = lang_mode  # capture for _bg_extract closure
+
+                        async def _bg_extract():
+                            # Check cross-session cache first — avoids redundant Groq call
+                            _cache_key = hashlib.sha1(
+                                (_job_title_s + _job_desc_s + _cv_s).encode()
+                            ).hexdigest()
+                            if _cache_key in _SESSION_CTX_CACHE:
+                                extracted = _SESSION_CTX_CACHE[_cache_key]
+                                print("[Cache] Session context HIT — skipping extraction")
+                            else:
+                                extracted = await extract_session_context(
+                                    _job_title_s, _job_desc_s, _cv_s, _api
+                                )
+                                if len(_SESSION_CTX_CACHE) >= _SESSION_CTX_CACHE_MAX:
+                                    _SESSION_CTX_CACHE.pop(next(iter(_SESSION_CTX_CACHE)))
+                                _SESSION_CTX_CACHE[_cache_key] = extracted
+                            _container["ctx"] = extracted
+
+                            # Pre-build and cache the system context string — unchanged per session
+                            # Pass lang_mode so the English-only rule is replaced with Roman Urdu
+                            # rule for urdu/auto modes, avoiding conflict with PERSONA instruction.
+                            _container["context_block"] = build_system_context(
+                                _profile_s, _job_title_s, _job_desc_s, _cv_s, extracted,
+                                lang_mode=_lang_mode_s
+                            )
+
+                            # Pre-build PERSONA and STYLE — built once per session, reused every call.
+                            # For Urdu/Auto modes the persona itself is in Roman Urdu so the AI
+                            # has a bilingual frame of reference for how to structure the answer.
+                            if _lang_mode_s in ("urdu", "auto"):
+                                _container["persona"] = (
+                                    "Aap ek candidate hain jo live interview mein jawab de rahe hain. "
+                                    "Ek real engineer ki tarah baat karo — casual, confident, seedha. "
+                                    "Conversation ho rahi hai, recitation nahi.\n\n"
+                                    "JAWAB KAISE DEIN — question ki type ke hisaab se:\n"
+                                    "  CONCEPTUAL sawaal (X kya hai, X kyun aisa kaam karta hai, X ka behavior):\n"
+                                    "    → Seedha concept ka jawab do. Fact ya reason se shuru karo, apni checking se nahi.\n"
+                                    "    → SAHI: 'REST isliye synchronous hai kyunke client response aane tak block rehta hai.'\n"
+                                    "    → GALAT: 'Main pehle API design check karta hoon.' (kisne poochha aap kya check karte hain)\n"
+                                    "    → GALAT: 'Main transport layer dekhta hoon determine karne ke liye...' (thought process narrate karna)\n"
+                                    "  EXPERIENCE sawaal (koi example batao, aap ne kya banaya, kaise handle kiya):\n"
+                                    "    → Phir apna action ya approach pehle batao.\n"
+                                    "    → SAHI: 'Main pipeline consistency pehle validate karta hoon.'\n\n"
+                                    "TONE — casual aur professional, jaise kisi senior colleague se baat ho:\n"
+                                    "  • Chhote sentences. Plain words. Filler nahi.\n"
+                                    "  • Factual sawaal ke liye thought process narrate mat karo.\n"
+                                    "  • Jawab kaise socha — yeh mat batao, seedha jawab do.\n"
+                                    "  BANNED:\n"
+                                    "    - 'Main pehle X check karta hoon' jab sawaal conceptual ho\n"
+                                    "    - 'Main determine karta hoon...'\n"
+                                    "    - 'X samajhna zaroori hai'\n"
+                                    "    - 'Yeh approach enable/ensure karta hai...'\n"
+                                    "    - Koi textbook definition ya blog conclusion"
+                                )
+                                _container["style"] = (
+                                    "STYLE RULES — har sentence par laagu hota hai, sirf pehle par nahi:\n"
+                                    "• Jawab Roman Urdu mein — Urdu alfaaz English haroof mein likhain.\n"
+                                    "• Technical terms (Entity Framework, REST API, Docker, SQL, Python) English mein rakhain.\n"
+                                    "• Active voice. Chhote sentences. Filler words nahi.\n"
+                                    "• Baat karte hue sound karo — har sentence ka test: 'Kya koi engineer yeh out loud kahega?'\n"
+                                    "• KABHI NAHI: company name, tool name, ya project name se jawab shuru karo.\n"
+                                    "• KABHI DEFAULT MAT KARO past role ya company mention karne par — sirf tab jab question explicitly maange.\n"
+                                    "• Jab experience relevant ho, generic rakho: 'ek project mein', 'ek purane system mein' — company ka naam mat lo.\n"
+                                    "• Metrics jawab dene ke baad aate hain, pehle nahi.\n"
+                                    "• Har jawab poora karo — beech mein mat choro.\n"
+                                    "BANNED PATTERNS — ye AI ya documentation jaisi lagti hain:\n"
+                                    "• 'Main determine karta hoon...' → 'Main check karta hoon' / 'Yeh depend karta hai'\n"
+                                    "• 'X samajhna zaroori hai' → seedha bolo\n"
+                                    "• 'Yeh approach/solution enable/ensure karta hai...' → seedha kaho kya hota hai\n"
+                                    "• 'Is tarah se,...' / 'Aisa karne se,...' → 'toh', 'jo', 'matlab'\n"
+                                    "• 'Mere purane company mein...' / '[Company] mein...' — default ki tarah nahi, sirf agar question maange\n"
+                                    "• Koi bhi textbook-jaisi definition\n"
+                                    "PREFERRED:\n"
+                                    "• 'Yeh depend karta hai...' / 'Asli baat yeh hai...' / 'Practice mein...'\n"
+                                    "• 'Key cheez yeh hai...' / 'Matlab yeh ke...' / 'Basically...'"
+                                )
+                            else:
+                                _container["persona"] = (
+                                    "You are a candidate in a live job interview. "
+                                    "Talk like a real engineer — casual, confident, direct. "
+                                    "You are having a conversation, not reciting or explaining from a script.\n\n"
+                                    "HOW TO ANSWER — depends on the question type:\n"
+                                    "  CONCEPTUAL questions (what is X, why does X work this way, how does X behave):\n"
+                                    "    → Answer the concept directly. Start with the fact, not with what you do.\n"
+                                    "    → GOOD: 'REST is synchronous because every request blocks until the server responds.'\n"
+                                    "    → GOOD: 'The limit depends on the database — SQL Server allows up to 999 non-clustered.'\n"
+                                    "    → BAD: 'I check the API design first.' (nobody asked what you check)\n"
+                                    "    → BAD: 'I look at the transport layer to determine...' (narrating your thought process)\n"
+                                    "  EXPERIENCE questions (tell me about a time, have you worked with, what have you built):\n"
+                                    "    → Then lead with what you did, your approach, your decision.\n"
+                                    "    → GOOD: 'I start by validating the pipeline consistency end to end.'\n\n"
+                                    "TONE — casual and professional, like talking to a senior colleague:\n"
+                                    "  • Short sentences. Plain words. No filler.\n"
+                                    "  • Never narrate your thought process for a factual question.\n"
+                                    "  • Never explain how you figured out the answer — just give the answer.\n"
+                                    "  BANNED anywhere:\n"
+                                    "    - 'I check X first' / 'I look at X first' when the question is conceptual\n"
+                                    "    - 'I determine...' / 'I would determine...'\n"
+                                    "    - 'Understanding X is crucial' / 'It is important to understand'\n"
+                                    "    - 'One must consider...'\n"
+                                    "    - 'This approach/solution/architecture enables/ensures/allows...'\n"
+                                    "    - Any textbook definition or blog-post conclusion"
+                                )
+                                _container["style"] = (
+                                    "STYLE RULES — apply to EVERY sentence, not just the first:\n"
+                                    "• Active voice throughout. Short sentences. No filler.\n"
+                                    "• Sound like you're talking to the interviewer, not writing for a reader.\n"
+                                    "• Every sentence must pass: 'would a real engineer say this out loud?' If not, rewrite it.\n"
+                                    "• NEVER open with a company name, tool name, project name, or employer.\n"
+                                    "• NEVER default to mentioning a past role, company, or employer — only reference experience when the question explicitly asks for it.\n"
+                                    "• When experience IS relevant, keep it generic: 'in one project', 'in a previous role', 'on a recent system' — never name the company or organisation.\n"
+                                    "• Metrics and outcomes welcome AFTER the answer is given, not before.\n"
+                                    "• Complete every answer — never trail off.\n"
+                                    "BANNED PATTERNS — these make responses sound like AI output or documentation:\n"
+                                    "• 'I determine...' / 'I would determine...' — say 'I check' / 'I look at' / 'it depends on'\n"
+                                    "• 'Understanding X is crucial' / 'It is important to understand' — skip the preamble, just say it\n"
+                                    "• 'One must consider...' — say 'you have to think about' or just state it\n"
+                                    "• 'This approach/solution/method/architecture enables/ensures/allows...' — say what it does plainly\n"
+                                    "• 'By doing so,...' / 'In this way,...' / 'As a result of this approach,...' — use 'so', 'which', 'that way'\n"
+                                    "• 'In my previous company...' / 'At [Company]...' as a default habit — only when explicitly asked\n"
+                                    "• Any sentence that sounds like a textbook definition\n"
+                                    "• Any closing sentence that sounds like a blog post conclusion\n"
+                                    "PREFERRED PATTERNS — natural spoken engineering language:\n"
+                                    "• 'It depends on...' / 'The thing to watch is...' / 'In practice...'\n"
+                                    "• 'The key thing is...' / 'What that means is...' / 'Basically...'\n"
+                                    "• 'In most cases...' / 'The real limit is...' / 'What I'd do is...'"
+                                )
+                            print("[Cache] context_block + PERSONA + STYLE pre-built and cached")
+                            # Sync extracted context back into session store so a
+                            # subsequent reconnect can restore the full cache.
+                            if _session_id and _session_id in _SESSION_STORE:
+                                _SESSION_STORE[_session_id].update({
+                                    "ctx":           _container["ctx"],
+                                    "context_block": _container["context_block"],
+                                    "persona":       _container["persona"],
+                                    "style":         _container["style"],
+                                })
+
+                        asyncio.create_task(_bg_extract())
+
+                    except Exception as e:
+                        print(f"[Context parse error] {e}")
+
+                elif text.startswith("PROFILE:"):
+                    profile = text[8:].strip()
+
+                elif text == "PROCESS":
+                    if not audio_chunks:
+                        await ws.send_text("[no audio recorded — make sure tab audio is playing and try again]\n\n---\n\n")
+                        continue
+
+                    # Inline blob assembly — b"".join on <2MB is ~50µs, far cheaper
+                    # than run_in_executor's thread scheduling + asyncio overhead (~1-5ms).
+                    # Only offload to executor for very large recordings (>5MB).
+                    _chunks_ref  = audio_chunks
+                    audio_chunks = []
+                    # Processed — remove from session store so a future recording
+                    # starts with a clean buffer (not leftover chunks from this one).
+                    if _session_id and _session_id in _SESSION_STORE:
+                        _SESSION_STORE[_session_id]["chunks"] = audio_chunks
+                    if sum(len(c) for c in _chunks_ref) > 5_000_000:
+                        audio_blob = await asyncio.get_event_loop().run_in_executor(
+                            None, b"".join, _chunks_ref
+                        )
+                    else:
+                        audio_blob = b"".join(_chunks_ref)
+                    blob_mb = len(audio_blob) / (1024 * 1024)
+                    print(f"[Process] {len(audio_blob)} bytes ({blob_mb:.1f} MB) | STT: {stt_mode}")
+
+                    # Guard: webm files under ~8KB are just the container header with no
+                    # real audio payload. This happens when stop is pressed within the first
+                    # 500ms before MediaRecorder fires its first chunk. Give a clear message.
+                    MIN_AUDIO_BYTES = 8_000
+                    if len(audio_blob) < MIN_AUDIO_BYTES:
+                        print(f"[Process] Audio too short ({len(audio_blob)} bytes) — skipping")
+                        await ws.send_text("[recording too short — hold longer to capture audio]\n\n---\n\n")
+                        continue
+
+                    if blob_mb > 50:
+                        await ws.send_text(f"[Warning: audio is {blob_mb:.0f} MB — transcription may be slow]\n\n")
+
+                    # ── Context + STT in parallel when bg_extract is still running ──
+                    # If the background extraction task hasn't finished yet, don't block STT.
+                    # STT only needs ctx for keyword-hint prompts (minor quality gain).
+                    # We start STT immediately with whatever ctx is ready (possibly empty {}),
+                    # then await the real ctx before building the AI prompt.
+                    ctx = _ctx_container.get("ctx") or {}
+
+                    # ── Transcribe + ctx (parallel when ctx not yet ready) ────
+                    # Cache loop.time() once — avoids repeated syscall overhead
+                    _loop       = asyncio.get_event_loop()
+                    t0          = _loop.time()
+
+                    async def _do_stt():
+                        if stt_mode == "deepgram":
+                            return await transcribe_with_deepgram(audio_blob, ctx, lang_mode)
+                        elif stt_mode == "gemini":
+                            # For short clips (<80KB ≈ <8s speech), Whisper local is faster
+                            # than the Gemini network round-trip (~2.5s vs ~1.5s local).
+                            # Only use Gemini STT for longer recordings where accuracy gains matter.
+                            if len(audio_blob) < 80_000:
+                                print("[Gemini STT] Short clip — routing to Whisper for speed")
+                                return await transcribe_with_whisper(audio_blob, ctx, lang_mode)
+                            _stt_model_hint = ai_model if ai_provider == "gemini" else ""
+                            return await transcribe_with_gemini(audio_blob, ctx, lang_mode, gemini_key, _stt_model_hint)
+                        else:
+                            return await transcribe_with_whisper(audio_blob, ctx, lang_mode)
+
+                    # Run STT and a concurrent WS keepalive ping so the client
+                    # doesn't time out during long (5-10s) Whisper processing.
+                    # The client ignores PONG messages so this is transparent.
+                    async def _stt_with_keepalive():
+                        """Run STT while sending periodic PONG to keep WS alive."""
+                        stt_task = asyncio.create_task(_do_stt())
+                        while not stt_task.done():
+                            try:
+                                await asyncio.wait_for(asyncio.shield(stt_task), timeout=4.0)
+                            except asyncio.TimeoutError:
+                                # STT still running — ping the client to keep WS alive
+                                try:
+                                    await ws.send_text("PONG")
+                                except Exception:
+                                    pass
+                        return await stt_task
+
+                    try:
+                        transcript = await _stt_with_keepalive()
+                    except Exception as e:
+                        await ws.send_text(f"[Transcription error: {e}]")
+                        continue
+
+                    stt_time = _loop.time() - t0
+                    print(f"[Timing] STT: {stt_time:.2f}s")
+                    print(f"[Transcript RAW]: {repr(transcript[:200])}")
+
+                    if not transcript:
+                        await ws.send_text("[no speech detected — check audio and try again]")
+                        continue
+
+                    api_key = GROQ_API_KEYS[current_key_index]
+
+                    # ── Transcript correction ────────────────────────────────
+                    # Rule-based fixes only — zero latency, zero hallucination.
+                    # AI fix was causing "await"→"async", "Cache"→"Kinza" — removed.
+                    transcript = apply_rule_based_fixes(transcript, ctx)
+
+                    # ── Language detection & translation ─────────────────────
+                    original_transcript     = transcript
+                    translated_from_foreign = False
+
+                    detected_lang = detect_language(transcript)
+
+                    if detected_lang in ("foreign_script", "roman_south_asian") and lang_mode != "english":
+                        transcript              = await translate_to_english(transcript, api_key, detected_lang)
+                        translated_from_foreign = True
+
+                    transcript_lower = transcript.lower()
+                    has_technical    = _fast_match(transcript_lower, _TECHNICAL_SINGLES,  _TECHNICAL_MULTI)
+                    has_experience   = _fast_match(transcript_lower, _EXPERIENCE_SINGLES, _EXPERIENCE_MULTI)
+                    is_greeting      = _fast_match(transcript_lower, _GREETING_SINGLES,   _GREETING_MULTI)
+
+                    # Compute all intent flags before sending [Q] so prompt is ready
+                    # the instant the WebSocket send returns — minimises dead time.
+                    is_followup     = _fast_match(transcript_lower, _FOLLOWUP_SINGLES,   _FOLLOWUP_MULTI)
+                    is_code_request = _fast_match(transcript_lower, _CODE_SINGLES,       _CODE_MULTI)
+                    is_experience_q = _fast_match(transcript_lower, _EXPERIENCE_SINGLES, _EXPERIENCE_MULTI)
+                    wants_code      = is_code_request  # same check — reuse result
+
+                    # ── Response language instruction ─────────────────────────
+                    # For auto/urdu modes, always inject the Roman Urdu instruction.
+                    # We pass detected_lang only as context — the function now always
+                    # fires for auto mode regardless of what language was detected,
+                    # because the user explicitly selected auto = Roman Urdu responses.
+                    _resp_lang_instr = build_response_lang_instruction(lang_mode, detected_lang)
+
+                    if translated_from_foreign:
+                        await ws.send_text(f"[Q - Original]: {original_transcript}\n")
+                        await ws.send_text(f"[Translated to EN]: {transcript}\n\n")
+                    else:
+                        await ws.send_text(f"[Q]: {transcript}\n\n")
+
+                    if is_greeting and not has_technical and not has_experience and len(transcript.split()) < 15:
+                        await ws.send_text("[Greeting detected — waiting for a question...]\n\n---\n\n")
+                        continue
+
+                    # Ensure ctx is fully populated before prompt building.
+                    # By the time STT finishes (~2-3s), bg_extract has almost always completed.
+                    # If not, we do a single quick synchronous check — no extra await needed.
+                    if not _ctx_container.get("ctx"):
+                        _ctx_container["ctx"] = ctx  # keep empty dict as fallback
+                    ctx = _ctx_container["ctx"] or ctx
+
+                    # Use pre-built cached strings — built once in _bg_extract, reused every call
+                    context_block = _ctx_container["context_block"] or build_system_context(profile, job_title, job_desc, cv, ctx, lang_mode=lang_mode)
+                    history_block = build_history_block(conversation_history, transcript)
+                    # Prepend response-language directive to PERSONA so it applies to every
+                    # prompt branch below without duplicating the instruction in each template.
+                    _base_persona = _ctx_container["persona"] or ""
+                    PERSONA       = (_resp_lang_instr + _base_persona) if _resp_lang_instr else _base_persona
+                    STYLE         = _ctx_container["style"]   or ""
+
+                    # Dynamic values from session context (read from already-cached ctx)
+                    primary_lang  = ctx.get("primary_language", "the relevant language")
+                    domain        = ctx.get("domain", "software engineering")
+                    stack_summary = ctx.get("stack_summary", job_title or "a technical role")
+                    _domain_type  = ctx.get("domain_type", "technical")
+
+                    # Detect multi-concept questions (e.g. "explain X, Y and Z")
+                    # _CONCEPT_SPLIT_RE compiled once at module level — zero overhead here
+                    _concept_split = _CONCEPT_SPLIT_RE.split(transcript_lower)
+                    _concept_count = len([c for c in _concept_split if len(c.strip()) > 3])
+                    is_multi_concept = (
+                        _concept_count >= 3 or
+                        any(w in transcript_lower for w in [
+                            "difference between", "compare", "differences", "distinguish",
+                            "contrast", "vs", "versus",
+                        ]) and _concept_count >= 2
+                    )
+
+                    if is_followup and conversation_history:
+                        last_q, last_a = conversation_history[-1]
+                        prompt = (
+                            f"{context_block}\n\n"
+                            f"{history_block}"
+                            f"{PERSONA}\n{STYLE}\n\n"
+                            "This is a follow-up to what you just said. Go one level deeper — add a real example, "
+                            "a specific detail, or expand on a point you mentioned. Don't repeat yourself. "
+                            "Keep it natural and conversational, like continuing a thought.\n"
+                            f"What you said before: {last_a[:200]}\n"
+                            f"Follow-up: {transcript}\nAnswer:"
+                        )
+                        num_predict = 250
+
+                    elif is_code_request:
+                        prompt = (
+                            f"{context_block}\n\n"
+                            f"{history_block}"
+                            f"{PERSONA}\n{STYLE}\n\n"
+                            f"Write the {primary_lang} code. 1 sentence intro, then clean pseudocode. No markdown. Max 8 lines.\n\n"
+                            f"Question: {transcript}\nAnswer:"
+                        )
+                        num_predict = 220
+
+                    elif is_experience_q:
+                        prompt = (
+                            f"{context_block}\n\n"
+                            f"{history_block}"
+                            f"{PERSONA}\n\n"
+                            "ANSWERING A BEHAVIOURAL / EXPERIENCE QUESTION:\n"
+                            "Follow this exact structure:\n"
+                            "  Sentence 1: State the approach, action, or decision directly. "
+                            "Must state WHAT you do or did — not where, not which company.\n"
+                            "  Sentences 2-3: Explain the methodology and reasoning.\n"
+                            "  Sentences 4-5: Add one specific supporting detail from your experience if genuinely relevant — "
+                            "describe it generically: 'in one project', 'on a recent system', 'in a previous role'. "
+                            "Do NOT name any company, organisation, or employer.\n"
+                            "  Final sentence: State the outcome or conclusion.\n\n"
+                            "Rules:\n"
+                            "• Write flowing prose — no bullets.\n"
+                            "• Use 'I' throughout — only use 'we' for team actions.\n"
+                            "• Do not invent details not in the CV.\n"
+                            "• NEVER mention a company name or specific organisation — keep all experience references generic.\n"
+                            "• Only include an experience reference if it genuinely supports the answer — do not force it.\n"
+                            "• 4-6 sentences total. Always finish completely.\n\n"
+                            f"Question: {transcript}\nAnswer:"
+                        )
+                        num_predict = 360
+
+                    elif is_multi_concept:
+                        prompt = (
+                            f"{context_block}\n\n"
+                            f"{history_block}"
+                            f"{PERSONA}\n{STYLE}\n\n"
+                            "STT NOTE: The question came from speech-to-text — interpret any near-miss spellings as their most likely intended tech term. Never say a term is unrecognized.\n"
+                            "Multiple concepts — one bullet each. First character MUST be '•'. No intro line.\n"
+                            "Each bullet: '• Name — what it is. Real example.' (2 sentences max per bullet)\n"
+                            "Cover every concept. Complete every bullet. Never cut off.\n\n"
+                            f"Question: {transcript}\nAnswer:"
+                        )
+                        num_predict = 280
+
+                    else:
+                        # Detect if they want a list/types
+                        asks_for_list = any(w in transcript_lower for w in [
+                            "types", "type of", "kinds", "causes", "reasons", "steps",
+                            "ways", "options", "examples", "list", "name some", "what are",
+                            "which are", "different", "categories", "methods", "how many",
+                            "name the", "tell me the", "what are the",
+                        ])
+
+                        if asks_for_list:
+                            prompt = (
+                                f"{context_block}\n\n"
+                                f"{history_block}"
+                                f"{PERSONA}\n{STYLE}\n\n"
+                                "STT NOTE: The question came from speech-to-text — interpret any near-miss spellings as their most likely intended tech term. Never say a term is unrecognized.\n"
+                                "Bullet list. Each bullet: '• Name — one crisp sentence.' No intro, no closing. Complete all bullets.\n\n"
+                                f"Question: {transcript}\nAnswer:"
+                            )
+                            num_predict = 220
+                        else:
+                            prompt = (
+                                f"{context_block}\n\n"
+                                f"{history_block}"
+                                f"{PERSONA}\n{STYLE}\n\n"
+                                "STT NOTE: The question came from speech-to-text and may contain near-miss spellings. Always interpret charitably — map to the most likely intended tech term and answer it directly. Never say a term doesn't exist.\n"
+                                "Answer conversationally in plain prose — 3 to 4 sentences max.\n"
+                                "  Sentence 1: Answer the actual question. For conceptual questions, state the fact or reason directly.\n"
+                                "     GOOD: 'REST is synchronous because the client blocks until the server responds.'\n"
+                                "     GOOD: 'It depends on the database — SQL Server caps it at 999 non-clustered indexes.'\n"
+                                "     BAD: 'I check the design first.' / 'I look at the transport layer to determine...'\n"
+                                "  Sentence 2: One sentence explaining the mechanism or reason behind it.\n"
+                                "  Sentence 3: A practical nuance, edge case, or natural closing — keep it short.\n"
+                                "No bullets. No intro. No thought-process narration. Complete the final sentence.\n\n"
+                                f"Question: {transcript}\nAnswer:"
+                            )
+                            num_predict = 200
+
+                    # ── Stream answer ─────────────────────────────────────────
+                    t1          = _loop.time()
+                    full_answer = ""
+
+                    if ai_provider == "cerebras" and cerebras_key:
+                        # ── Cerebras streaming (with retry + Groq fallback) ───
+                        cerebras_ok = False
+
+                        # qwen-3 models have a thinking/reasoning mode that can produce
+                        # an empty content stream. Use enable_thinking=False to suppress it.
+                        # We build two payloads: one with the flag, one plain fallback.
+                        _is_qwen3 = "qwen-3" in ai_model.lower() or "qwen3" in ai_model.lower()
+
+                        def _make_cb_payload(suppress_thinking: bool):
+                            p = {
+                                "model":       ai_model,
+                                "messages":    [{"role": "user", "content": prompt}],
+                                "max_tokens":  num_predict,
+                                "temperature": 0.3,
+                                "stream":      True,
+                            }
+                            if suppress_thinking and _is_qwen3:
+                                p["enable_thinking"] = False
+                            return p
+
+                        # If this model previously rejected enable_thinking, skip the flag immediately
+                        _cb_use_thinking_flag = _is_qwen3 and ai_model not in _CEREBRAS_NO_THINKING
+                        _cb_400_retried       = False       # only retry once after a 400
+
+                        for cb_attempt in range(3):  # retry up to 3x on 429
+                            try:
+                                async with http_client.stream(
+                                    "POST",
+                                    CEREBRAS_URL,
+                                    headers={
+                                        "Authorization": f"Bearer {cerebras_key}",
+                                        "Content-Type":  "application/json",
+                                    },
+                                    json=_make_cb_payload(_cb_use_thinking_flag),
+                                ) as resp:
+                                    if resp.status_code == 429:
+                                        if cb_attempt == 0:
+                                            # One short retry before falling back to Groq
+                                            print(f"[Cerebras] 429 rate limit, retrying once (attempt {cb_attempt+1}/3)")
+                                            await asyncio.sleep(0.5)
+                                            continue
+                                        # Second 429 — don't keep waiting, fall through to Groq immediately
+                                        print(f"[Cerebras] 429 repeated — falling through to Groq immediately")
+                                        break
+                                    elif resp.status_code == 400 and _cb_use_thinking_flag and not _cb_400_retried:
+                                        # enable_thinking not supported — remember this model, retry without flag
+                                        body = await resp.aread()
+                                        print(f"[Cerebras] 400 with thinking flag — model {ai_model} added to no-thinking list")
+                                        _CEREBRAS_NO_THINKING.add(ai_model)
+                                        _cb_use_thinking_flag = False
+                                        _cb_400_retried       = True
+                                        continue
+                                    elif resp.status_code == 404:
+                                        body = await resp.aread()
+                                        print(f"[Cerebras] 404 model not found: {ai_model} — falling back to Groq")
+                                        await ws.send_text(f"[Cerebras model '{ai_model}' not found — using Groq instead]\n")
+                                        break  # break to Groq fallback
+                                    elif resp.status_code != 200:
+                                        body = await resp.aread()
+                                        print(f"[Cerebras] Error {resp.status_code}: {body[:200]}")
+                                        await ws.send_text(f"[Cerebras error {resp.status_code} — using Groq instead]\n")
+                                        break  # break to Groq fallback
+                                    else:
+                                        first_token = True
+                                        async def _stream_cerebras():
+                                            nonlocal full_answer, first_token
+                                            async for line in resp.aiter_lines():
+                                                line = line.strip()
+                                                if not line or line == "data: [DONE]":
+                                                    continue
+                                                if line.startswith("data: "):
+                                                    try:
+                                                        data  = json.loads(line[6:])
+                                                        delta = data.get("choices", [{}])[0].get("delta", {})
+                                                        token = delta.get("content", "")
+                                                        if token:
+                                                            if first_token:
+                                                                elapsed = _loop.time()
+                                                                print(f"[Timing] Cerebras first token: {elapsed-t1:.2f}s | Total: {elapsed-t0:.2f}s")
+                                                                first_token = False
+                                                            full_answer += token
+                                                            await ws.send_text(token)
+                                                    except (json.JSONDecodeError, KeyError, IndexError):
+                                                        continue
+                                        try:
+                                            await asyncio.wait_for(_stream_cerebras(), timeout=20.0)
+                                        except asyncio.TimeoutError:
+                                            print(f"[Cerebras] Stream timeout after 8s — sending partial answer")
+                                            if full_answer:
+                                                cerebras_ok = True  # partial is fine
+                                            break
+                                        # If stream completed but nothing was emitted, fall through to Groq
+                                        if not full_answer:
+                                            print(f"[Cerebras] Empty response for model {ai_model} — falling back to Groq")
+                                            break
+                                        cerebras_ok = True
+                                        break  # success
+                            except Exception as e:
+                                print(f"[Cerebras] Connection error: {e}")
+                                break  # fall through to Groq
+
+                        if not cerebras_ok and not full_answer:
+                            # Groq fallback when Cerebras fails
+                            print("[Cerebras] Falling back to Groq llama-3.3-70b-versatile")
+                            _fb_key = GROQ_API_KEYS[current_key_index]
+                            try:
+                                async with http_client.stream(
+                                    "POST",
+                                    "https://api.groq.com/openai/v1/chat/completions",
+                                    headers={"Authorization": f"Bearer {_fb_key}", "Content-Type": "application/json"},
+                                    json={
+                                        "model": GROQ_MODEL,
+                                        "messages": [{"role": "user", "content": prompt}],
+                                        "max_tokens": num_predict,
+                                        "temperature": 0.3,
+                                        "stream": True,
+                                    }
+                                ) as resp:
+                                    if resp.status_code == 200:
+                                        first_token = True
+                                        async for line in resp.aiter_lines():
+                                            if not line or line == "data: [DONE]":
+                                                continue
+                                            if line.startswith("data: "):
+                                                try:
+                                                    data  = json.loads(line[6:])
+                                                    token = data.get("choices",[{}])[0].get("delta",{}).get("content","")
+                                                    if token:
+                                                        if first_token:
+                                                            elapsed = _loop.time()
+                                                            print(f"[Timing] Groq fallback first token: {elapsed-t1:.2f}s")
+                                                            first_token = False
+                                                        full_answer += token
+                                                        await ws.send_text(token)
+                                                except (json.JSONDecodeError, KeyError, IndexError):
+                                                    continue
+                            except Exception as e:
+                                await ws.send_text(f"\n[Groq fallback also failed: {e}]\n")
+
+                    elif ai_provider == "gemini" and gemini_key:
+                        # ── Gemini streaming ─────────────────────────────────
+                        # streamGenerateContent with alt=sse delivers SSE chunks.
+                        # Each chunk is a JSON object (NOT an array) with shape:
+                        #   {"candidates":[{"content":{"parts":[{"text":"..."}]}}]}
+                        # Gemini 2.5 models also emit "thought" chunks first with
+                        # an empty parts[0].text — we skip those and only forward
+                        # non-empty text tokens. thinkingBudget=0 disables thinking
+                        # mode entirely for lowest latency.
+                        # The stream ends by closing — there is NO "data: [DONE]".
+                        print(f"[Gemini] model={ai_model}")
+                        _gemini_model = ai_model  # e.g. "gemini-2.5-flash"
+                        _gemini_ok = False
+                        try:
+                            _gemini_url = (
+                                f"{GEMINI_BASE_URL}/v1beta/models/{_gemini_model}"
+                                f":streamGenerateContent?alt=sse&key={gemini_key}"
+                            )
+                            # thinkingConfig is only supported on gemini-2.5-flash (not -lite, not 2.0).
+                            # Sending it to an unsupported model causes a 400 error + silent retry.
+                            # Only add it when the model name contains "flash" but NOT "lite".
+                            _supports_thinking = (
+                                "flash" in _gemini_model and "lite" not in _gemini_model
+                                and "2.5" in _gemini_model
+                            )
+                            _gen_cfg: dict = {
+                                "temperature": 0.4,
+                                "maxOutputTokens": num_predict,
+                            }
+                            if _supports_thinking:
+                                _gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+
+                            _gemini_payload = {
+                                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                                "generationConfig": _gen_cfg,
+                            }
+
+                            async def _stream_gemini_inner():
+                                nonlocal full_answer, first_token, _gemini_ok
+                                first_token = True
+
+                                # Strategy: for short answers use non-streaming generateContent —
+                                # one round-trip, lower TTFT than SSE chunking overhead.
+                                # For longer answers use SSE streaming for progressive display.
+                                _use_nonstream = num_predict <= 160
+
+                                if _use_nonstream:
+                                    # Non-streaming: single POST, get full answer, fake-stream words
+                                    _ns_url = (
+                                        f"{GEMINI_BASE_URL}/v1beta/models/{_gemini_model}"
+                                        f":generateContent?key={gemini_key}"
+                                    )
+                                    _ns_resp = await http_client.post(
+                                        _ns_url,
+                                        headers={"Content-Type": "application/json"},
+                                        json=_gemini_payload,
+                                    )
+                                    if _ns_resp.status_code != 200:
+                                        print(f"[Gemini] Non-stream HTTP {_ns_resp.status_code}: {_ns_resp.text[:200]}")
+                                        raise Exception(f"Gemini HTTP {_ns_resp.status_code}")
+                                    _ns_data = _ns_resp.json()
+                                    _ns_text = ""
+                                    for _c in _ns_data.get("candidates", []):
+                                        for _p in _c.get("content", {}).get("parts", []):
+                                            _ns_text += _p.get("text", "")
+                                    if not _ns_text:
+                                        raise Exception("Gemini empty response")
+                                    # Log timing at point we have the full answer
+                                    _el = _loop.time()
+                                    print(f"[Timing] Gemini first token: {_el-t1:.2f}s | Total: {_el-t0:.2f}s")
+                                    # Fake-stream: send in word-sized chunks for smooth UI
+                                    _words = _ns_text.split(" ")
+                                    _buf = ""
+                                    for _wi, _w in enumerate(_words):
+                                        _buf += ("" if _wi == 0 else " ") + _w
+                                        if len(_buf) >= 12 or _wi == len(_words) - 1:
+                                            full_answer += _buf
+                                            await ws.send_text(_buf)
+                                            _buf = ""
+                                            await asyncio.sleep(0)  # yield to event loop
+                                    _gemini_ok = True
+                                else:
+                                    # SSE streaming for longer answers
+                                    async with http_client.stream(
+                                        "POST",
+                                        _gemini_url,
+                                        headers={"Content-Type": "application/json"},
+                                        json=_gemini_payload,
+                                    ) as _gresp:
+                                        if _gresp.status_code != 200:
+                                            _err = await _gresp.aread()
+                                            print(f"[Gemini] HTTP {_gresp.status_code}: {_err[:200]}")
+                                            raise Exception(f"Gemini HTTP {_gresp.status_code}")
+
+                                        async for _line in _gresp.aiter_lines():
+                                            if not _line or not _line.startswith("data: "):
+                                                continue
+                                            _raw = _line[6:].strip()
+                                            if not _raw or _raw == "[DONE]":
+                                                continue
+                                            try:
+                                                _chunk = json.loads(_raw)
+                                                for _cand in _chunk.get("candidates", []):
+                                                    for _part in _cand.get("content", {}).get("parts", []):
+                                                        _tok = _part.get("text", "")
+                                                        if _tok:
+                                                            if first_token:
+                                                                _el = _loop.time()
+                                                                print(f"[Timing] Gemini first token: {_el-t1:.2f}s | Total: {_el-t0:.2f}s")
+                                                                first_token = False
+                                                            full_answer += _tok
+                                                            await ws.send_text(_tok)
+                                            except (json.JSONDecodeError, KeyError, IndexError):
+                                                continue
+
+                                    if full_answer:
+                                        _gemini_ok = True
+                                    else:
+                                        raise Exception("Gemini empty response")
+
+                            try:
+                                await asyncio.wait_for(_stream_gemini_inner(), timeout=20.0)
+                            except asyncio.TimeoutError:
+                                print("[Gemini] Stream timeout after 12s — using partial answer")
+                                if full_answer:
+                                    _gemini_ok = True
+
+                        except Exception as _gemini_err:
+                            print(f"[Gemini] Error: {_gemini_err} — falling back to Groq")
+
+                        if not _gemini_ok and not full_answer:
+                            # Groq fallback when Gemini fails
+                            print("[Gemini] Falling back to Groq")
+                            _fb_key = GROQ_API_KEYS[current_key_index]
+                            try:
+                                async with http_client.stream(
+                                    "POST",
+                                    "https://api.groq.com/openai/v1/chat/completions",
+                                    headers={"Authorization": f"Bearer {_fb_key}", "Content-Type": "application/json"},
+                                    json={
+                                        "model": GROQ_MODEL,
+                                        "messages": [{"role": "user", "content": prompt}],
+                                        "max_tokens": num_predict,
+                                        "temperature": 0.3,
+                                        "stream": True,
+                                    }
+                                ) as resp:
+                                    if resp.status_code == 200:
+                                        first_token = True
+                                        async for line in resp.aiter_lines():
+                                            if not line or line == "data: [DONE]":
+                                                continue
+                                            if line.startswith("data: "):
+                                                try:
+                                                    data  = json.loads(line[6:])
+                                                    token = data.get("choices",[{}])[0].get("delta",{}).get("content","")
+                                                    if token:
+                                                        if first_token:
+                                                            elapsed = _loop.time()
+                                                            print(f"[Timing] Groq fallback (Gemini) first token: {elapsed-t1:.2f}s")
+                                                            first_token = False
+                                                        full_answer += token
+                                                        await ws.send_text(token)
+                                                except (json.JSONDecodeError, KeyError, IndexError):
+                                                    continue
+                            except Exception as _fb_e:
+                                await ws.send_text(f"\n[Gemini and Groq fallback both failed: {_fb_e}]\n")
+
+                    elif ai_provider == "qwen":
+                        # ── Qwen (Alibaba DashScope) streaming ────────────────
+                        # DashScope exposes an OpenAI-compatible endpoint:
+                        # https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+                        # Models: qwen-plus, qwen-turbo, qwen-max, qwen-long,
+                        #         qwen-flash, qwen-coder-turbo, etc.
+                        # Falls back to Groq if no key or on error.
+                        DASHSCOPE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions"
+                        _qwen_ok = False
+
+                        if qwen_key and ai_provider == "qwen":
+                            _qwen_model = ai_model  # e.g. "qwen-coder-turbo"
+                            print(f"[Qwen] model={_qwen_model}")
+                            try:
+                                async with http_client.stream(
+                                    "POST",
+                                    DASHSCOPE_URL,
+                                    headers={
+                                        "Authorization": f"Bearer {qwen_key}",
+                                        "Content-Type":  "application/json",
+                                    },
+                                    json={
+                                        "model":       _qwen_model,
+                                        "messages":    [{"role": "user", "content": prompt}],
+                                        "max_tokens":  num_predict,
+                                        "temperature": 0.4,
+                                        "stream":      True,
+                                    }
+                                ) as resp:
+                                    if resp.status_code == 200:
+                                        first_token = True
+
+                                        async def _stream_qwen():
+                                            nonlocal full_answer, first_token
+                                            async for line in resp.aiter_lines():
+                                                if not line or line == "data: [DONE]":
+                                                    continue
+                                                if line.startswith("data: "):
+                                                    try:
+                                                        data  = json.loads(line[6:])
+                                                        token = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                                        if token:
+                                                            if first_token:
+                                                                elapsed = _loop.time()
+                                                                print(f"[Timing] Qwen first token: {elapsed-t1:.2f}s | Total: {elapsed-t0:.2f}s")
+                                                                first_token = False
+                                                            full_answer += token
+                                                            await ws.send_text(token)
+                                                    except (json.JSONDecodeError, KeyError, IndexError):
+                                                        continue
+
+                                        try:
+                                            await asyncio.wait_for(_stream_qwen(), timeout=20.0)
+                                            if full_answer:
+                                                _qwen_ok = True
+                                        except asyncio.TimeoutError:
+                                            print("[Qwen] Stream timeout after 20s — using partial answer")
+                                            if full_answer:
+                                                _qwen_ok = True
+                                    else:
+                                        _err_body = await resp.aread()
+                                        print(f"[Qwen] HTTP {resp.status_code}: {_err_body[:200]} — falling back to Groq")
+                                        await ws.send_text(f"[Qwen error {resp.status_code} — using Groq instead]\n")
+
+                            except Exception as _qwen_err:
+                                print(f"[Qwen] Error: {_qwen_err} — falling back to Groq")
+
+                        if not _qwen_ok and not full_answer:
+                            # ── Groq fallback (when Qwen fails or no key) ─────
+                            if ai_provider == "qwen":
+                                print("[Qwen] Falling back to Groq")
+                            attempts = 0
+                            _groq_model = GROQ_MODEL
+                            while attempts < len(GROQ_API_KEYS):
+                                api_key = GROQ_API_KEYS[current_key_index]
+                                try:
+                                    async with http_client.stream(
+                                        "POST",
+                                        "https://api.groq.com/openai/v1/chat/completions",
+                                        headers={
+                                            "Authorization": f"Bearer {api_key}",
+                                            "Content-Type":  "application/json",
+                                        },
+                                        json={
+                                            "model":       _groq_model,
+                                            "messages":    [{"role": "user", "content": prompt}],
+                                            "max_tokens":  num_predict,
+                                            "temperature": 0.4,
+                                            "stream":      True,
+                                        }
+                                    ) as resp:
+                                        if resp.status_code == 429:
+                                            current_key_index = (current_key_index + 1) % len(GROQ_API_KEYS)
+                                            attempts += 1
+                                            continue
+                                        first_token = True
+                                        async def _stream_qwen_groq_fallback():
+                                            nonlocal full_answer, first_token
+                                            async for line in resp.aiter_lines():
+                                                if not line or line == "data: [DONE]":
+                                                    continue
+                                                if line.startswith("data: "):
+                                                    try:
+                                                        data  = json.loads(line[6:])
+                                                        token = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                                        if token:
+                                                            if first_token:
+                                                                elapsed = _loop.time()
+                                                                print(f"[Timing] Groq fallback (Qwen) first token: {elapsed-t1:.2f}s")
+                                                                first_token = False
+                                                            full_answer += token
+                                                            await ws.send_text(token)
+                                                    except (json.JSONDecodeError, KeyError, IndexError):
+                                                        continue
+                                        try:
+                                            await asyncio.wait_for(_stream_qwen_groq_fallback(), timeout=20.0)
+                                        except asyncio.TimeoutError:
+                                            print("[Groq fallback] Timeout after 20s")
+                                        break
+                                except Exception as e:
+                                    current_key_index = (current_key_index + 1) % len(GROQ_API_KEYS)
+                                    attempts += 1
+                                    if attempts >= len(GROQ_API_KEYS):
+                                        await ws.send_text(f"\n[All Groq keys exhausted: {e}]")
+
+                    else:
+                        # ── Groq streaming ────────────────────────────────────
+                        attempts = 0
+                        _groq_model = ai_model if ai_model else GROQ_MODEL
+                        while attempts < len(GROQ_API_KEYS):
+                            api_key = GROQ_API_KEYS[current_key_index]
+                            try:
+                                async with http_client.stream(
+                                    "POST",
+                                    "https://api.groq.com/openai/v1/chat/completions",
+                                    headers={
+                                        "Authorization": f"Bearer {api_key}",
+                                        "Content-Type":  "application/json",
+                                    },
+                                    json={
+                                        "model":       _groq_model,
+                                        "messages":    [{"role": "user", "content": prompt}],
+                                        "max_tokens":  num_predict,
+                                        "temperature": 0.4,
+                                        "stream":      True,
+                                    }
+                                ) as resp:
+                                    if resp.status_code == 429:
+                                        current_key_index = (current_key_index + 1) % len(GROQ_API_KEYS)
+                                        attempts += 1
+                                        await ws.send_text(f"[Switching to backup key {current_key_index+1}...]\n")
+                                        continue
+
+                                    first_token = True
+                                    async def _stream_groq():
+                                        nonlocal full_answer, first_token
+                                        async for line in resp.aiter_lines():
+                                            if not line or line == "data: [DONE]":
+                                                continue
+                                            if line.startswith("data: "):
+                                                try:
+                                                    data  = json.loads(line[6:])
+                                                    token = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                                    if token:
+                                                        if first_token:
+                                                            elapsed = _loop.time()
+                                                            print(f"[Timing] Groq first token: {elapsed-t1:.2f}s | Total: {elapsed-t0:.2f}s")
+                                                            first_token = False
+                                                        full_answer += token
+                                                        await ws.send_text(token)
+                                                except (json.JSONDecodeError, KeyError, IndexError):
+                                                    continue
+                                    try:
+                                        await asyncio.wait_for(_stream_groq(), timeout=20.0)
+                                    except asyncio.TimeoutError:
+                                        print(f"[Groq] Stream timeout after 20s — sending partial answer")
+                                    break
+
+                            except Exception as e:
+                                current_key_index = (current_key_index + 1) % len(GROQ_API_KEYS)
+                                attempts += 1
+                                if attempts >= len(GROQ_API_KEYS):
+                                    await ws.send_text(f"\n[All Groq keys exhausted: {e}]")
+
+                    if full_answer:
+                        conversation_history.append((transcript, full_answer))
+                        if len(conversation_history) > 5:
+                            conversation_history.pop(0)
+
+                    await ws.send_text("\n\n---\n\n")
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"WS error: {e}")
