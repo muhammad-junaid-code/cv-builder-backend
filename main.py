@@ -1824,6 +1824,30 @@ async def call_cerebras(req: CVRequest) -> tuple:
                 _log.warning("[Cerebras] %s — skipping", msg)
                 continue
 
+            # Quick probe to skip obviously bad/rate-limited keys
+            try:
+                probe = await client.post(
+                    CEREBRAS_URL,
+                    headers=headers,
+                    json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
+                    timeout=15,
+                )
+                if probe.status_code in (401, 403):
+                    errors_by_key.append(f"Key {i+1} ({mk}): invalid key")
+                    continue
+                if probe.status_code == 429:
+                    rate_limited_count += 1
+                    retry_after = int(probe.headers.get("retry-after", 60))
+                    _key_rate_limited_until[mk] = _t.time() + min(retry_after, 120)
+                    errors_by_key.append(f"Key {i+1} ({mk}): rate limited (retry-after {retry_after}s)")
+                    # Small gap before trying next key
+                    if i < len(sorted_keys) - 1:
+                        await asyncio.sleep(2)
+                    continue
+            except Exception as e:
+                errors_by_key.append(f"Key {i+1} ({mk}): probe failed - {str(e)[:50]}")
+                continue
+
             try:
                 cv = await generate_cv_dynamic(req, client, key, model, CEREBRAS_URL, headers)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
@@ -1863,10 +1887,10 @@ async def call_groq(req: CVRequest) -> tuple:
     _log.info("[Groq] Starting generation — model=%s, keys=%d, job_title=%r",
               model, len(sorted_keys), req.job_title[:60])
 
-    # read=90 gives each attempt up to 90s; call_llm_atomic uses 60s per try
+    # read=50 gives each attempt up to 50s; call_llm_atomic uses 45s per try
     # with its own retry loop, so the outer client must not cut it short
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=15, read=90, write=20, pool=10)
+        timeout=httpx.Timeout(connect=15, read=50, write=20, pool=10)
     ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
@@ -2094,7 +2118,7 @@ async def call_qwen(req: CVRequest) -> tuple:
     _log.info("[Qwen] model=%s keys=%d job=%r", model, len(sorted_keys), req.job_title[:60])
 
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=10, read=90, write=10, pool=5)
+        timeout=httpx.Timeout(connect=10, read=50, write=10, pool=5)
     ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
@@ -2148,100 +2172,32 @@ async def health():
 # ==============================================================================
 @app.post("/generate-cv")
 async def generate_cv(req: CVRequest):
-    """
-    Generate CV with automatic cross-provider fallback.
-
-    Priority order:
-      1. Requested provider (from req.provider)
-      2. Any other provider that has keys configured in the request
-
-    This ensures CV generation always succeeds as long as at least one
-    provider has valid, non-rate-limited keys — regardless of which provider
-    the user selected or which provider is having issues.
-    """
-
-    # Map provider name → (caller function, keys field name used to detect availability)
-    _PROVIDER_CALLERS = {
-        "cerebras": (call_cerebras, lambda r: r.cerebras_keys),
-        "groq":     (call_groq,     lambda r: r.groq_keys),
-        "gemini":   (call_gemini,   lambda r: r.gemini_keys),
-        "qwen":     (call_qwen,     lambda r: r.qwen_keys),
-    }
-
-    primary = req.provider
-    if primary not in _PROVIDER_CALLERS:
-        raise HTTPException(400, f"Unsupported provider: {primary}")
-
-    # Build ordered list: primary first, then any other provider that has keys
-    _order = [primary] + [
-        p for p in ("cerebras", "groq", "gemini", "qwen")
-        if p != primary and _PROVIDER_CALLERS[p][1](req)
-    ]
-
-    last_exc: Exception = HTTPException(502, "CV generation failed — no providers available.")
-    last_status: int = 502
-
-    for provider in _order:
-        caller, _keys_fn = _PROVIDER_CALLERS[provider]
-        keys = _keys_fn(req) or []
-        if not [k for k in keys if k and k.strip()]:
-            continue  # skip providers with no keys
-
-        is_fallback = provider != primary
-        if is_fallback:
-            _log.warning(
-                "[generate_cv] Primary provider %r failed — falling back to %r",
-                primary, provider
-            )
-
-        try:
-            cv_data, key_used, key_idx = await caller(req)
-            if is_fallback:
-                _log.info(
-                    "[generate_cv] Fallback to %r succeeded (primary=%r was %s)",
-                    provider, primary,
-                    getattr(last_exc, "detail", str(last_exc))[:80]
-                )
-            return {
-                "cv": cv_data,
-                "provider": provider,
-                "model": req.model,
-                "key_used": key_used,
-                "key_index": key_idx,
-                "ui_template": req.ui_template or "ui1",
-                "fallback_used": is_fallback,
-                "original_provider": primary if is_fallback else None,
-            }
-
-        except asyncio.TimeoutError as e:
-            last_exc = HTTPException(504, f"Provider {provider!r} timed out.")
-            last_status = 504
-            _log.error("[generate_cv] Provider %r asyncio.TimeoutError — trying next", provider)
-            continue
-
-        except HTTPException as e:
-            last_exc = e
-            last_status = e.status_code
-            _log.warning(
-                "[generate_cv] Provider %r raised HTTP %d: %s — trying next",
-                provider, e.status_code,
-                str(e.detail)[:120]
-            )
-            # Don't fall back on hard client errors (bad request, auth failure)
-            if e.status_code in (400, 401, 403):
-                raise
-            continue
-
-        except Exception as e:
-            last_exc = e
-            last_status = 500
-            _log.error("[generate_cv] Provider %r exception: %s — trying next", provider, str(e)[:200])
-            continue
-
-    # All providers exhausted
-    if isinstance(last_exc, HTTPException):
-        raise last_exc
-    raise HTTPException(last_status, str(last_exc))
+    try:
+        if req.provider == "cerebras":
+            cv_data, key_used, key_idx = await call_cerebras(req)
+        elif req.provider == "groq":
+            cv_data, key_used, key_idx = await call_groq(req)
+        elif req.provider == "gemini":
+            cv_data, key_used, key_idx = await call_gemini(req)
+        elif req.provider == "qwen":
+            cv_data, key_used, key_idx = await call_qwen(req)
+        else:
+            raise HTTPException(400, f"Unsupported provider: {req.provider}")
+        
+        return {
+            "cv": cv_data,
+            "provider": req.provider,
+            "model": req.model,
+            "key_used": key_used,
+            "key_index": key_idx,
+            "ui_template": req.ui_template or "ui1",
+        }
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "CV generation timed out (> 5 minutes). Try again or switch provider.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 # ==============================================================================
 # PDF GENERATION
