@@ -1537,9 +1537,9 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
                           _deadline: float = 0.0) -> dict:
     import time as _t
 
-    # Groq can be slow on large prompts; use a generous per-call timeout.
+    # All providers can be slow on large prompts; use a generous per-call timeout.
     # The outer httpx.AsyncClient timeout is the hard ceiling — this is per-attempt.
-    per_call_timeout = 60
+    per_call_timeout = 85
     mk = mask(key)
     provider_tag = url.split("/")[2].split(".")[0]   # e.g. "api" → use model instead
     tag = f"[{model}|{mk}|{stage}]"
@@ -1680,7 +1680,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
     """Generate CV using single dynamic prompt - everything from JD"""
     import time as _t
 
-    _deadline = _t.time() + 92
+    _deadline = _t.time() + 200
     years_exp = (req.years_exp or "").strip()
     years_exp_clean = years_exp.replace("+", "").strip()
 
@@ -1928,10 +1928,10 @@ async def call_groq(req: CVRequest) -> tuple:
     _log.info("[Groq] Starting generation — model=%s, keys=%d, job_title=%r",
               model, len(sorted_keys), req.job_title[:60])
 
-    # read=50 gives each attempt up to 50s; call_llm_atomic uses 45s per try
+    # read=90 gives each attempt up to 90s; call_llm_atomic uses 60s per try
     # with its own retry loop, so the outer client must not cut it short
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=15, read=50, write=20, pool=10)
+        timeout=httpx.Timeout(connect=15, read=90, write=20, pool=10)
     ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
@@ -2159,7 +2159,7 @@ async def call_qwen(req: CVRequest) -> tuple:
     _log.info("[Qwen] model=%s keys=%d job=%r", model, len(sorted_keys), req.job_title[:60])
 
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=10, read=50, write=10, pool=5)
+        timeout=httpx.Timeout(connect=10, read=90, write=15, pool=10)
     ) as client:
         for i, key in enumerate(sorted_keys):
             mk = mask(key)
