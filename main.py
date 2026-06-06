@@ -758,6 +758,80 @@ Use your knowledge of this company to create relevant projects.
             _cand_role_skills.append(_ws)
     _cand_all_skills = ", ".join(filter(None, [_cand_skills_raw] + _cand_role_skills))
 
+    # ── Python-side JD technology extraction ─────────────────────────────────────
+    # Extract every capitalised/known tech token from the JD so we can inject a
+    # pre-computed list into the prompt. This guarantees the AI cannot miss them.
+    def _extract_jd_technologies(jd_text: str) -> list:
+        """
+        Extract technology tokens from a job description using pattern matching.
+        Looks for:
+          1. Known casing patterns (C#, .NET, SQL, HTML, CSS, JS, etc.)
+          2. CamelCase words (Angular, React, WinForms, RabbitMQ, etc.)
+          3. Words preceded by 'using', 'including', 'such as', 'e.g.', 'with', '/'
+          4. Words in parenthetical lists
+        Returns a deduped list preserving original casing.
+        """
+        import re as _re
+
+        # Tokenise — split on whitespace and common separators
+        tokens = _re.split(r'[\s,;/|()\[\]]+', jd_text)
+
+        seen_lower = set()
+        result = []
+
+        for tok in tokens:
+            # Strip punctuation from edges
+            tok = tok.strip('.,!?:"\'`')
+            if len(tok) < 2:
+                continue
+
+            # Accept if:
+            # (a) contains a digit or special char typical of tech names (C#, .NET, C++, ES6)
+            # (b) is CamelCase or PascalCase (Angular, WinForms, RabbitMQ, GitHub)
+            # (c) is all-caps acronym 2-8 chars (AWS, SQS, SQL, XML, API, REST, JSON, SDK)
+            # (d) contains a dot suggesting framework/version (.NET, Node.js, ASP.NET)
+            is_tech = (
+                bool(_re.search(r'[#\+\.]', tok)) or                      # C#, .NET, C++
+                bool(_re.match(r'^[A-Z]{2,8}$', tok)) or                  # AWS, SQL, XML
+                bool(_re.match(r'^[A-Z][a-z]+(?:[A-Z][a-z]*)+', tok)) or  # CamelCase
+                bool(_re.search(r'\d', tok)) or                            # .NET 6, ES6
+                bool(_re.match(r'^[A-Z][a-z]{2,}$', tok) and len(tok) >= 4)  # React, Groq
+            )
+
+            if not is_tech:
+                continue
+
+            # Skip pure English words that match the pattern by accident
+            _stop = {
+                'This', 'That', 'With', 'From', 'They', 'When', 'Where', 'Which',
+                'While', 'What', 'Have', 'Will', 'Your', 'Team', 'Work', 'Role',
+                'Join', 'Help', 'Build', 'High', 'Key', 'Must', 'Also', 'Each',
+                'Core', 'Full', 'Long', 'True', 'Real', 'Fast', 'Best', 'Good',
+                'Why', 'How', 'Any', 'Our', 'Its', 'New', 'Own', 'Both',
+                'Including', 'Using', 'Such', 'Other', 'Based', 'Driven',
+                'Required', 'Preferred', 'Experience', 'Knowledge', 'Strong',
+                'Solid', 'Deep', 'Good', 'Proven', 'Hands', 'Clear',
+            }
+            if tok in _stop:
+                continue
+
+            # Dedupe case-insensitively, keep first occurrence (preserves casing)
+            tl = tok.lower()
+            if tl not in seen_lower:
+                seen_lower.add(tl)
+                result.append(tok)
+
+        return result
+
+    _jd_technologies = _extract_jd_technologies(jd)
+    _jd_tech_block = ""
+    if _jd_technologies:
+        _jd_tech_block = (
+            "TECHNOLOGIES EXPLICITLY FOUND IN THIS JD "
+            "(every one of these MUST appear in the skills section — no exceptions):\n"
+            + ", ".join(_jd_technologies)
+        )
+
     # Existing projects from static_data (if any) — used for the "keep or adjust" rule
     _existing_projects_raw = _static.get("projects", []) or []
     _existing_projects_block = ""
@@ -810,6 +884,8 @@ Education Period   : {edu['start']} to {edu['end']}
 {f"Contact            : {_p_contact_str}" if _p_contact_str else ""}
 {f"Candidate Technologies : {_cand_all_skills}" if _cand_all_skills else ""}
 
+{_jd_tech_block}
+
 WORK HISTORY (use these exact names and date ranges — do not invent others):
 {co_lines}
 {_profile_work_ctx}
@@ -840,34 +916,78 @@ NON-NEGOTIABLE RULES
   field. Project names must describe the initiative or product only — no " – CompanyName",
   no "CompanyName Alignment", no "for CompanyName", no variation thereof.
 
-[R4] TECHNOLOGY INCLUSION — MANDATORY
-  STEP 1 — Before writing anything, scan the full JD and list every technology,
-  framework, language, tool, and platform explicitly named in it.
-  STEP 2 — Every item from that list MUST appear in the skills section. No exceptions.
-  STEP 3 — Do NOT add technologies absent from both the JD and the candidate background.
+[R4] TECHNOLOGY AUTHENTICITY — TWO-TIER RULE
+  Technologies fall into two tiers with different inclusion rules:
 
-[R4b] PROJECT REUSE
-  Reuse/adapt existing candidate projects first. Only invent new ones if none fit.
-  Never fabricate technologies the candidate does not possess.
+  TIER 1 — JD-EXPLICIT (always include):
+    Any technology, framework, language, tool, or platform that is explicitly named
+    in the job description MUST be captured in the skills section, regardless of whether
+    it matches the candidate's primary background. The JD names it → it belongs on the CV.
+    This is not fabrication — it is accurate representation of what the role requires,
+    which is what every ATS scanner checks. If the JD lists a technology, omitting it
+    actively harms the candidate's ATS score.
 
-[R5] WRITING: Active voice. No em-dashes. No keyword stuffing.
+  TIER 2 — CANDIDATE-ASSUMED (include only if supported):
+    Technologies NOT mentioned in the JD should only be added if clearly part of the
+    candidate's stated background. Do not invent technologies the JD doesn't ask for
+    and the candidate hasn't demonstrated.
 
-[R6] COMPETENCIES — MINIMUM 14 phrases, " * " separated.
-  Plain 2-5 word professional/behavioural traits only. No technology names.
-  Examples: "Cross-Team Collaboration", "Agile Delivery", "Ownership Mindset".
+  PLACEMENT RULE: Tier-1 (JD-explicit) technologies must appear in the skills section
+    under an appropriate dynamically-named category. They must also appear in company
+    tech tags and project techTags wherever they fit the work described.
+
+  NEVER INVENTED: Do not add technologies that appear in neither the JD nor the
+    candidate's background. The distinction is JD-explicit vs. truly invented.
+
+[R4b] PROJECT REUSE AND ALIGNMENT
+  If CANDIDATE'S EXISTING PROJECTS are provided above, always evaluate them first:
+    • If an existing project is already relevant to the JD domain or company — keep it
+      as-is, only lightly rewording the description to better reflect the JD.
+    • If an existing project is not strongly aligned — make subtle, realistic adjustments
+      to its description so it reflects the company's domain or JD requirements, without
+      inventing fake technologies or experiences the candidate cannot support.
+    • Only invent fully new projects when no existing project can be reasonably adapted.
+  Never fabricate technical capabilities the candidate does not possess.
+
+[R5] HUMANISED WRITING
+  Active voice. Varied sentence structure. No keyword stuffing. No em-dashes.
+
+[R6] KEY COMPETENCIES — MINIMUM 14, CLEAR AND ATS-FRIENDLY
+  Read the job title, seniority level, and every sentence of the JD.
+  Identify the professional qualities, leadership traits, delivery expectations,
+  collaboration requirements, and workplace effectiveness qualities the role demands.
+  Translate each quality into a clear, concise 2-5 word professional phrase.
+  Use plain, direct language — avoid overly complex or ornate phrasing.
+  Good examples: "Cross-Team Collaboration", "Stakeholder Communication",
+    "Agile Delivery", "Risk Management", "Continuous Improvement", "Ownership Mindset".
+  Bad examples: "Architectural Integrity Enforcement", "Edge Case Mastery" (too vague/ornate).
+  Generate a minimum of 14 such phrases, separated by " * ".
+  Each phrase must be unique and non-overlapping.
+  ABSOLUTE RULE: No raw technology names, language names, framework names, or tool names.
+  Every phrase describes a human professional or behavioural quality.
 {_tech_competencies_instruction}
-[R7] SKILLS — MINIMUM 5 CATEGORIES, MINIMUM 10 ITEMS EACH
-  Rules:
-  • Category names derived from JD domains — never hardcoded.
-  • ALL technologies from STEP 1 of R4 must be distributed across categories.
-  • If the JD names multiple technologies from one domain (e.g. several UI frameworks,
-    several cloud services, several testing tools) — give that domain its own category.
-  • Minimum 5 categories; add more if the JD covers more domains.
-  • Minimum 10 items per category. No duplicates across categories.
+[R7] TECHNICAL SKILLS — CATEGORY NAMING AND COVERAGE
+  HOW TO NAME CATEGORIES:
+    Step A — Group the JD-FOUND TECHNOLOGIES above into natural technology domains
+             (e.g. backend stack, frontend frameworks, cloud services, databases,
+             messaging, DevOps, testing, hardware, etc.).
+    Step B — Name each category after what it actually contains, using precise
+             professional terminology that reflects the role and domain.
+             The name must be specific and meaningful — not generic.
+             Bad: "Technologies", "Tools", "Skills", "Other"
+             Good: name that tells a recruiter exactly what the category covers.
+    Step C — Every technology from JD-FOUND TECHNOLOGIES must be in exactly one category.
+             No technology may be omitted or duplicated across categories.
+
+  RULES:
+    • Minimum 5 categories — add more if the JD spans more domains.
+    • Minimum 10 items per category (add related items from candidate background to fill).
+    • Each item appears in exactly one category. Zero duplicates.
+    • Items must be ATS-friendly and specific to the role.
 
 [R8] TECH DEPTH
-  Each company: min 8 technologies, pipe-separated. Each project: min 8 techTags.
-  Include JD-named technologies wherever they fit. Never invent.
+  Each company: min 8 pipe-separated technologies. Each project: min 8 techTags.
+  Include JD technologies wherever contextually appropriate. Never invent.
 
 SECTION INSTRUCTIONS
 
@@ -893,11 +1013,10 @@ SECTION INSTRUCTIONS
 ⑤ technologies: mustHave (10-14), niceToHave (8-12), additional (8-10) — from JD only,
    limited to what the candidate's background can genuinely support.
 
-⑥ skills [MINIMUM 5 categories, MINIMUM 10 items each]
-   Category names from JD domains — not hardcoded. ALL JD-named technologies (R4 STEP 1)
-   must appear. Give each distinct technology domain its own category if the JD lists
-   multiple tools from it. Format: "Category: item1, item2, ..., item10+"
-   Min 5 categories, min 10 items each, no duplicates across categories.
+⑥ skills — follow R7 exactly.
+   Group JD technologies into professionally named domain categories.
+   Every JD technology must appear. Min 5 categories, min 10 items each.
+   Format: "Precise Domain Name: item1, item2, ..., item10+"
 
 ⑦ companies [one per company, in order]
    role: full title from JD with correct seniority.
@@ -987,42 +1106,34 @@ JSON OUTPUT — raw JSON only, no markdown, no code fences
 
 CHECKLIST:
 ✓ title: last segment exactly "{years_display}", no trailing comma, no double +
-✓ summary: opens with "{years_display} years of experience in", 100-120 words, no I/my/me
-✓ competencies: min 14 behavioural phrases, " * " separated, no technology names
-✓ skills: ALL JD-named technologies present across categories (R4 STEP 1 + R7)
-✓ skills: each JD technology domain with multiple tools gets its own category
-✓ skills: min 5 categories, min 10 items each, no duplicates, names from JD domains
+✓ summary: opens "{years_display} years of experience in ...", 100-120 words, no I/my/me
+✓ competencies: min 14 behavioural phrases " * " separated — no technology names
+✓ skills: EVERY technology in JD-FOUND TECHNOLOGIES is present in exactly one category
+✓ skills: category names are precise and domain-specific (not generic like "Tools"/"Skills")
+✓ skills: min 5 categories, min 10 items each, zero duplicates across categories
 ✓ company tech: min 8 per company. project techTags: min 8 per project
 ✓ projects 1-2: industry domain. projects 3-4: JD technical requirements
-✓ no company names in free-text or project name fields
-✓ no em-dashes, non-ASCII punctuation, or geometric/symbol characters (use plain hyphens)
+✓ no company names in any free-text or project name fields
+✓ no em-dashes, non-ASCII punctuation, or symbol characters — plain hyphens only
 ✓ raw JSON only
 """
 
     user_prompt = f"""JOB DESCRIPTION:
 {jd}
 
-Generate the CV JSON now.
+Generate the CV JSON now. Follow all rules in the system prompt.
 
-Reminders:
+Key reminders:
 - Title: inferred role | tech1, tech2, tech3 | {years_display} (no trailing comma)
-- Summary: 100-120 words, open with "{years_display} years of experience in". No I/my/me.
-- Competencies: minimum 14 clear, plain behavioral phrases via " * ". No technology names.
-  For tech/engineering roles also include software quality traits (e.g. "Code Quality Assurance",
-  "Clean Architecture Principles", "Debugging and Troubleshooting") as professional phrases.
-  Use simple, direct language — avoid ornate or overly abstract phrasing.
-- Technologies/Skills: Scan the JD first — every technology named in it MUST appear
-  in the skills section (R4). Group technologies by domain into dedicated categories (R7).
-  Do not add technologies absent from both the JD and the candidate background.
-- Projects: reuse or subtly adapt existing candidate projects where possible.
-  Only invent new projects if no existing project can be aligned to the JD.
-- Skills: minimum 5 categories (dynamically named from JD/role), minimum 10 items each.
-  Strict domain separation — no item repeated across categories. Candidate-authentic only.
-- Company tech: min 8 per company, varied, candidate-authentic. Project techTags: min 8 per project.
+- Summary: 100-120 words, opens with "{years_display} years of experience in ...". No I/my/me.
+- Competencies: min 14 behavioural phrases " * " separated. No technology names.
+- Skills: ALL technologies listed in JD-FOUND TECHNOLOGIES must appear in the skills section.
+  Name each category precisely after its domain — never use generic names like "Tools" or "Skills".
+  Give each distinct technology domain (backend, frontend, cloud, database, messaging, etc.)
+  its own dedicated category. Min 5 categories, min 10 items each, no duplicates.
 - Seniority: {seniority_guidance.split(chr(10))[0]}
 - Projects 1-2: industry domain. Projects 3-4: JD technical requirements.
-- No company names in free-text fields — including project names. Never suffix a project name with a company name (e.g. no " – CompanyName", no "CompanyName Alignment"). No em-dashes, non-ASCII punctuation, or geometric/symbol characters (■◼◾ etc.). Use plain hyphens only.
-- Everything must be realistic, credible, and aligned with the candidate's actual background.
+- No company names in any free-text or project name field. No em-dashes or symbol characters.
 """
     return system_prompt, user_prompt
 
