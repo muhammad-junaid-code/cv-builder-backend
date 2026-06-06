@@ -758,79 +758,46 @@ Use your knowledge of this company to create relevant projects.
             _cand_role_skills.append(_ws)
     _cand_all_skills = ", ".join(filter(None, [_cand_skills_raw] + _cand_role_skills))
 
-    # ── Python-side JD technology extraction ─────────────────────────────────────
-    # Extract every capitalised/known tech token from the JD so we can inject a
-    # pre-computed list into the prompt. This guarantees the AI cannot miss them.
-    def _extract_jd_technologies(jd_text: str) -> list:
-        """
-        Extract technology tokens from a job description using pattern matching.
-        Looks for:
-          1. Known casing patterns (C#, .NET, SQL, HTML, CSS, JS, etc.)
-          2. CamelCase words (Angular, React, WinForms, RabbitMQ, etc.)
-          3. Words preceded by 'using', 'including', 'such as', 'e.g.', 'with', '/'
-          4. Words in parenthetical lists
-        Returns a deduped list preserving original casing.
-        """
-        import re as _re
-
-        # Tokenise — split on whitespace and common separators
-        tokens = _re.split(r'[\s,;/|()\[\]]+', jd_text)
-
-        seen_lower = set()
-        result = []
-
+    # ── Python-side JD technology extractor ──────────────────────────────────
+    # Pre-extract all technology tokens from the JD and inject them into the
+    # prompt as an explicit list — the AI MUST include all of them in skills.
+    def _extract_jd_tech(text: str) -> str:
+        import re as _r
+        tokens = _r.split(r'[\s,;/|()\[\]]+', text)
+        seen, result = set(), []
+        stop = {
+            'This','That','With','From','They','When','Where','Which','While',
+            'What','Have','Will','Your','Team','Work','Role','Join','Help',
+            'Build','High','Key','Must','Also','Each','Core','Full','Long',
+            'True','Real','Fast','Best','Good','Why','How','Any','Our','Its',
+            'New','Own','Both','Including','Using','Such','Other','Based',
+            'Driven','Required','Preferred','Experience','Knowledge','Strong',
+            'Solid','Deep','Proven','Hands','Clear','About','Ideal','Able',
+        }
         for tok in tokens:
-            # Strip punctuation from edges
-            tok = tok.strip('.,!?:"\'`')
-            if len(tok) < 2:
+            tok = tok.strip(".,!?:\"'`")
+            if len(tok) < 2 or tok in stop:
                 continue
-
-            # Accept if:
-            # (a) contains a digit or special char typical of tech names (C#, .NET, C++, ES6)
-            # (b) is CamelCase or PascalCase (Angular, WinForms, RabbitMQ, GitHub)
-            # (c) is all-caps acronym 2-8 chars (AWS, SQS, SQL, XML, API, REST, JSON, SDK)
-            # (d) contains a dot suggesting framework/version (.NET, Node.js, ASP.NET)
             is_tech = (
-                bool(_re.search(r'[#\+\.]', tok)) or                      # C#, .NET, C++
-                bool(_re.match(r'^[A-Z]{2,8}$', tok)) or                  # AWS, SQL, XML
-                bool(_re.match(r'^[A-Z][a-z]+(?:[A-Z][a-z]*)+', tok)) or  # CamelCase
-                bool(_re.search(r'\d', tok)) or                            # .NET 6, ES6
-                bool(_re.match(r'^[A-Z][a-z]{2,}$', tok) and len(tok) >= 4)  # React, Groq
+                bool(_r.search(r'[#\+\.]', tok)) or
+                bool(_r.match(r'^[A-Z]{2,8}$', tok)) or
+                bool(_r.match(r'^[A-Z][a-z]+(?:[A-Z][a-z]*)+', tok)) or
+                bool(_r.search(r'\d', tok)) or
+                bool(_r.match(r'^[A-Z][a-z]{2,}$', tok) and len(tok) >= 4)
             )
-
             if not is_tech:
                 continue
-
-            # Skip pure English words that match the pattern by accident
-            _stop = {
-                'This', 'That', 'With', 'From', 'They', 'When', 'Where', 'Which',
-                'While', 'What', 'Have', 'Will', 'Your', 'Team', 'Work', 'Role',
-                'Join', 'Help', 'Build', 'High', 'Key', 'Must', 'Also', 'Each',
-                'Core', 'Full', 'Long', 'True', 'Real', 'Fast', 'Best', 'Good',
-                'Why', 'How', 'Any', 'Our', 'Its', 'New', 'Own', 'Both',
-                'Including', 'Using', 'Such', 'Other', 'Based', 'Driven',
-                'Required', 'Preferred', 'Experience', 'Knowledge', 'Strong',
-                'Solid', 'Deep', 'Good', 'Proven', 'Hands', 'Clear',
-            }
-            if tok in _stop:
-                continue
-
-            # Dedupe case-insensitively, keep first occurrence (preserves casing)
             tl = tok.lower()
-            if tl not in seen_lower:
-                seen_lower.add(tl)
+            if tl not in seen:
+                seen.add(tl)
                 result.append(tok)
+        return ", ".join(result)
 
-        return result
-
-    _jd_technologies = _extract_jd_technologies(jd)
-    _jd_tech_block = ""
-    if _jd_technologies:
-        _jd_tech_block = (
-            "TECHNOLOGIES EXPLICITLY FOUND IN THIS JD "
-            "(every one of these MUST appear in the skills section — no exceptions):\n"
-            + ", ".join(_jd_technologies)
-        )
+    _jd_tech_list = _extract_jd_tech(jd)
+    _jd_tech_block = (
+        f"JD-FOUND TECHNOLOGIES (ALL of these MUST appear in the skills section):\n{_jd_tech_list}"
+        if _jd_tech_list else ""
+    )
 
     # Existing projects from static_data (if any) — used for the "keep or adjust" rule
     _existing_projects_raw = _static.get("projects", []) or []
@@ -966,28 +933,44 @@ NON-NEGOTIABLE RULES
   ABSOLUTE RULE: No raw technology names, language names, framework names, or tool names.
   Every phrase describes a human professional or behavioural quality.
 {_tech_competencies_instruction}
-[R7] TECHNICAL SKILLS — CATEGORY NAMING AND COVERAGE
-  HOW TO NAME CATEGORIES:
-    Step A — Group the JD-FOUND TECHNOLOGIES above into natural technology domains
-             (e.g. backend stack, frontend frameworks, cloud services, databases,
-             messaging, DevOps, testing, hardware, etc.).
-    Step B — Name each category after what it actually contains, using precise
-             professional terminology that reflects the role and domain.
-             The name must be specific and meaningful — not generic.
-             Bad: "Technologies", "Tools", "Skills", "Other"
-             Good: name that tells a recruiter exactly what the category covers.
-    Step C — Every technology from JD-FOUND TECHNOLOGIES must be in exactly one category.
-             No technology may be omitted or duplicated across categories.
+[R7] TECHNICAL SKILLS — MINIMUM 5 CATEGORIES, MINIMUM 10 ITEMS EACH
+  Derive a MINIMUM of 5 category labels dynamically from the job title, JD, company
+  domain, and candidate background. Do NOT hardcode category names — infer them from
+  what the JD and candidate background actually cover.
 
-  RULES:
-    • Minimum 5 categories — add more if the JD spans more domains.
-    • Minimum 10 items per category (add related items from candidate background to fill).
-    • Each item appears in exactly one category. Zero duplicates.
-    • Items must be ATS-friendly and specific to the role.
+  CRITICAL — COMPLETE TECHNOLOGY COVERAGE:
+    Read every technology named in the JD before writing any category.
+    Every technology explicitly mentioned in the JD MUST appear in at least one category.
+    Missing a JD-named technology from the skills section is a violation of [R4] Tier 1.
 
-[R8] TECH DEPTH
-  Each company: min 8 pipe-separated technologies. Each project: min 8 techTags.
-  Include JD technologies wherever contextually appropriate. Never invent.
+  CATEGORY CREATION RULE:
+    If the JD mentions a coherent group of technologies that belongs to a distinct domain
+    (e.g. multiple UI frameworks, multiple cloud services, multiple testing tools, multiple
+    data platforms, etc.), create a dedicated category for that domain rather than scattering
+    or omitting those technologies. The category name must be derived from the domain itself
+    (e.g. from the technologies present in that group), not hardcoded.
+    Examples of when to create a dedicated category:
+      • JD lists several UI/client-side frameworks → create a category for that domain.
+      • JD lists several cloud-native services → create a category for that domain.
+      • JD lists several testing or QA tools → create a category for that domain.
+    This rule applies to ANY technology domain the JD emphasises — never assume a domain
+    is irrelevant because it is not the candidate's primary stack.
+
+  Rules:
+    • Minimum 5 categories — more are allowed and encouraged if the JD covers more domains.
+    • Each category must contain at least 10 unique, comma-separated items.
+    • Strict domain separation — every item appears in exactly one category.
+    • Zero duplicates across categories.
+    • All JD-explicit technologies (Tier 1) must be present; candidate-background
+      technologies (Tier 2) may also be added where they strengthen the category.
+    • All items must be ATS-friendly, realistic, and specific to the target role.
+
+[R8] TECHNOLOGY DEPTH
+  Every company: minimum 8 unique technologies, pipe-separated, varied per role.
+  Every project: minimum 8 unique technologies in techTags, different focus per project.
+  JD-explicit technologies (Tier 1 per [R4]) must appear in company tech and project
+  techTags wherever they fit the work described. Never invent technologies absent from
+  both the JD and the candidate's background.
 
 SECTION INSTRUCTIONS
 
@@ -1010,13 +993,17 @@ SECTION INSTRUCTIONS
 
 ④ keywords: 20-24 ATS terms from the JD.
 
-⑤ technologies: mustHave (10-14), niceToHave (8-12), additional (8-10) — from JD only,
-   limited to what the candidate's background can genuinely support.
-
-⑥ skills — follow R7 exactly.
-   Group JD technologies into professionally named domain categories.
-   Every JD technology must appear. Min 5 categories, min 10 items each.
-   Format: "Precise Domain Name: item1, item2, ..., item10+"
+⑤ skills [MINIMUM 5 categories, MINIMUM 10 items each]
+   Dynamically derive category names from the JD, job title, company domain, and candidate
+   background. Do NOT use generic or hardcoded category names — infer them from what the
+   role actually requires.
+   COMPLETENESS RULE: Every technology explicitly named in the JD must appear in exactly
+   one category. If the JD names a coherent group of technologies belonging to a distinct
+   domain, create a dedicated category for that domain (named from the domain, not hardcoded).
+   Format: "Category Label: item1, item2, item3, item4, item5, item6, item7, item8, item9, item10"
+   Rules: minimum 5 categories (more allowed), minimum 10 items per category, strict domain
+   separation (each item in exactly one category), zero duplicates, all JD-explicit technologies
+   present in at least one category.
 
 ⑦ companies [one per company, in order]
    role: full title from JD with correct seniority.
@@ -1031,7 +1018,6 @@ SECTION INSTRUCTIONS
    Projects 1-2: JD industry domain. Projects 3-4: JD technical requirements.
    Each: name, overview (3-4 sentences), 3 bullets, techTags (min 8, different focus).
 
-⑨ relatedTech: 5 category objects, 5 items each, all from JD.
 
 ⑩ education: copy EXACTLY from the pre-filled array below, unchanged.
 
@@ -1042,11 +1028,6 @@ JSON OUTPUT — raw JSON only, no markdown, no code fences
   "summary": "{years_display} years of experience in [domain]. [4-5 sentences, 100-120 words, no I/my/me]",
   "competencies": "Trait1 * Trait2 * Trait3 * Trait4 * Trait5 * Trait6 * Trait7 * Trait8 * Trait9 * Trait10 * Trait11 * Trait12 * Trait13 * Trait14",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18, kw19, kw20",
-  "technologies": {{
-    "mustHave":   ["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10"],
-    "niceToHave": ["t1","t2","t3","t4","t5","t6","t7","t8"],
-    "additional": ["t1","t2","t3","t4","t5","t6","t7","t8"]
-  }},
   "skills": [
     "CategoryA: t1, t2, t3, t4, t5, t6, t7, t8, t9, t10",
     "CategoryB: t1, t2, t3, t4, t5, t6, t7, t8, t9, t10",
@@ -1094,46 +1075,56 @@ JSON OUTPUT — raw JSON only, no markdown, no code fences
       "techTags": ["t1","t2","t3","t4","t5","t6","t7","t8"]
     }}
   ],
-  "education": {_edu_json_block},
-  "relatedTech": [
-    {{"category": "cat1", "items": ["t1","t2","t3","t4","t5"]}},
-    {{"category": "cat2", "items": ["t1","t2","t3","t4","t5"]}},
-    {{"category": "cat3", "items": ["t1","t2","t3","t4","t5"]}},
-    {{"category": "cat4", "items": ["t1","t2","t3","t4","t5"]}},
-    {{"category": "cat5", "items": ["t1","t2","t3","t4","t5"]}}
-  ]
+  "education": {_edu_json_block}
 }}
 
 CHECKLIST:
-✓ title: last segment exactly "{years_display}", no trailing comma, no double +
-✓ summary: opens "{years_display} years of experience in ...", 100-120 words, no I/my/me
-✓ competencies: min 14 behavioural phrases " * " separated — no technology names
-✓ skills: EVERY technology in JD-FOUND TECHNOLOGIES is present in exactly one category
-✓ skills: category names are precise and domain-specific (not generic like "Tools"/"Skills")
-✓ skills: min 5 categories, min 10 items each, zero duplicates across categories
-✓ company tech: min 8 per company. project techTags: min 8 per project
-✓ projects 1-2: industry domain. projects 3-4: JD technical requirements
-✓ no company names in any free-text or project name fields
-✓ no em-dashes, non-ASCII punctuation, or symbol characters — plain hyphens only
+✓ title last segment exactly "{years_display}", no trailing comma, no double +
+✓ summary opens with "{years_display} years of experience in", 100-120 words, no I/my/me
+✓ competencies: minimum 14 clear, plain behavioral phrases (+ technical quality phrases for tech roles)
+✓ competencies: no technology names, no tool names — only human professional traits
+✓ competencies: simple, direct language — not ornate or overly complex phrasing
+✓ EVERY technology explicitly named in the JD appears in at least one skills category (R4 Tier 1)
+✓ no technologies added that appear in neither the JD nor the candidate's background (R4 Tier 2)
+✓ skills: dedicated category created for any coherent technology domain the JD emphasises (R7)
+✓ projects: existing candidate projects reused/adapted where relevant, not replaced
+✓ skills: minimum 5 dynamically-named categories, minimum 10 items each, strict domain separation
+✓ skills: category names derived from JD/role — not hardcoded, not generic
+✓ company tech: minimum 8 per company — JD-explicit technologies included where they fit
+✓ project techTags: minimum 8 per project — JD-explicit technologies included where they fit
+✓ projects 1-2 industry domain, projects 3-4 JD technical requirements
+✓ zero company names outside the company field — including project names (no " – CompanyName" suffix, no "for CompanyName", no embedded org names)
+✓ no em-dashes, en-dashes, or non-ASCII punctuation
+✓ NO geometric symbols or Unicode block characters (■◼◾▮▬●▸ etc.) — use plain hyphens instead
 ✓ raw JSON only
 """
 
     user_prompt = f"""JOB DESCRIPTION:
 {jd}
 
-Generate the CV JSON now. Follow all rules in the system prompt.
+Generate the CV JSON now.
 
-Key reminders:
+Reminders:
 - Title: inferred role | tech1, tech2, tech3 | {years_display} (no trailing comma)
-- Summary: 100-120 words, opens with "{years_display} years of experience in ...". No I/my/me.
-- Competencies: min 14 behavioural phrases " * " separated. No technology names.
-- Skills: ALL technologies listed in JD-FOUND TECHNOLOGIES must appear in the skills section.
-  Name each category precisely after its domain — never use generic names like "Tools" or "Skills".
-  Give each distinct technology domain (backend, frontend, cloud, database, messaging, etc.)
-  its own dedicated category. Min 5 categories, min 10 items each, no duplicates.
+- Summary: 100-120 words, open with "{years_display} years of experience in". No I/my/me.
+- Competencies: minimum 14 clear, plain behavioral phrases via " * ". No technology names.
+  For tech/engineering roles also include software quality traits (e.g. "Code Quality Assurance",
+  "Clean Architecture Principles", "Debugging and Troubleshooting") as professional phrases.
+  Use simple, direct language — avoid ornate or overly abstract phrasing.
+- Technologies/Skills: TWO-TIER RULE — (1) Every technology explicitly named in the JD
+  MUST appear in the skills section; omitting a JD-named technology is an ATS failure.
+  (2) Do NOT add technologies absent from both the JD and the candidate's background.
+  If the JD names a coherent set of technologies in a distinct domain, create a dedicated
+  dynamically-named category for that domain — do not scatter or drop those technologies.
+- Projects: reuse or subtly adapt existing candidate projects where possible.
+  Only invent new projects if no existing project can be aligned to the JD.
+- Skills: minimum 5 categories (dynamically named from JD/role), minimum 10 items each.
+  Strict domain separation — no item repeated across categories. Candidate-authentic only.
+- Company tech: min 8 per company, varied, candidate-authentic. Project techTags: min 8 per project.
 - Seniority: {seniority_guidance.split(chr(10))[0]}
 - Projects 1-2: industry domain. Projects 3-4: JD technical requirements.
-- No company names in any free-text or project name field. No em-dashes or symbol characters.
+- No company names in free-text fields — including project names. Never suffix a project name with a company name (e.g. no " – CompanyName", no "CompanyName Alignment"). No em-dashes, non-ASCII punctuation, or geometric/symbol characters (■◼◾ etc.). Use plain hyphens only.
+- Everything must be realistic, credible, and aligned with the candidate's actual background.
 """
     return system_prompt, user_prompt
 
@@ -1306,27 +1297,6 @@ def sanitise_cv(cv: dict) -> dict:
                 })
         cv["projects"] = clean_projects
     
-    related = cv.get("relatedTech", [])
-    if isinstance(related, list):
-        clean_related = []
-        for r in related:
-            if isinstance(r, dict):
-                items = r.get("items", [])
-                if isinstance(items, list):
-                    clean_related.append({
-                        "category": str(r.get("category", "")),
-                        "items": [str(i).strip() for i in items if i],
-                    })
-        cv["relatedTech"] = clean_related
-    
-    techs = cv.get("technologies", {})
-    if isinstance(techs, dict):
-        cv["technologies"] = {
-            "mustHave": [str(t).strip() for t in (techs.get("mustHave") or []) if t],
-            "niceToHave": [str(t).strip() for t in (techs.get("niceToHave") or []) if t],
-            "additional": [str(t).strip() for t in (techs.get("additional") or []) if t],
-        }
-
     # education: normalise to a list of dicts regardless of what came in
     raw_edu = cv.get("education")
     if isinstance(raw_edu, dict):
@@ -1438,12 +1408,17 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
         if isinstance(val, str):
             cv[field] = val.replace("++", "+")
 
-    # Build pool from CV's own JD-derived technologies for padding
+    # Build tech pool from skills section for padding company/project tags
     _tech_pool: list = []
-    for _bucket in ("mustHave", "niceToHave", "additional"):
-        for _t in (cv.get("technologies", {}).get(_bucket) or []):
-            if _t and _t.strip() and _t.strip() not in _tech_pool:
-                _tech_pool.append(_t.strip())
+    _seen_pool: set = set()
+    for _skill_line in (cv.get("skills") or []):
+        if isinstance(_skill_line, str) and ":" in _skill_line:
+            _items_part = _skill_line.split(":", 1)[1]
+            for _t in _items_part.split(","):
+                _t = _t.strip()
+                if _t and _t.lower() not in _seen_pool:
+                    _tech_pool.append(_t)
+                    _seen_pool.add(_t.lower())
     # Enforce minimum 8 technologies per company
     MIN_CO_TECH = 8
     companies = cv.get("companies", [])
@@ -1855,10 +1830,9 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
         "skills":      result.get("skills",      []),
         "competencies":result.get("competencies",""),
         "keywords":    result.get("keywords",    ""),
-        "technologies":result.get("technologies",{"mustHave": [], "niceToHave": [], "additional": []}),
+
         "companies":   result.get("companies",   []),
         "projects":    result.get("projects",    []),
-        "relatedTech": result.get("relatedTech", []),
         "education":   _merged_edu,   # always use merged (profile-priority) education
     }
 
@@ -2148,11 +2122,9 @@ async def call_gemini(req: CVRequest) -> tuple:
                         "skills":       result.get("skills",       []),
                         "competencies": result.get("competencies", ""),
                         "keywords":     result.get("keywords",     ""),
-                        "technologies": result.get("technologies", {}),
-                        "companies":    result.get("companies",    []),
+                                                "companies":    result.get("companies",    []),
                         "projects":     result.get("projects",     []),
-                        "relatedTech":  result.get("relatedTech",  []),
-                        "education":    _merged_edu_g,
+                                                "education":    _merged_edu_g,
                     }
 
                     cv_sanitised = sanitise_cv(cv)
