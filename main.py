@@ -758,49 +758,6 @@ Use your knowledge of this company to create relevant projects.
             _cand_role_skills.append(_ws)
     _cand_all_skills = ", ".join(filter(None, [_cand_skills_raw] + _cand_role_skills))
 
-    # ── Python-side JD technology extractor ──────────────────────────────────
-    # Pre-extract all technology tokens from the JD and inject as an explicit
-    # list into the prompt so the AI cannot miss any JD-named technology.
-    def _extract_jd_tech(text):
-        import re as _r
-        tokens = _r.split(r"[\s,;/|()\[\]]+", text)
-        seen, result = set(), []
-        stop = {
-            'This','That','With','From','They','When','Where','Which','While',
-            'What','Have','Will','Your','Team','Work','Role','Join','Help',
-            'Build','High','Key','Must','Also','Each','Core','Full','Long',
-            'True','Real','Fast','Best','Good','Why','How','Any','Our','Its',
-            'New','Own','Both','Including','Using','Such','Other','Based',
-            'Driven','Required','Preferred','Experience','Knowledge','Strong',
-            'Solid','Deep','Proven','Hands','Clear','About','Ideal','Able',
-            'The','And','For','Are','Has','Can','Not','All','But','More',
-        }
-        for tok in tokens:
-            tok = tok.strip('.,!?:"\'`')
-            if len(tok) < 2 or tok in stop:
-                continue
-            is_tech = (
-                bool(_r.search(r"[#\+\.]", tok)) or
-                bool(_r.match(r"^[A-Z]{2,8}$", tok)) or
-                bool(_r.match(r"^[A-Z][a-z]+(?:[A-Z][a-z]*)+", tok)) or
-                bool(_r.search(r"\d", tok)) or
-                bool(_r.match(r"^[A-Z][a-z]{2,}$", tok) and len(tok) >= 4)
-            )
-            if not is_tech:
-                continue
-            tl = tok.lower()
-            if tl not in seen:
-                seen.add(tl)
-                result.append(tok)
-        return ", ".join(result)
-
-    _jd_tech_list = _extract_jd_tech(jd)
-    _jd_tech_block = (
-        "JD-FOUND TECHNOLOGIES — every one of these MUST appear in the skills section:\n"
-        + _jd_tech_list
-        if _jd_tech_list else ""
-    )
-
     # Existing projects from static_data (if any) — used for the "keep or adjust" rule
     _existing_projects_raw = _static.get("projects", []) or []
     _existing_projects_block = ""
@@ -852,8 +809,6 @@ Education Period   : {edu['start']} to {edu['end']}
 {f"Candidate Name     : {_p_name_str}" if _p_name_str else ""}
 {f"Contact            : {_p_contact_str}" if _p_contact_str else ""}
 {f"Candidate Technologies : {_cand_all_skills}" if _cand_all_skills else ""}
-
-{_jd_tech_block}
 
 WORK HISTORY (use these exact names and date ranges — do not invent others):
 {co_lines}
@@ -935,32 +890,37 @@ NON-NEGOTIABLE RULES
   ABSOLUTE RULE: No raw technology names, language names, framework names, or tool names.
   Every phrase describes a human professional or behavioural quality.
 {_tech_competencies_instruction}
-[R7] TECHNICAL SKILLS — MINIMUM 5 CATEGORIES (NO MAXIMUM), MINIMUM 10 ITEMS EACH
+[R7] TECHNICAL SKILLS — MINIMUM 5 CATEGORIES, MINIMUM 10 ITEMS EACH
+  Derive a MINIMUM of 5 category labels dynamically from the job title, JD, company
+  domain, and candidate background. Do NOT hardcode category names — infer them from
+  what the JD and candidate background actually cover.
 
-  STEP 1 — CATEGORY COUNT:
-    Count the distinct engineering domains present in JD-FOUND TECHNOLOGIES.
-    Create one category per domain. There is NO upper limit on categories.
-    5 is the floor — if the JD covers 6, 7, or 8 domains, create 6, 7, or 8 categories.
-    Never merge two distinct domains into one category just to hit a round number.
+  CRITICAL — COMPLETE TECHNOLOGY COVERAGE:
+    Read every technology named in the JD before writing any category.
+    Every technology explicitly mentioned in the JD MUST appear in at least one category.
+    Missing a JD-named technology from the skills section is a violation of [R4] Tier 1.
 
-  STEP 2 — CATEGORY NAMING:
-    Name each category using precise, industry-standard technical terminology.
-    The name must reflect the actual engineering discipline of the technologies inside it.
-    Use vocabulary that a senior engineer or technical recruiter immediately recognises
-    as a real discipline — concise technical noun phrases, not plain English descriptions.
-    Derive the name entirely from what the category contains and the JD context.
-    The more specific and technical the name, the better.
-
-  STEP 3 — COVERAGE:
-    Every technology in JD-FOUND TECHNOLOGIES must appear in exactly one category.
-    No JD-named technology may be omitted or duplicated across categories.
+  CATEGORY CREATION RULE:
+    If the JD mentions a coherent group of technologies that belongs to a distinct domain
+    (e.g. multiple UI frameworks, multiple cloud services, multiple testing tools, multiple
+    data platforms, etc.), create a dedicated category for that domain rather than scattering
+    or omitting those technologies. The category name must be derived from the domain itself
+    (e.g. from the technologies present in that group), not hardcoded.
+    Examples of when to create a dedicated category:
+      • JD lists several UI/client-side frameworks → create a category for that domain.
+      • JD lists several cloud-native services → create a category for that domain.
+      • JD lists several testing or QA tools → create a category for that domain.
+    This rule applies to ANY technology domain the JD emphasises — never assume a domain
+    is irrelevant because it is not the candidate's primary stack.
 
   Rules:
-    • Minimum 10 unique items per category.
-    • Add related candidate-background items to reach the 10-item minimum.
-    • Strict domain separation — each item in exactly one category.
-    • Zero duplicates across all categories.
-    • All items ATS-friendly and specific to the role.
+    • Minimum 5 categories — more are allowed and encouraged if the JD covers more domains.
+    • Each category must contain at least 10 unique, comma-separated items.
+    • Strict domain separation — every item appears in exactly one category.
+    • Zero duplicates across categories.
+    • All JD-explicit technologies (Tier 1) must be present; candidate-background
+      technologies (Tier 2) may also be added where they strengthen the category.
+    • All items must be ATS-friendly, realistic, and specific to the target role.
 
 [R8] TECHNOLOGY DEPTH
   Every company: minimum 8 unique technologies, pipe-separated, varied per role.
@@ -993,11 +953,17 @@ SECTION INSTRUCTIONS
 ⑤ technologies: mustHave (10-14), niceToHave (8-12), additional (8-10) — from JD only,
    limited to what the candidate's background can genuinely support.
 
-⑥ skills — follow R7 STEPS 1-3 exactly.
-   One category per engineering domain found in the JD. No maximum on categories.
-   Use precise industry-standard technical names. All JD-FOUND TECHNOLOGIES must appear.
-   Format: "Precise Technical Name: item1, item2, ..., item10+"
-   Min 5 categories, min 10 items each, zero duplicates across categories.
+⑥ skills [MINIMUM 5 categories, MINIMUM 10 items each]
+   Dynamically derive category names from the JD, job title, company domain, and candidate
+   background. Do NOT use generic or hardcoded category names — infer them from what the
+   role actually requires.
+   COMPLETENESS RULE: Every technology explicitly named in the JD must appear in exactly
+   one category. If the JD names a coherent group of technologies belonging to a distinct
+   domain, create a dedicated category for that domain (named from the domain, not hardcoded).
+   Format: "Category Label: item1, item2, item3, item4, item5, item6, item7, item8, item9, item10"
+   Rules: minimum 5 categories (more allowed), minimum 10 items per category, strict domain
+   separation (each item in exactly one category), zero duplicates, all JD-explicit technologies
+   present in at least one category.
 
 ⑦ companies [one per company, in order]
    role: full title from JD with correct seniority.
@@ -1093,10 +1059,10 @@ CHECKLIST:
 ✓ competencies: simple, direct language — not ornate or overly complex phrasing
 ✓ EVERY technology explicitly named in the JD appears in at least one skills category (R4 Tier 1)
 ✓ no technologies added that appear in neither the JD nor the candidate's background (R4 Tier 2)
-✓ skills: one category per JD engineering domain, no upper limit, min 5 categories
-✓ skills: category names use precise industry-standard technical terminology (R7 Step 2)
-✓ skills: ALL JD-FOUND TECHNOLOGIES present, min 10 items per category, zero duplicates
+✓ skills: dedicated category created for any coherent technology domain the JD emphasises (R7)
 ✓ projects: existing candidate projects reused/adapted where relevant, not replaced
+✓ skills: minimum 5 dynamically-named categories, minimum 10 items each, strict domain separation
+✓ skills: category names derived from JD/role — not hardcoded, not generic
 ✓ company tech: minimum 8 per company — JD-explicit technologies included where they fit
 ✓ project techTags: minimum 8 per project — JD-explicit technologies included where they fit
 ✓ projects 1-2 industry domain, projects 3-4 JD technical requirements
@@ -1118,12 +1084,15 @@ Reminders:
   For tech/engineering roles also include software quality traits (e.g. "Code Quality Assurance",
   "Clean Architecture Principles", "Debugging and Troubleshooting") as professional phrases.
   Use simple, direct language — avoid ornate or overly abstract phrasing.
-- Skills: follow R7. ALL technologies in JD-FOUND TECHNOLOGIES must be in the skills
-  section. Create one category per engineering domain — no upper limit on categories,
-  minimum 5. Name each category with precise industry-standard technical terminology.
-  Min 10 items per category, zero duplicates across categories.
+- Technologies/Skills: TWO-TIER RULE — (1) Every technology explicitly named in the JD
+  MUST appear in the skills section; omitting a JD-named technology is an ATS failure.
+  (2) Do NOT add technologies absent from both the JD and the candidate's background.
+  If the JD names a coherent set of technologies in a distinct domain, create a dedicated
+  dynamically-named category for that domain — do not scatter or drop those technologies.
 - Projects: reuse or subtly adapt existing candidate projects where possible.
   Only invent new projects if no existing project can be aligned to the JD.
+- Skills: minimum 5 categories (dynamically named from JD/role), minimum 10 items each.
+  Strict domain separation — no item repeated across categories. Candidate-authentic only.
 - Company tech: min 8 per company, varied, candidate-authentic. Project techTags: min 8 per project.
 - Seniority: {seniority_guidance.split(chr(10))[0]}
 - Projects 1-2: industry domain. Projects 3-4: JD technical requirements.
