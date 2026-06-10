@@ -337,33 +337,66 @@ def build_cv_pdf_ui2(cv: dict, profile_data: dict = None) -> bytes:
 
     # Core Competencies moved to sidebar — no duplicate in main panel
 
-    # Certifications (optional)
+    # Certifications (optional) — tabular card design
     _certs2 = cv.get("certifications") or []
     if _certs2:
         main_sec("Certifications")
-        _c2_name_s = ps2("u2_cn", fontName="Helvetica-Bold", fontSize=10,   leading=13, textColor=colors.HexColor("#154360"))
-        _c2_meta_s = ps2("u2_cm", fontName="Helvetica",      fontSize=9,    leading=12, textColor=colors.HexColor("#154360"))
-        _c2_desc_s = ps2("u2_cd", fontName="Helvetica",      fontSize=9.5,  leading=13, textColor=colors.HexColor("#2c2c2c"))
-        for _cert2 in _certs2:
+        _cert_note2 = (cv.get("cert_note") or "").strip()
+        if _cert_note2:
+            _cnote2_s = ps2("u2_cnote", fontName="Helvetica-Oblique", fontSize=9, leading=13,
+                             textColor=colors.HexColor("#444444"), spaceAfter=4)
+            main_items.append(Paragraph(esc(_cert_note2), _cnote2_s))
+        _mn_cw = PAGE_W - SIDEBAR_W_MM - 2 * MAIN_PAD
+        _c2_name_s = ps2("u2_cn",  fontName="Helvetica-Bold",    fontSize=9,   leading=12, textColor=colors.HexColor("#111111"))
+        _c2_meta_s = ps2("u2_cm",  fontName="Helvetica",         fontSize=8.5, leading=11, textColor=colors.HexColor("#1a5276"))
+        _c2_desc_s = ps2("u2_cd",  fontName="Helvetica-Oblique", fontSize=8,   leading=11, textColor=colors.HexColor("#444444"))
+        _c2_num_s  = ps2("u2_cnum",fontName="Helvetica-Bold",    fontSize=9,   leading=12, textColor=colors.HexColor("#1a5276"), alignment=1)
+        _c2_hdr_s  = ps2("u2_chdr",fontName="Helvetica-Bold",    fontSize=8,   leading=10, textColor=colors.HexColor("#ffffff"), alignment=1)
+        _CC1 = _mn_cw * 0.05
+        _CC2 = _mn_cw * 0.30
+        _CC3 = _mn_cw * 0.22
+        _CC4 = _mn_cw * 0.43
+        _c2_hdr_row = [
+            Paragraph("#",               _c2_hdr_s),
+            Paragraph("Certificate",     _c2_hdr_s),
+            Paragraph("Issuer",          _c2_hdr_s),
+            Paragraph("Credential Link", _c2_hdr_s),
+        ]
+        _c2_data = [_c2_hdr_row]
+        _c2_styles = [
+            ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#154360")),
+            ("TOPPADDING",    (0, 0), (-1, 0), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 5),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+            ("GRID",          (0, 0), (-1, -1), 0.3, colors.HexColor("#aed6f1")),
+            ("LINEBELOW",     (0, 0), (-1, 0),  0.8, colors.HexColor("#154360")),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.HexColor("#eaf4fb"), colors.white]),
+        ]
+        for _i2, _cert2 in enumerate(_certs2):
             _cn2  = (_cert2.get("name")        or "").strip()
             _cl2  = (_cert2.get("link")        or "").strip()
             _cis2 = (_cert2.get("issuer")      or "").strip()
             _cde2 = (_cert2.get("description") or "").strip()
             if not any([_cn2, _cl2, _cis2, _cde2]):
                 continue
+            _safe2 = _cl2.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            _name_cell2 = [Paragraph(f"<b>{esc(_cn2)}</b>" if _cn2 else "—", _c2_name_s)]
             if _cde2:
-                main_items.append(Paragraph(esc(_cde2), _c2_desc_s))
-            _meta2 = []
-            if _cn2:
-                _meta2.append(f"<b>{esc(_cn2)}</b>")
-            if _cl2:
-                _safe2 = _cl2.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                _meta2.append(f'<a href="{_safe2}" color="#1a5276">{_safe2}</a>')
-            if _cis2:
-                _meta2.append(esc(_cis2))
-            if _meta2:
-                main_items.append(Paragraph("  |  ".join(_meta2), _c2_meta_s))
-            main_items.append(Spacer(1, 6))
+                _name_cell2.append(Paragraph(esc(_cde2), _c2_desc_s))
+            _c2_data.append([
+                Paragraph(str(_i2 + 1), _c2_num_s),
+                _name_cell2,
+                Paragraph(esc(_cis2) if _cis2 else "—", _c2_meta_s),
+                Paragraph(f'<a href="{_safe2}" color="#1a5276">{_safe2}</a>' if _cl2 else "—", _c2_meta_s),
+            ])
+            _c2_styles.append(("TOPPADDING",    (0, _i2+1), (-1, _i2+1), 5))
+            _c2_styles.append(("BOTTOMPADDING", (0, _i2+1), (-1, _i2+1), 5))
+        _c2_tbl = Table(_c2_data, colWidths=[_CC1, _CC2, _CC3, _CC4], repeatRows=1)
+        _c2_tbl.setStyle(TableStyle(_c2_styles))
+        main_items.append(_c2_tbl)
+        main_items.append(Spacer(1, 6))
 
     # ── Render UI2 two-column layout via low-level Frame/Canvas drawing ──────
     # A single-row ReportLab Table whose cell content is taller than the page

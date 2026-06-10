@@ -366,33 +366,65 @@ def build_cv_pdf_ui5(cv: dict, profile_data: dict = None) -> bytes:
                 story.append(Paragraph(prefix + esc(ach), S["edu_ach"]))
             story.append(Spacer(1, 6))
 
-    # Certifications (optional)
+    # Certifications (optional) — tabular card design
     _certs5 = cv.get("certifications") or []
     if _certs5:
         section("Certifications")
-        _c5_name_s = ps5("u5_cn", fontName="Helvetica-Bold", fontSize=10,  leading=13, textColor=colors.HexColor("#111111"))
-        _c5_meta_s = ps5("u5_cm", fontName="Helvetica",      fontSize=9,   leading=12, textColor=colors.HexColor("#059669"))
-        _c5_desc_s = ps5("u5_cd", fontName="Helvetica",      fontSize=9.5, leading=13, textColor=colors.HexColor("#374151"))
-        for _cert5 in _certs5:
+        _cert_note5 = (cv.get("cert_note") or "").strip()
+        if _cert_note5:
+            _cnote5_s = ps5("u5_cnote", fontName="Helvetica-Oblique", fontSize=9, leading=13,
+                             textColor=colors.HexColor("#444444"), spaceAfter=4)
+            story.append(Paragraph(esc(_cert_note5), _cnote5_s))
+        _c5_name_s = ps5("u5_cn",  fontName="Helvetica-Bold",    fontSize=9,   leading=12, textColor=colors.HexColor("#111111"))
+        _c5_meta_s = ps5("u5_cm",  fontName="Helvetica",         fontSize=8.5, leading=11, textColor=colors.HexColor("#065f46"))
+        _c5_desc_s = ps5("u5_cd",  fontName="Helvetica-Oblique", fontSize=8,   leading=11, textColor=colors.HexColor("#444444"))
+        _c5_num_s  = ps5("u5_cnum",fontName="Helvetica-Bold",    fontSize=9,   leading=12, textColor=colors.HexColor("#059669"), alignment=1)
+        _c5_hdr_s  = ps5("u5_chdr",fontName="Helvetica-Bold",    fontSize=8,   leading=10, textColor=colors.HexColor("#ffffff"), alignment=1)
+        _CC5_1 = TW * 0.05
+        _CC5_2 = TW * 0.30
+        _CC5_3 = TW * 0.22
+        _CC5_4 = TW * 0.43
+        _c5_hdr_row = [
+            Paragraph("#",               _c5_hdr_s),
+            Paragraph("Certificate",     _c5_hdr_s),
+            Paragraph("Issuer",          _c5_hdr_s),
+            Paragraph("Credential Link", _c5_hdr_s),
+        ]
+        _c5_data   = [_c5_hdr_row]
+        _c5_styles = [
+            ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#064e3b")),
+            ("TOPPADDING",    (0, 0), (-1, 0), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 5),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+            ("GRID",          (0, 0), (-1, -1), 0.3, colors.HexColor("#6ee7b7")),
+            ("LINEBELOW",     (0, 0), (-1, 0),  1.0, colors.HexColor("#059669")),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.HexColor("#ecfdf5"), colors.white]),
+        ]
+        for _i5, _cert5 in enumerate(_certs5):
             _cn5  = (_cert5.get("name")        or "").strip()
             _cl5  = (_cert5.get("link")        or "").strip()
             _cis5 = (_cert5.get("issuer")      or "").strip()
             _cde5 = (_cert5.get("description") or "").strip()
             if not any([_cn5, _cl5, _cis5, _cde5]):
                 continue
+            _safe5 = _cl5.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            _name_cell5 = [Paragraph(f"<b>{esc(_cn5)}</b>" if _cn5 else "—", _c5_name_s)]
             if _cde5:
-                story.append(Paragraph(esc(_cde5), _c5_desc_s))
-            _meta5 = []
-            if _cn5:
-                _meta5.append(f"<b>{esc(_cn5)}</b>")
-            if _cl5:
-                _safe5 = _cl5.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                _meta5.append(f'<a href="{_safe5}" color="#059669">{_safe5}</a>')
-            if _cis5:
-                _meta5.append(esc(_cis5))
-            if _meta5:
-                story.append(Paragraph("  |  ".join(_meta5), _c5_meta_s))
-            story.append(Spacer(1, 6))
+                _name_cell5.append(Paragraph(esc(_cde5), _c5_desc_s))
+            _c5_data.append([
+                Paragraph(str(_i5 + 1), _c5_num_s),
+                _name_cell5,
+                Paragraph(esc(_cis5) if _cis5 else "—", _c5_meta_s),
+                Paragraph(f'<a href="{_safe5}" color="#059669">{_safe5}</a>' if _cl5 else "—", _c5_meta_s),
+            ])
+            _c5_styles.append(("TOPPADDING",    (0, _i5+1), (-1, _i5+1), 5))
+            _c5_styles.append(("BOTTOMPADDING", (0, _i5+1), (-1, _i5+1), 5))
+        _c5_tbl = Table(_c5_data, colWidths=[_CC5_1, _CC5_2, _CC5_3, _CC5_4], repeatRows=1)
+        _c5_tbl.setStyle(TableStyle(_c5_styles))
+        story.append(_c5_tbl)
+        story.append(Spacer(1, 6))
 
     # ── Build PDF ─────────────────────────────────────────────────────────────
     _page_count = [0]

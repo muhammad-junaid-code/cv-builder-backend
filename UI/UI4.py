@@ -326,33 +326,66 @@ def build_cv_pdf_ui4(cv: dict, profile_data: dict = None) -> bytes:
                     "  ·  ".join(esc(t) for t in tech_t), S["mn_proj_tk"]))
             main_items.append(Spacer(1, 6))
 
-    # Certifications (optional)
+    # Certifications (optional) — tabular card design
     _certs4 = cv.get("certifications") or []
     if _certs4:
         mn_section("Certifications")
-        _c4_name_s = ps4("u4_cn", fontName="Helvetica-Bold", fontSize=10,  leading=13, textColor=colors.HexColor("#2c2c2c"))
-        _c4_meta_s = ps4("u4_cm", fontName="Helvetica",      fontSize=9,   leading=12, textColor=GOLD)
-        _c4_desc_s = ps4("u4_cd", fontName="Helvetica",      fontSize=9.5, leading=13, textColor=colors.HexColor("#3a3a3a"))
-        for _cert4 in _certs4:
+        _cert_note4 = (cv.get("cert_note") or "").strip()
+        if _cert_note4:
+            _cnote4_s = ps4("u4_cnote", fontName="Helvetica-Oblique", fontSize=9, leading=13,
+                             textColor=colors.HexColor("#444444"), spaceAfter=4)
+            main_items.append(Paragraph(esc(_cert_note4), _cnote4_s))
+        _c4_name_s = ps4("u4_cn",  fontName="Helvetica-Bold",    fontSize=9,   leading=12, textColor=colors.HexColor("#111111"))
+        _c4_meta_s = ps4("u4_cm",  fontName="Helvetica",         fontSize=8.5, leading=11, textColor=colors.HexColor("#7a5c00"))
+        _c4_desc_s = ps4("u4_cd",  fontName="Helvetica-Oblique", fontSize=8,   leading=11, textColor=colors.HexColor("#444444"))
+        _c4_num_s  = ps4("u4_cnum",fontName="Helvetica-Bold",    fontSize=9,   leading=12, textColor=GOLD, alignment=1)
+        _c4_hdr_s  = ps4("u4_chdr",fontName="Helvetica-Bold",    fontSize=8,   leading=10, textColor=colors.HexColor("#ffffff"), alignment=1)
+        _mn_cw4 = mn_inner_w
+        _CC4_1 = _mn_cw4 * 0.05
+        _CC4_2 = _mn_cw4 * 0.30
+        _CC4_3 = _mn_cw4 * 0.22
+        _CC4_4 = _mn_cw4 * 0.43
+        _c4_hdr_row = [
+            Paragraph("#",               _c4_hdr_s),
+            Paragraph("Certificate",     _c4_hdr_s),
+            Paragraph("Issuer",          _c4_hdr_s),
+            Paragraph("Credential Link", _c4_hdr_s),
+        ]
+        _c4_data   = [_c4_hdr_row]
+        _c4_styles = [
+            ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#5a4000")),
+            ("TOPPADDING",    (0, 0), (-1, 0), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 5),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+            ("GRID",          (0, 0), (-1, -1), 0.3, colors.HexColor("#d4b870")),
+            ("LINEBELOW",     (0, 0), (-1, 0),  1.0, colors.HexColor("#c9a84c")),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.HexColor("#fdf8ed"), colors.white]),
+        ]
+        for _i4, _cert4 in enumerate(_certs4):
             _cn4  = (_cert4.get("name")        or "").strip()
             _cl4  = (_cert4.get("link")        or "").strip()
             _cis4 = (_cert4.get("issuer")      or "").strip()
             _cde4 = (_cert4.get("description") or "").strip()
             if not any([_cn4, _cl4, _cis4, _cde4]):
                 continue
+            _safe4 = _cl4.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            _name_cell4 = [Paragraph(f"<b>{esc(_cn4)}</b>" if _cn4 else "—", _c4_name_s)]
             if _cde4:
-                main_items.append(Paragraph(esc(_cde4), _c4_desc_s))
-            _meta4 = []
-            if _cn4:
-                _meta4.append(f"<b>{esc(_cn4)}</b>")
-            if _cl4:
-                _safe4 = _cl4.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                _meta4.append(f'<a href="{_safe4}" color="#c9a84c">{_safe4}</a>')
-            if _cis4:
-                _meta4.append(esc(_cis4))
-            if _meta4:
-                main_items.append(Paragraph("  |  ".join(_meta4), _c4_meta_s))
-            main_items.append(Spacer(1, 6))
+                _name_cell4.append(Paragraph(esc(_cde4), _c4_desc_s))
+            _c4_data.append([
+                Paragraph(str(_i4 + 1), _c4_num_s),
+                _name_cell4,
+                Paragraph(esc(_cis4) if _cis4 else "—", _c4_meta_s),
+                Paragraph(f'<a href="{_safe4}" color="#c9a84c">{_safe4}</a>' if _cl4 else "—", _c4_meta_s),
+            ])
+            _c4_styles.append(("TOPPADDING",    (0, _i4+1), (-1, _i4+1), 5))
+            _c4_styles.append(("BOTTOMPADDING", (0, _i4+1), (-1, _i4+1), 5))
+        _c4_tbl = Table(_c4_data, colWidths=[_CC4_1, _CC4_2, _CC4_3, _CC4_4], repeatRows=1)
+        _c4_tbl.setStyle(TableStyle(_c4_styles))
+        main_items.append(_c4_tbl)
+        main_items.append(Spacer(1, 6))
 
     # ── Render via raw Canvas + Frames ────────────────────────────────────────
     buf2 = io.BytesIO()

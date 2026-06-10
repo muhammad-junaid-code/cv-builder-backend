@@ -305,33 +305,65 @@ def build_cv_pdf_ui6(cv: dict, profile_data: dict = None) -> bytes:
                     "  ·  ".join(esc(t) for t in tech_t), S["rc_proj_tk"]))
             right_items.append(Spacer(1, 7))
 
-    # Certifications (optional)
+    # Certifications (optional) — tabular card design
     _certs6 = cv.get("certifications") or []
     if _certs6:
         rc_sec("Certifications")
-        _c6_name_s = ps6("u6_cn", fontName="Helvetica-Bold", fontSize=10,  leading=13, textColor=colors.HexColor("#111111"))
-        _c6_meta_s = ps6("u6_cm", fontName="Helvetica",      fontSize=9,   leading=12, textColor=CORAL)
-        _c6_desc_s = ps6("u6_cd", fontName="Helvetica",      fontSize=9.5, leading=13, textColor=colors.HexColor("#374151"))
-        for _cert6 in _certs6:
+        _cert_note6 = (cv.get("cert_note") or "").strip()
+        if _cert_note6:
+            _cnote6_s = ps6("u6_cnote", fontName="Helvetica-Oblique", fontSize=9, leading=13,
+                             textColor=colors.HexColor("#444444"), spaceAfter=4)
+            right_items.append(Paragraph(esc(_cert_note6), _cnote6_s))
+        _c6_name_s = ps6("u6_cn",  fontName="Helvetica-Bold",    fontSize=9,   leading=12, textColor=colors.HexColor("#111111"))
+        _c6_meta_s = ps6("u6_cm",  fontName="Helvetica",         fontSize=8.5, leading=11, textColor=colors.HexColor("#9d174d"))
+        _c6_desc_s = ps6("u6_cd",  fontName="Helvetica-Oblique", fontSize=8,   leading=11, textColor=colors.HexColor("#444444"))
+        _c6_num_s  = ps6("u6_cnum",fontName="Helvetica-Bold",    fontSize=9,   leading=12, textColor=CORAL, alignment=1)
+        _c6_hdr_s  = ps6("u6_chdr",fontName="Helvetica-Bold",    fontSize=8,   leading=10, textColor=colors.HexColor("#ffffff"), alignment=1)
+        _CC6_1 = rc_inner_w * 0.05
+        _CC6_2 = rc_inner_w * 0.30
+        _CC6_3 = rc_inner_w * 0.22
+        _CC6_4 = rc_inner_w * 0.43
+        _c6_hdr_row = [
+            Paragraph("#",               _c6_hdr_s),
+            Paragraph("Certificate",     _c6_hdr_s),
+            Paragraph("Issuer",          _c6_hdr_s),
+            Paragraph("Credential Link", _c6_hdr_s),
+        ]
+        _c6_data   = [_c6_hdr_row]
+        _c6_styles = [
+            ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#881337")),
+            ("TOPPADDING",    (0, 0), (-1, 0), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 5),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+            ("GRID",          (0, 0), (-1, -1), 0.3, colors.HexColor("#fda4af")),
+            ("LINEBELOW",     (0, 0), (-1, 0),  1.0, colors.HexColor("#f43f5e")),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.HexColor("#fff1f2"), colors.white]),
+        ]
+        for _i6, _cert6 in enumerate(_certs6):
             _cn6  = (_cert6.get("name")        or "").strip()
             _cl6  = (_cert6.get("link")        or "").strip()
             _cis6 = (_cert6.get("issuer")      or "").strip()
             _cde6 = (_cert6.get("description") or "").strip()
             if not any([_cn6, _cl6, _cis6, _cde6]):
                 continue
+            _safe6 = _cl6.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            _name_cell6 = [Paragraph(f"<b>{esc(_cn6)}</b>" if _cn6 else "—", _c6_name_s)]
             if _cde6:
-                right_items.append(Paragraph(esc(_cde6), _c6_desc_s))
-            _meta6 = []
-            if _cn6:
-                _meta6.append(f"<b>{esc(_cn6)}</b>")
-            if _cl6:
-                _safe6 = _cl6.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                _meta6.append(f'<a href="{_safe6}" color="#f43f5e">{_safe6}</a>')
-            if _cis6:
-                _meta6.append(esc(_cis6))
-            if _meta6:
-                right_items.append(Paragraph("  |  ".join(_meta6), _c6_meta_s))
-            right_items.append(Spacer(1, 6))
+                _name_cell6.append(Paragraph(esc(_cde6), _c6_desc_s))
+            _c6_data.append([
+                Paragraph(str(_i6 + 1), _c6_num_s),
+                _name_cell6,
+                Paragraph(esc(_cis6) if _cis6 else "—", _c6_meta_s),
+                Paragraph(f'<a href="{_safe6}" color="#f43f5e">{_safe6}</a>' if _cl6 else "—", _c6_meta_s),
+            ])
+            _c6_styles.append(("TOPPADDING",    (0, _i6+1), (-1, _i6+1), 5))
+            _c6_styles.append(("BOTTOMPADDING", (0, _i6+1), (-1, _i6+1), 5))
+        _c6_tbl = Table(_c6_data, colWidths=[_CC6_1, _CC6_2, _CC6_3, _CC6_4], repeatRows=1)
+        _c6_tbl.setStyle(TableStyle(_c6_styles))
+        right_items.append(_c6_tbl)
+        right_items.append(Spacer(1, 6))
 
     # ── Render via Canvas + Frames ────────────────────────────────────────────
     buf2 = io.BytesIO()

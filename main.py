@@ -2350,6 +2350,10 @@ async def generate_pdf(req: PDFRequest):
         profile_certs = (req.profileData or {}).get("certs") or []
         if profile_certs:
             cv["certifications"] = profile_certs
+        # Section-level note written by the user in the extension UI
+        cert_note = ((req.profileData or {}).get("certNote") or "").strip()
+        if cert_note:
+            cv["cert_note"] = cert_note
         builder = _PDF_BUILDERS.get(req.ui_template or "ui1", build_cv_pdf)
         pdf_bytes = builder(cv, profile_data=req.profileData)
         return Response(

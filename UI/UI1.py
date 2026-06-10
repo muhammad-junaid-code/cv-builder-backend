@@ -306,33 +306,74 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
                 else:
                     story.append(Paragraph(f"✓ {achievement}", S["edu_deg"]))
 
-    # Certifications (optional)
+    # Certifications (optional) — tabular card design
     _certs = cv.get("certifications") or []
     if _certs:
         story.append(Paragraph("CERTIFICATIONS", S["sec_title_center"]))
-        _cert_name_s  = ps("cn",  fontName="Helvetica-Bold", fontSize=10, leading=13, textColor=colors.HexColor("#111111"))
-        _cert_meta_s  = ps("cm",  fontName="Helvetica",      fontSize=9,  leading=12, textColor=colors.HexColor("#0057A8"))
-        _cert_desc_s  = ps("cd",  fontName="Helvetica",      fontSize=9.5,leading=13, textColor=colors.HexColor("#333333"), leftIndent=0)
-        for _cert in _certs:
+        _cert_note = (cv.get("cert_note") or "").strip()
+        if _cert_note:
+            _cert_note_s = ps("cnote", fontName="Helvetica-Oblique", fontSize=9, leading=13,
+                               textColor=colors.HexColor("#444444"), spaceAfter=4)
+            story.append(Paragraph(_cert_note, _cert_note_s))
+        _c_name_s = ps("cn",  fontName="Helvetica-Bold", fontSize=9.5, leading=13, textColor=colors.HexColor("#111111"))
+        _c_meta_s = ps("cm",  fontName="Helvetica",      fontSize=8.5, leading=12, textColor=colors.HexColor("#0057A8"))
+        _c_desc_s = ps("cd",  fontName="Helvetica-Oblique", fontSize=8.5, leading=12, textColor=colors.HexColor("#444444"))
+        _c_num_s  = ps("cnum",fontName="Helvetica-Bold", fontSize=9,   leading=13, textColor=colors.HexColor("#0057A8"), alignment=1)
+        _COL1 = TW * 0.04   # # column
+        _COL2 = TW * 0.30   # name
+        _COL3 = TW * 0.20   # issuer
+        _COL4 = TW * 0.46   # link
+        # Header row
+        _hdr_s = ps("chdr", fontName="Helvetica-Bold", fontSize=8, leading=10,
+                    textColor=colors.HexColor("#ffffff"), alignment=1)
+        _hdr_row = [
+            Paragraph("#",          _hdr_s),
+            Paragraph("Certificate",_hdr_s),
+            Paragraph("Issuer",     _hdr_s),
+            Paragraph("Credential Link", _hdr_s),
+        ]
+        _tbl_data = [_hdr_row]
+        _tbl_styles = [
+            # Header styling
+            ("BACKGROUND",   (0, 0), (-1, 0), colors.HexColor("#1a3a6b")),
+            ("TOPPADDING",   (0, 0), (-1, 0), 5),
+            ("BOTTOMPADDING",(0, 0), (-1, 0), 5),
+            ("LEFTPADDING",  (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("VALIGN",       (0, 0), (-1, -1), "TOP"),
+            ("GRID",         (0, 0), (-1, -1), 0.3, colors.HexColor("#cccccc")),
+            ("LINEBELOW",    (0, 0), (-1, 0),  0.8, colors.HexColor("#1a3a6b")),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.HexColor("#f5f8ff"), colors.white]),
+        ]
+        for _i, _cert in enumerate(_certs):
             _cn  = (_cert.get("name")        or "").strip()
             _cl  = (_cert.get("link")        or "").strip()
             _cis = (_cert.get("issuer")      or "").strip()
             _cde = (_cert.get("description") or "").strip()
             if not any([_cn, _cl, _cis, _cde]):
                 continue
+            _safe_cl = _cl.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            _name_cell_parts = [Paragraph(f"<b>{_cn}</b>" if _cn else "—", _c_name_s)]
             if _cde:
-                story.append(Paragraph(_cde, _cert_desc_s))
-            _meta_parts = []
-            if _cn:
-                _meta_parts.append(f"<b>{_cn}</b>")
-            if _cl:
-                _safe_cl = _cl.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                _meta_parts.append(f'<a href="{_safe_cl}" color="#0057A8">{_safe_cl}</a>')
-            if _cis:
-                _meta_parts.append(_cis)
-            if _meta_parts:
-                story.append(Paragraph("  |  ".join(_meta_parts), _cert_meta_s))
-            story.append(Spacer(1, 4 * mm))
+                _name_cell_parts.append(Paragraph(_cde, _c_desc_s))
+            _name_cell = _name_cell_parts if len(_name_cell_parts) > 1 else _name_cell_parts[0]
+            _link_para = Paragraph(
+                f'<a href="{_safe_cl}" color="#0057A8">{_safe_cl}</a>' if _cl else "—",
+                _c_meta_s
+            )
+            _row = [
+                Paragraph(str(_i + 1), _c_num_s),
+                _name_cell,
+                Paragraph(_cis if _cis else "—", _c_meta_s),
+                _link_para,
+            ]
+            _tbl_data.append(_row)
+            _tbl_styles.append(("TOPPADDING",    (0, _i+1), (-1, _i+1), 5))
+            _tbl_styles.append(("BOTTOMPADDING", (0, _i+1), (-1, _i+1), 5))
+        _cert_tbl = Table(_tbl_data, colWidths=[_COL1, _COL2, _COL3, _COL4], repeatRows=1)
+        _cert_tbl.setStyle(TableStyle(_tbl_styles))
+        story.append(_cert_tbl)
+        story.append(Spacer(1, 4 * mm))
 
     # Build PDF
     doc.build(story)
