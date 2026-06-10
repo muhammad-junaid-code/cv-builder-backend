@@ -2343,8 +2343,15 @@ _PDF_BUILDERS = {
 @app.post("/generate-pdf")
 async def generate_pdf(req: PDFRequest):
     try:
+        cv = req.cv or {}
+        # Merge profile-stored certifications into cv["certifications"].
+        # Profile certs (entered by the user in the extension) take priority
+        # and replace any AI-generated certs so the user is always in control.
+        profile_certs = (req.profileData or {}).get("certs") or []
+        if profile_certs:
+            cv["certifications"] = profile_certs
         builder = _PDF_BUILDERS.get(req.ui_template or "ui1", build_cv_pdf)
-        pdf_bytes = builder(req.cv, profile_data=req.profileData)
+        pdf_bytes = builder(cv, profile_data=req.profileData)
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
