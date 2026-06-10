@@ -337,6 +337,34 @@ def build_cv_pdf_ui2(cv: dict, profile_data: dict = None) -> bytes:
 
     # Core Competencies moved to sidebar — no duplicate in main panel
 
+    # Certifications (optional)
+    _certs2 = cv.get("certifications") or []
+    if _certs2:
+        main_sec("Certifications")
+        _c2_name_s = ps2("u2_cn", fontName="Helvetica-Bold", fontSize=10,   leading=13, textColor=colors.HexColor("#154360"))
+        _c2_meta_s = ps2("u2_cm", fontName="Helvetica",      fontSize=9,    leading=12, textColor=colors.HexColor("#154360"))
+        _c2_desc_s = ps2("u2_cd", fontName="Helvetica",      fontSize=9.5,  leading=13, textColor=colors.HexColor("#2c2c2c"))
+        for _cert2 in _certs2:
+            _cn2  = (_cert2.get("name")        or "").strip()
+            _cl2  = (_cert2.get("link")        or "").strip()
+            _cis2 = (_cert2.get("issuer")      or "").strip()
+            _cde2 = (_cert2.get("description") or "").strip()
+            if not any([_cn2, _cl2, _cis2, _cde2]):
+                continue
+            if _cde2:
+                main_items.append(Paragraph(esc(_cde2), _c2_desc_s))
+            _meta2 = []
+            if _cn2:
+                _meta2.append(f"<b>{esc(_cn2)}</b>")
+            if _cl2:
+                _safe2 = _cl2.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                _meta2.append(f'<a href="{_safe2}" color="#1a5276">{_safe2}</a>')
+            if _cis2:
+                _meta2.append(esc(_cis2))
+            if _meta2:
+                main_items.append(Paragraph("  |  ".join(_meta2), _c2_meta_s))
+            main_items.append(Spacer(1, 6))
+
     # ── Render UI2 two-column layout via low-level Frame/Canvas drawing ──────
     # A single-row ReportLab Table whose cell content is taller than the page
     # frame raises "Flowable … too large on page".  Fix: draw each column

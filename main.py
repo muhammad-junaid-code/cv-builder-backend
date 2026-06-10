@@ -1301,6 +1301,22 @@ def sanitise_cv(cv: dict) -> dict:
     else:
         cv["education"] = []
 
+    # certifications: optional list of dicts with name, link, issuer, description
+    certs = cv.get("certifications")
+    if isinstance(certs, list):
+        clean_certs = []
+        for c in certs:
+            if isinstance(c, dict):
+                clean_certs.append({
+                    "name":        str(c.get("name")        or "").strip(),
+                    "link":        str(c.get("link")        or "").strip(),
+                    "issuer":      str(c.get("issuer")      or "").strip(),
+                    "description": str(c.get("description") or "").strip(),
+                })
+        cv["certifications"] = clean_certs
+    else:
+        cv["certifications"] = []
+
     # ── Deep-clean all string values in the entire CV dict ──────────────────
     # Cerebras models embed black-square Unicode chars (■◼◾ etc.) as hyphen
     # substitutes in any field. Run the cleaner on every string recursively
@@ -2278,8 +2294,10 @@ def _contact_href(val: str) -> str:
     if "@" in v:
         return f"mailto:{v}"
     # Case 3: phone — strip everything except digits, check count > 4
+    # Only treat as phone if the value contains NO alphabetical characters
+    # (URLs like linkedin.com/in/user123 contain letters and must NOT become tel: links)
     _digits = _contact_re.sub(r"[^\d]", "", v)
-    if len(_digits) > 4:
+    if len(_digits) > 4 and not _contact_re.search(r"[a-zA-Z]", v):
         # Keep +, digits, spaces, dashes, parens for the tel: value
         _tel_val = _contact_re.sub(r"\s+", "", v)
         return f"tel:{_tel_val}"

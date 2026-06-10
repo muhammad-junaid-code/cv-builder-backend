@@ -305,7 +305,35 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
                     story.append(Paragraph(f"🏅 {achievement}", S["edu_medal"]))
                 else:
                     story.append(Paragraph(f"✓ {achievement}", S["edu_deg"]))
-    
+
+    # Certifications (optional)
+    _certs = cv.get("certifications") or []
+    if _certs:
+        story.append(Paragraph("CERTIFICATIONS", S["sec_title_center"]))
+        _cert_name_s  = ps("cn",  fontName="Helvetica-Bold", fontSize=10, leading=13, textColor=colors.HexColor("#111111"))
+        _cert_meta_s  = ps("cm",  fontName="Helvetica",      fontSize=9,  leading=12, textColor=colors.HexColor("#0057A8"))
+        _cert_desc_s  = ps("cd",  fontName="Helvetica",      fontSize=9.5,leading=13, textColor=colors.HexColor("#333333"), leftIndent=0)
+        for _cert in _certs:
+            _cn  = (_cert.get("name")        or "").strip()
+            _cl  = (_cert.get("link")        or "").strip()
+            _cis = (_cert.get("issuer")      or "").strip()
+            _cde = (_cert.get("description") or "").strip()
+            if not any([_cn, _cl, _cis, _cde]):
+                continue
+            if _cde:
+                story.append(Paragraph(_cde, _cert_desc_s))
+            _meta_parts = []
+            if _cn:
+                _meta_parts.append(f"<b>{_cn}</b>")
+            if _cl:
+                _safe_cl = _cl.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                _meta_parts.append(f'<a href="{_safe_cl}" color="#0057A8">{_safe_cl}</a>')
+            if _cis:
+                _meta_parts.append(_cis)
+            if _meta_parts:
+                story.append(Paragraph("  |  ".join(_meta_parts), _cert_meta_s))
+            story.append(Spacer(1, 4 * mm))
+
     # Build PDF
     doc.build(story)
     

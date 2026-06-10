@@ -326,6 +326,34 @@ def build_cv_pdf_ui4(cv: dict, profile_data: dict = None) -> bytes:
                     "  ·  ".join(esc(t) for t in tech_t), S["mn_proj_tk"]))
             main_items.append(Spacer(1, 6))
 
+    # Certifications (optional)
+    _certs4 = cv.get("certifications") or []
+    if _certs4:
+        mn_section("Certifications")
+        _c4_name_s = ps4("u4_cn", fontName="Helvetica-Bold", fontSize=10,  leading=13, textColor=colors.HexColor("#2c2c2c"))
+        _c4_meta_s = ps4("u4_cm", fontName="Helvetica",      fontSize=9,   leading=12, textColor=GOLD)
+        _c4_desc_s = ps4("u4_cd", fontName="Helvetica",      fontSize=9.5, leading=13, textColor=colors.HexColor("#3a3a3a"))
+        for _cert4 in _certs4:
+            _cn4  = (_cert4.get("name")        or "").strip()
+            _cl4  = (_cert4.get("link")        or "").strip()
+            _cis4 = (_cert4.get("issuer")      or "").strip()
+            _cde4 = (_cert4.get("description") or "").strip()
+            if not any([_cn4, _cl4, _cis4, _cde4]):
+                continue
+            if _cde4:
+                main_items.append(Paragraph(esc(_cde4), _c4_desc_s))
+            _meta4 = []
+            if _cn4:
+                _meta4.append(f"<b>{esc(_cn4)}</b>")
+            if _cl4:
+                _safe4 = _cl4.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                _meta4.append(f'<a href="{_safe4}" color="#c9a84c">{_safe4}</a>')
+            if _cis4:
+                _meta4.append(esc(_cis4))
+            if _meta4:
+                main_items.append(Paragraph("  |  ".join(_meta4), _c4_meta_s))
+            main_items.append(Spacer(1, 6))
+
     # ── Render via raw Canvas + Frames ────────────────────────────────────────
     buf2 = io.BytesIO()
     c2   = _rl_canvas.Canvas(buf2, pagesize=(PAGE_W, PAGE_H_SINGLE))

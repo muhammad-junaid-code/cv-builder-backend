@@ -428,6 +428,34 @@ def build_cv_pdf_ui3(cv: dict, profile_data: dict = None) -> bytes:
                 story.append(Paragraph(prefix + esc(ach), S["edu_note"]))
             story.append(Spacer(1, 6))
 
+    # Certifications (optional)
+    _certs3 = cv.get("certifications") or []
+    if _certs3:
+        story += section_title("Certifications")
+        _c3_name_s = ps3("u3_cn", fontName="Helvetica-Bold", fontSize=10,   leading=13, textColor=NAVY)
+        _c3_meta_s = ps3("u3_cm", fontName="Helvetica",      fontSize=9,    leading=12, textColor=GOLD)
+        _c3_desc_s = ps3("u3_cd", fontName="Helvetica",      fontSize=9.5,  leading=13, textColor=colors.HexColor("#333333"))
+        for _cert3 in _certs3:
+            _cn3  = (_cert3.get("name")        or "").strip()
+            _cl3  = (_cert3.get("link")        or "").strip()
+            _cis3 = (_cert3.get("issuer")      or "").strip()
+            _cde3 = (_cert3.get("description") or "").strip()
+            if not any([_cn3, _cl3, _cis3, _cde3]):
+                continue
+            if _cde3:
+                story.append(Paragraph(esc(_cde3), _c3_desc_s))
+            _meta3 = []
+            if _cn3:
+                _meta3.append(f"<b>{esc(_cn3)}</b>")
+            if _cl3:
+                _safe3 = _cl3.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                _meta3.append(f'<a href="{_safe3}" color="#2c3e6b">{_safe3}</a>')
+            if _cis3:
+                _meta3.append(esc(_cis3))
+            if _meta3:
+                story.append(Paragraph("  |  ".join(_meta3), _c3_meta_s))
+            story.append(Spacer(1, 6))
+
     # ── Build PDF ──────────────────────────────────────────────────────────────
     # Track page count via onPage callback so we can compute the true content
     # height even when content overflows onto a second (or third) "page" of the

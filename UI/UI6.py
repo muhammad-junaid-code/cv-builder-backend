@@ -305,6 +305,34 @@ def build_cv_pdf_ui6(cv: dict, profile_data: dict = None) -> bytes:
                     "  ·  ".join(esc(t) for t in tech_t), S["rc_proj_tk"]))
             right_items.append(Spacer(1, 7))
 
+    # Certifications (optional)
+    _certs6 = cv.get("certifications") or []
+    if _certs6:
+        rc_sec("Certifications")
+        _c6_name_s = ps6("u6_cn", fontName="Helvetica-Bold", fontSize=10,  leading=13, textColor=colors.HexColor("#111111"))
+        _c6_meta_s = ps6("u6_cm", fontName="Helvetica",      fontSize=9,   leading=12, textColor=CORAL)
+        _c6_desc_s = ps6("u6_cd", fontName="Helvetica",      fontSize=9.5, leading=13, textColor=colors.HexColor("#374151"))
+        for _cert6 in _certs6:
+            _cn6  = (_cert6.get("name")        or "").strip()
+            _cl6  = (_cert6.get("link")        or "").strip()
+            _cis6 = (_cert6.get("issuer")      or "").strip()
+            _cde6 = (_cert6.get("description") or "").strip()
+            if not any([_cn6, _cl6, _cis6, _cde6]):
+                continue
+            if _cde6:
+                right_items.append(Paragraph(esc(_cde6), _c6_desc_s))
+            _meta6 = []
+            if _cn6:
+                _meta6.append(f"<b>{esc(_cn6)}</b>")
+            if _cl6:
+                _safe6 = _cl6.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                _meta6.append(f'<a href="{_safe6}" color="#f43f5e">{_safe6}</a>')
+            if _cis6:
+                _meta6.append(esc(_cis6))
+            if _meta6:
+                right_items.append(Paragraph("  |  ".join(_meta6), _c6_meta_s))
+            right_items.append(Spacer(1, 6))
+
     # ── Render via Canvas + Frames ────────────────────────────────────────────
     buf2 = io.BytesIO()
     c2   = _rl_canvas.Canvas(buf2, pagesize=(PAGE_W, PAGE_H_SINGLE))
