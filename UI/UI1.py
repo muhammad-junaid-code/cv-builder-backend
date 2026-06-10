@@ -306,94 +306,96 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
                 else:
                     story.append(Paragraph(f"✓ {achievement}", S["edu_deg"]))
 
-    # Certifications (optional) — tabular card design matching UI1 blue palette
+    # ── Certifications — tabular, styled to match UI1 exactly ──────────────
     _certs = cv.get("certifications") or []
     if _certs:
         story.append(Paragraph("CERTIFICATIONS", S["sec_title_center"]))
 
-        # Section-level note (optional, set by user in the extension)
+        # Optional section-level note (set by user in extension UI)
         _cert_note = (cv.get("cert_note") or "").strip()
         if _cert_note:
             story.append(Paragraph(
                 _cert_note,
                 ps("cnote", fontName="Helvetica-Oblique", fontSize=9, leading=13,
-                   textColor=colors.HexColor("#444444"), spaceAfter=4)
+                   textColor=colors.HexColor("#555555"), spaceAfter=4)
             ))
 
-        # ── Paragraph styles — all inherit UI1's #0057A8 blue ────────────────
-        _BLUE   = "#0057A8"
-        _DKBLUE = "#003d7a"   # header background — one shade darker than accent
+        # ── Styles: mirror the exact fonts/sizes/colors used in the rest of UI1 ──
+        # Header: white text on #0057A8 — same blue used for contact links
+        _ch = ps("_ch", fontName="Helvetica-Bold", fontSize=8.5, leading=11,
+                  textColor=colors.white, alignment=TA_CENTER)
+        # Row number: #0057A8 bold, centered
+        _cn_num = ps("_cn", fontName="Helvetica-Bold", fontSize=9, leading=12,
+                     textColor=colors.HexColor("#0057A8"), alignment=TA_CENTER)
+        # Certificate name: same as S["company"] — bold #111111
+        _cn_name = ps("_cname", fontName="Helvetica-Bold", fontSize=9.5, leading=13,
+                      textColor=colors.HexColor("#111111"))
+        # Description under name: same as S["role_title"] — oblique #555555
+        _cn_desc = ps("_cdesc", fontName="Helvetica-Oblique", fontSize=8.5, leading=12,
+                      textColor=colors.HexColor("#555555"))
+        # Issuer + link: same as S["contact"] — regular #0057A8
+        _cn_meta = ps("_cmeta", fontName="Helvetica", fontSize=8.5, leading=12,
+                      textColor=colors.HexColor("#0057A8"))
 
-        _c_hdr_s  = ps("c_hdr",  fontName="Helvetica-Bold",    fontSize=8.5, leading=11,
-                        textColor=colors.white, alignment=TA_CENTER)
-        _c_num_s  = ps("c_num",  fontName="Helvetica-Bold",    fontSize=9,   leading=12,
-                        textColor=colors.HexColor(_BLUE), alignment=TA_CENTER)
-        _c_name_s = ps("c_name", fontName="Helvetica-Bold",    fontSize=9.5, leading=13,
-                        textColor=colors.HexColor("#111111"))
-        _c_desc_s = ps("c_desc", fontName="Helvetica-Oblique", fontSize=8.5, leading=12,
-                        textColor=colors.HexColor("#555555"))
-        _c_meta_s = ps("c_meta", fontName="Helvetica",         fontSize=8.5, leading=12,
-                        textColor=colors.HexColor(_BLUE))
-
-        # ── Column widths — #col, Certificate, Issuer, Certificate Link ──────
+        # Col widths: #(4%) | Certificate(32%) | Issuer(22%) | Certificate Link(42%)
         _CW = [TW * 0.04, TW * 0.32, TW * 0.22, TW * 0.42]
 
-        _tbl_data = [[
-            Paragraph("#",                  _c_hdr_s),
-            Paragraph("Certificate",        _c_hdr_s),
-            Paragraph("Issuer",             _c_hdr_s),
-            Paragraph("Certificate Link",   _c_hdr_s),   # ← "Certificate Link"
+        _rows = [[
+            Paragraph("#",                _ch),
+            Paragraph("Certificate",      _ch),
+            Paragraph("Issuer",           _ch),
+            Paragraph("Certificate Link", _ch),
         ]]
-        _tbl_styles = [
-            # Header row
-            ("BACKGROUND",    (0, 0), (-1,  0), colors.HexColor(_DKBLUE)),
-            ("LINEBELOW",     (0, 0), (-1,  0), 1.2, colors.HexColor(_BLUE)),
-            ("TOPPADDING",    (0, 0), (-1,  0), 5),
-            ("BOTTOMPADDING", (0, 0), (-1,  0), 5),
-            # All cells
-            ("LEFTPADDING",   (0, 0), (-1, -1), 5),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
-            ("TOPPADDING",    (0, 1), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
-            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
-            # Subtle grid matching UI1's #cccccc dividers
-            ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
-            # Alternating row tint — very light blue to match UI1's #0057A8 palette
-            ("ROWBACKGROUNDS",(0, 1), (-1, -1),
-             [colors.HexColor("#eef4fb"), colors.white]),
-        ]
 
-        for _i, _cert in enumerate(_certs):
-            _cn  = (_cert.get("name")        or "").strip()
-            _cl  = (_cert.get("link")        or "").strip()
-            _cis = (_cert.get("issuer")      or "").strip()
-            _cde = (_cert.get("description") or "").strip()
-            if not any([_cn, _cl, _cis, _cde]):
+        for _i, _c in enumerate(_certs):
+            _name = (_c.get("name")        or "").strip()
+            _link = (_c.get("link")        or "").strip()
+            _issr = (_c.get("issuer")      or "").strip()
+            _desc = (_c.get("description") or "").strip()
+            if not any([_name, _link, _issr, _desc]):
                 continue
 
-            # Certificate cell: bold name + optional italic description below
-            _name_parts = []
-            if _cn:
-                _name_parts.append(Paragraph(_cn, _c_name_s))
-            if _cde:
-                _name_parts.append(Paragraph(_cde, _c_desc_s))
-            _name_cell = _name_parts if _name_parts else [Paragraph("—", _c_meta_s)]
+            # Name cell: bold name + optional italic description below
+            _name_cell = []
+            if _name:
+                _name_cell.append(Paragraph(_name, _cn_name))
+            if _desc:
+                _name_cell.append(Paragraph(_desc, _cn_desc))
+            if not _name_cell:
+                _name_cell = [Paragraph("—", _cn_meta)]
 
-            _safe_cl = _cl.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            _link_para = Paragraph(
-                f'<a href="{_safe_cl}" color="{_BLUE}">{_safe_cl}</a>' if _cl else "—",
-                _c_meta_s
+            _safe = _link.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+            _link_cell = Paragraph(
+                f'<a href="{_safe}" color="#0057A8">{_safe}</a>' if _link else "—",
+                _cn_meta
             )
-
-            _tbl_data.append([
-                Paragraph(str(_i + 1), _c_num_s),
+            _rows.append([
+                Paragraph(str(_i + 1), _cn_num),
                 _name_cell,
-                Paragraph(_cis if _cis else "—", _c_meta_s),
-                _link_para,
+                Paragraph(_issr if _issr else "—", _cn_meta),
+                _link_cell,
             ])
 
-        _cert_tbl = Table(_tbl_data, colWidths=_CW, repeatRows=1)
-        _cert_tbl.setStyle(TableStyle(_tbl_styles))
+        _cert_tbl = Table(_rows, colWidths=_CW, repeatRows=1)
+        _cert_tbl.setStyle(TableStyle([
+            # ── Header row — #0057A8 fill, white text ──────────────────────
+            ("BACKGROUND",    (0, 0), (-1,  0), colors.HexColor("#0057A8")),
+            ("TOPPADDING",    (0, 0), (-1,  0), 5),
+            ("BOTTOMPADDING", (0, 0), (-1,  0), 5),
+            # ── Data rows — white bg, very light blue stripe on alternates ─
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1),
+             [colors.HexColor("#f0f5fb"), colors.white]),
+            ("TOPPADDING",    (0, 1), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
+            # ── Shared padding & alignment ─────────────────────────────────
+            ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+            # ── Grid: same #cccccc as UI1's HR() dividers ──────────────────
+            ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
+            # Slightly stronger bottom border under header
+            ("LINEBELOW",     (0, 0), (-1,  0), 0.8, colors.HexColor("#0057A8")),
+        ]))
         story.append(_cert_tbl)
         story.append(Spacer(1, 4 * mm))
 
