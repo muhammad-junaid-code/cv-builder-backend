@@ -317,7 +317,7 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
             story.append(Paragraph(
                 _cert_note,
                 ps("cnote", fontName="Helvetica", fontSize=9, leading=13,
-                   textColor=colors.HexColor("#555555"), spaceAfter=4)
+                   textColor=colors.HexColor("#111111"), spaceAfter=4)
             ))
 
         # ── Styles: mirror the exact fonts/sizes/colors used in the rest of UI1 ──
