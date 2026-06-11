@@ -399,11 +399,19 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         story.append(_cert_tbl)
         story.append(Spacer(1, 4 * mm))
 
-    # Build PDF
-    doc.build(story)
-    
-    # Crop to content
-    last_y = doc.frame._y
+    # Build PDF — capture the real last-used y via page callback
+    last_y_state = [None]
+
+    def _capture_y(canvas, doc):
+        try:
+            last_y_state[0] = doc.frame._y
+        except Exception:
+            pass
+
+    doc.build(story, onFirstPage=_capture_y, onLaterPages=_capture_y)
+
+    # Crop to actual content height
+    last_y = last_y_state[0] if last_y_state[0] is not None else MB
     tight_h = (PAGE_H_SINGLE - MT) - last_y + MT + MB + 4 * mm
     tight_h = max(tight_h, 100 * mm)
     crop_bottom = PAGE_H_SINGLE - tight_h
@@ -423,11 +431,6 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     page.mediabox.lower_left = (0, crop_bottom)
     page.mediabox.upper_right = (PAGE_W, PAGE_H_SINGLE)
     
-    out = io.BytesIO()
-    writer.write(out)
-    out.seek(0)
-    return out.read()
-
     out = io.BytesIO()
     writer.write(out)
     out.seek(0)
