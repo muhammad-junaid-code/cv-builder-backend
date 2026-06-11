@@ -399,32 +399,42 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         story.append(_cert_tbl)
         story.append(Spacer(1, 4 * mm))
 
-    # Build PDF - measure actual content height by wrapping story in a frame
-    # This avoids relying on doc.frame._y which is unreliable after Table flowables.
-    from reportlab.platypus import Frame as _Frame
+    # Build PDF then crop to content.
+    # Strategy: use a BaseDocTemplate subclass that records the true y after
+    # every flowable is drawn — including Tables — via afterFlowable().
+    from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame as _Frame
 
-    _measure_frame = _Frame(
-        ML, MB, TW, PAGE_H_SINGLE - MT - MB,
-        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
-        showBoundary=0
+    class _MeasuringDoc(BaseDocTemplate):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self.lowest_y = PAGE_H_SINGLE  # track lowest point reached
+
+        def afterFlowable(self, flowable):
+            # cursor.y is the y position AFTER this flowable was placed
+            try:
+                y = self.frame._y
+                if y < self.lowest_y:
+                    self.lowest_y = y
+            except Exception:
+                pass
+
+    _mbuf = io.BytesIO()
+    _mdoc = _MeasuringDoc(
+        _mbuf, pagesize=(PAGE_W, PAGE_H_SINGLE),
+        leftMargin=ML, rightMargin=MR, topMargin=MT, bottomMargin=MB,
     )
+    _frame = _Frame(ML, MB, TW, PAGE_H_SINGLE - MT - MB,
+                    leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+    _mdoc.addPageTemplates([PageTemplate(id='main', frames=[_frame])])
+    _mdoc.build(story)
 
-    # Dummy canvas for measuring
-    import io as _io2
-    from reportlab.pdfgen.canvas import Canvas as _Canvas
-    _dummy_buf = _io2.BytesIO()
-    _dummy_canv = _Canvas(_dummy_buf, pagesize=(PAGE_W, PAGE_H_SINGLE))
+    measured_last_y = _mdoc.lowest_y
 
-    # Clone the story for measurement (flowables are stateful after wrapping)
-    import copy as _copy
-    _story_copy = _copy.deepcopy(story)
-    _measure_frame.addFromList(_story_copy, _dummy_canv)
-    # After addFromList, _measure_frame._y is the y of the last drawn item
-    measured_last_y = _measure_frame._y
+    # Now build the real PDF (story was already consumed — rebuild from buf is not
+    # possible, so we use the measuring doc's output directly as the final PDF)
+    buf = _mbuf
 
-    doc.build(story)
-
-    tight_h = (PAGE_H_SINGLE - MT) - measured_last_y + MT + MB + 10 * mm
+    tight_h = (PAGE_H_SINGLE - MT) - measured_last_y + MT + MB + 14 * mm
     tight_h = max(tight_h, 150 * mm)
     crop_bottom = PAGE_H_SINGLE - tight_h
     
