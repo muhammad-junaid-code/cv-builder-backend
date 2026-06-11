@@ -399,42 +399,23 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         story.append(_cert_tbl)
         story.append(Spacer(1, 4 * mm))
 
-    # Build PDF then crop to content.
-    # Strategy: use a BaseDocTemplate subclass that records the true y after
-    # every flowable is drawn — including Tables — via afterFlowable().
-    from reportlab.platypus import BaseDocTemplate, PageTemplate, Frame as _Frame
+    # Build PDF — no frame._y tricks; just build normally.
+    # Crop by computing total story height via wrap() on each flowable.
+    doc.build(story)
 
-    class _MeasuringDoc(BaseDocTemplate):
-        def __init__(self, *a, **kw):
-            super().__init__(*a, **kw)
-            self.lowest_y = PAGE_H_SINGLE  # track lowest point reached
+    # Calculate actual content height by summing wrapped flowable heights
+    from reportlab.pdfgen.canvas import Canvas as _MCanvas
+    _hbuf = io.BytesIO()
+    _hcanv = _MCanvas(_hbuf, pagesize=(PAGE_W, PAGE_H_SINGLE))
+    total_content_h = 0
+    for _fl in story:
+        try:
+            _w, _h = _fl.wrap(TW, PAGE_H_SINGLE)
+            total_content_h += _h
+        except Exception:
+            pass
 
-        def afterFlowable(self, flowable):
-            # cursor.y is the y position AFTER this flowable was placed
-            try:
-                y = self.frame._y
-                if y < self.lowest_y:
-                    self.lowest_y = y
-            except Exception:
-                pass
-
-    _mbuf = io.BytesIO()
-    _mdoc = _MeasuringDoc(
-        _mbuf, pagesize=(PAGE_W, PAGE_H_SINGLE),
-        leftMargin=ML, rightMargin=MR, topMargin=MT, bottomMargin=MB,
-    )
-    _frame = _Frame(ML, MB, TW, PAGE_H_SINGLE - MT - MB,
-                    leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
-    _mdoc.addPageTemplates([PageTemplate(id='main', frames=[_frame])])
-    _mdoc.build(story)
-
-    measured_last_y = _mdoc.lowest_y
-
-    # Now build the real PDF (story was already consumed — rebuild from buf is not
-    # possible, so we use the measuring doc's output directly as the final PDF)
-    buf = _mbuf
-
-    tight_h = (PAGE_H_SINGLE - MT) - measured_last_y + MT + MB + 14 * mm
+    tight_h = MT + total_content_h + MB + 16 * mm
     tight_h = max(tight_h, 150 * mm)
     crop_bottom = PAGE_H_SINGLE - tight_h
     
