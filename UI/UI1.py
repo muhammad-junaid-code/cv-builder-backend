@@ -316,7 +316,7 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         if _cert_note:
             story.append(Paragraph(
                 _cert_note,
-                ps("cnote", fontName="Helvetica-Oblique", fontSize=9, leading=13,
+                ps("cnote", fontName="Helvetica", fontSize=9, leading=13,
                    textColor=colors.HexColor("#555555"), spaceAfter=4)
             ))
 
