@@ -316,8 +316,8 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         if _cert_note:
             story.append(Paragraph(
                 _cert_note,
-                ps("cnote", fontName="Helvetica", fontSize=9, leading=13,
-                   textColor=colors.HexColor("#111111"), spaceAfter=4)
+                ps("cnote", fontName="Helvetica-Oblique", fontSize=9, leading=13,
+                   textColor=colors.HexColor("#555555"), spaceAfter=4)
             ))
 
         # ── Styles: mirror the exact fonts/sizes/colors used in the rest of UI1 ──
@@ -399,24 +399,13 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         story.append(_cert_tbl)
         story.append(Spacer(1, 4 * mm))
 
-    # Build PDF — no frame._y tricks; just build normally.
-    # Crop by computing total story height via wrap() on each flowable.
+    # Build PDF
     doc.build(story)
-
-    # Calculate actual content height by summing wrapped flowable heights
-    from reportlab.pdfgen.canvas import Canvas as _MCanvas
-    _hbuf = io.BytesIO()
-    _hcanv = _MCanvas(_hbuf, pagesize=(PAGE_W, PAGE_H_SINGLE))
-    total_content_h = 0
-    for _fl in story:
-        try:
-            _w, _h = _fl.wrap(TW, PAGE_H_SINGLE)
-            total_content_h += _h
-        except Exception:
-            pass
-
-    tight_h = MT + total_content_h + MB + 16 * mm
-    tight_h = max(tight_h, 150 * mm)
+    
+    # Crop to content
+    last_y = doc.frame._y
+    tight_h = (PAGE_H_SINGLE - MT) - last_y + MT + MB + 4 * mm
+    tight_h = max(tight_h, 100 * mm)
     crop_bottom = PAGE_H_SINGLE - tight_h
     
     try:
@@ -434,6 +423,11 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     page.mediabox.lower_left = (0, crop_bottom)
     page.mediabox.upper_right = (PAGE_W, PAGE_H_SINGLE)
     
+    out = io.BytesIO()
+    writer.write(out)
+    out.seek(0)
+    return out.read()
+
     out = io.BytesIO()
     writer.write(out)
     out.seek(0)
