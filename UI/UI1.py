@@ -399,22 +399,32 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         story.append(_cert_tbl)
         story.append(Spacer(1, 4 * mm))
 
-    # Build PDF - capture last used y from frame after build
-    last_y_state = [MB]
+    # Build PDF - measure actual content height by wrapping story in a frame
+    # This avoids relying on doc.frame._y which is unreliable after Table flowables.
+    from reportlab.platypus import Frame as _Frame
 
-    def _capture_y(canv, doc_obj):
-        try:
-            y = doc_obj.frame._y
-            if y < last_y_state[0]:
-                last_y_state[0] = y
-        except Exception:
-            pass
+    _measure_frame = _Frame(
+        ML, MB, TW, PAGE_H_SINGLE - MT - MB,
+        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+        showBoundary=0
+    )
 
-    doc.build(story, onFirstPage=_capture_y, onLaterPages=_capture_y)
+    # Dummy canvas for measuring
+    import io as _io2
+    from reportlab.pdfgen.canvas import Canvas as _Canvas
+    _dummy_buf = _io2.BytesIO()
+    _dummy_canv = _Canvas(_dummy_buf, pagesize=(PAGE_W, PAGE_H_SINGLE))
 
-    # Crop: add generous bottom padding so tall sections (like big cert tables) are never cut
-    last_y = last_y_state[0]
-    tight_h = (PAGE_H_SINGLE - MT) - last_y + MT + MB + 12 * mm
+    # Clone the story for measurement (flowables are stateful after wrapping)
+    import copy as _copy
+    _story_copy = _copy.deepcopy(story)
+    _measure_frame.addFromList(_story_copy, _dummy_canv)
+    # After addFromList, _measure_frame._y is the y of the last drawn item
+    measured_last_y = _measure_frame._y
+
+    doc.build(story)
+
+    tight_h = (PAGE_H_SINGLE - MT) - measured_last_y + MT + MB + 10 * mm
     tight_h = max(tight_h, 150 * mm)
     crop_bottom = PAGE_H_SINGLE - tight_h
     
