@@ -31,7 +31,7 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
     buf = io.BytesIO()
     PAGE_W, _ = A4
     ML, MR, MT, MB = 13 * mm, 13 * mm, 11 * mm, 11 * mm
-    PAGE_H_SINGLE = 841.89 * 2.2
+    PAGE_H_SINGLE = 841.89 * 4.0
     
     doc = SimpleDocTemplate(
         buf, pagesize=(PAGE_W, PAGE_H_SINGLE),
