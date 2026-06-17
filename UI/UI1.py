@@ -323,7 +323,7 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
         # ── Styles: mirror the exact fonts/sizes/colors used in the rest of UI1 ──
         # Header: white text on #0057A8 — same blue used for contact links
         _ch = ps("_ch", fontName="Helvetica-Bold", fontSize=8.5, leading=11,
-                  textColor=colors.white, alignment=TA_CENTER)
+                  textColor=colors.HexColor("#222222"), alignment=TA_CENTER)
         # Row number: #0057A8 bold, centered
         _cn_num = ps("_cn", fontName="Helvetica-Bold", fontSize=9, leading=12,
                      textColor=colors.HexColor("#0057A8"), alignment=TA_CENTER)
@@ -378,23 +378,24 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
 
         _cert_tbl = Table(_rows, colWidths=_CW, repeatRows=1)
         _cert_tbl.setStyle(TableStyle([
-            # ── Header row — #0057A8 fill, white text ──────────────────────
-            ("BACKGROUND",    (0, 0), (-1,  0), colors.HexColor("#0057A8")),
-            ("TOPPADDING",    (0, 0), (-1,  0), 5),
-            ("BOTTOMPADDING", (0, 0), (-1,  0), 5),
-            # ── Data rows — white bg, very light blue stripe on alternates ─
-            ("ROWBACKGROUNDS",(0, 1), (-1, -1),
-             [colors.HexColor("#f0f5fb"), colors.white]),
-            ("TOPPADDING",    (0, 1), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
-            # ── Shared padding & alignment ─────────────────────────────────
-            ("LEFTPADDING",   (0, 0), (-1, -1), 6),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+            # Header — light grey fill, dark text
+            ("BACKGROUND",    (0, 0), (-1,  0), colors.HexColor("#f2f2f2")),
+            ("TOPPADDING",    (0, 0), (-1,  0), 6),
+            ("BOTTOMPADDING", (0, 0), (-1,  0), 6),
+            # Data rows — plain white
+            ("BACKGROUND",    (0, 1), (-1, -1), colors.white),
+            ("TOPPADDING",    (0, 1), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 6),
+            # Shared padding
+            ("LEFTPADDING",   (0, 0), (-1, -1), 7),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 7),
             ("VALIGN",        (0, 0), (-1, -1), "TOP"),
-            # ── Grid: same #cccccc as UI1's HR() dividers ──────────────────
-            ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
-            # Slightly stronger bottom border under header
-            ("LINEBELOW",     (0, 0), (-1,  0), 0.8, colors.HexColor("#0057A8")),
+            # Outer border only — clean look
+            ("BOX",           (0, 0), (-1, -1), 0.6, colors.HexColor("#bbbbbb")),
+            # Horizontal lines between rows only
+            ("LINEBELOW",     (0, 0), (-1, -2), 0.4, colors.HexColor("#dddddd")),
+            # Slightly stronger line under header
+            ("LINEBELOW",     (0, 0), (-1,  0), 0.8, colors.HexColor("#999999")),
         ]))
         story.append(_cert_tbl)
         story.append(Spacer(1, 4 * mm))
