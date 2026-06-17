@@ -390,12 +390,16 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
             ("LEFTPADDING",   (0, 0), (-1, -1), 7),
             ("RIGHTPADDING",  (0, 0), (-1, -1), 7),
             ("VALIGN",        (0, 0), (-1, -1), "TOP"),
-            # Outer border only — clean look
+            # Outer border
             ("BOX",           (0, 0), (-1, -1), 0.6, colors.HexColor("#bbbbbb")),
-            # Horizontal lines between rows only
+            # Horizontal lines between rows
             ("LINEBELOW",     (0, 0), (-1, -2), 0.4, colors.HexColor("#dddddd")),
-            # Slightly stronger line under header
+            # Stronger line under header
             ("LINEBELOW",     (0, 0), (-1,  0), 0.8, colors.HexColor("#999999")),
+            # Vertical dividers between columns
+            ("LINEAFTER",     (0, 0), (0, -1), 0.4, colors.HexColor("#dddddd")),
+            ("LINEAFTER",     (1, 0), (1, -1), 0.4, colors.HexColor("#dddddd")),
+            ("LINEAFTER",     (2, 0), (2, -1), 0.4, colors.HexColor("#dddddd")),
         ]))
         story.append(_cert_tbl)
         story.append(Spacer(1, 4 * mm))
