@@ -401,32 +401,49 @@ def build_cv_pdf(cv: dict, profile_data: dict = None) -> bytes:
 
     # Build PDF
     doc.build(story)
-    
-    # Crop to content
-    last_y = doc.frame._y
-    tight_h = (PAGE_H_SINGLE - MT) - last_y + MT + MB + 4 * mm
-    tight_h = max(tight_h, 100 * mm)
-    crop_bottom = PAGE_H_SINGLE - tight_h
-    
+
     try:
-        from pypdf import PdfReader, PdfWriter
+        from pypdf import PdfReader, PdfWriter, PageObject
     except ImportError:
         import subprocess, sys
         subprocess.check_call([sys.executable, "-m", "pip", "install", "pypdf", "--quiet"])
-        from pypdf import PdfReader, PdfWriter
-    
+        from pypdf import PdfReader, PdfWriter, PageObject
+
     buf.seek(0)
     reader = PdfReader(buf)
-    writer = PdfWriter()
-    writer.add_page(reader.pages[0])
-    page = writer.pages[0]
-    page.mediabox.lower_left = (0, crop_bottom)
-    page.mediabox.upper_right = (PAGE_W, PAGE_H_SINGLE)
-    
-    out = io.BytesIO()
-    writer.write(out)
-    out.seek(0)
-    return out.read()
+    num_pages = len(reader.pages)
+
+    if num_pages == 1:
+        # Fast path — fits in virtual tall page, just crop it
+        last_y = doc.frame._y
+        tight_h = (PAGE_H_SINGLE - MT) - last_y + MT + MB + 4 * mm
+        tight_h = max(tight_h, 100 * mm)
+        crop_bottom = PAGE_H_SINGLE - tight_h
+
+        writer = PdfWriter()
+        writer.add_page(reader.pages[0])
+        page = writer.pages[0]
+        page.mediabox.lower_left  = (0, crop_bottom)
+        page.mediabox.upper_right = (PAGE_W, PAGE_H_SINGLE)
+
+    else:
+        # Overflow: stack all pages vertically so nothing is lost
+        total_h = PAGE_H_SINGLE * num_pages
+        merged = PageObject.create_blank_page(width=PAGE_W, height=total_h)
+        for i, src_page in enumerate(reader.pages):
+            merged.merge_translated_page(src_page, tx=0, ty=(num_pages - 1 - i) * PAGE_H_SINGLE)
+
+        last_y = doc.frame._y
+        content_on_last = PAGE_H_SINGLE - last_y
+        tight_h = (num_pages - 1) * PAGE_H_SINGLE + content_on_last + MB + 4 * mm
+        tight_h = max(tight_h, 100 * mm)
+        crop_bottom = total_h - tight_h
+
+        merged.mediabox.lower_left  = (0, crop_bottom)
+        merged.mediabox.upper_right = (PAGE_W, total_h)
+
+        writer = PdfWriter()
+        writer.add_page(merged)
 
     out = io.BytesIO()
     writer.write(out)
