@@ -886,18 +886,32 @@ NON-NEGOTIABLE RULES
     This tier is NOT limited to software technologies. It covers ANY named technology,
     framework, language, tool, platform, system, process, business function, or domain
     concept that is explicitly named in the job description — this applies to every
-    field, not just software roles: e.g. "accounts payable", "returns and credit memos",
-    "procurement automation", "manufacturing systems", "shipping carriers", "Six Sigma",
-    "Epic EHR", "Salesforce", "GAAP" are all Tier-1 JD-explicit terms exactly like "Python"
-    or "Kubernetes" would be. MUST be captured in the skills section, regardless of
-    whether it matches the candidate's primary background. The JD names it → it belongs
-    on the CV. This is not fabrication — it is accurate representation of what the role
-    requires, which is what every ATS scanner checks. If the JD lists a term, omitting it
-    actively harms the candidate's ATS score.
+    field, not just software roles: e.g. "HIPAA compliance", "ITIL change management",
+    "OSHA safety protocols", "Bloomberg Terminal", "Epic EHR", "Salesforce" are all Tier-1
+    JD-explicit terms exactly like "Python" or "Kubernetes" would be. MUST be captured in
+    the skills section, regardless of whether it matches the candidate's primary
+    background. The JD names it → it belongs on the CV. This is not fabrication — it is
+    accurate representation of what the role requires, which is what every ATS scanner
+    checks. If the JD lists a term, omitting it actively harms the candidate's ATS score.
     USE THE JD'S OWN WORDING: capture the term using the JD's own phrase (or a very close
-    variant), not a generalised paraphrase — e.g. if the JD says "shipping carriers", write
-    "Shipping Carrier Integration" or similar, not a vaguer substitute like "logistics
-    providers" that loses the specific term an ATS or recruiter would search for.
+    variant), not a generalised paraphrase — e.g. if the JD names a specific tool or
+    system by name, write that same name, not a vaguer substitute (like "logistics
+    software" instead of the actual named platform) that loses the specific term an ATS
+    or recruiter would search for.
+
+  TIER 1b — NAMED PROCESS FRAMEWORKS MUST BE DECOMPOSED, NOT JUST RESTATED:
+    If the JD names a recognised business or technical process framework, methodology,
+    or lifecycle by its standard name or abbreviation (this applies to ANY field: an ERP
+    process family, a compliance framework, a development or delivery methodology, a
+    quality or service-management framework, a clinical or operational workflow, etc.),
+    restating the umbrella name alone is NOT sufficient evidence of expertise. Use your
+    own domain knowledge to identify the well-known, standard constituent sub-processes,
+    activities, or components that framework actually comprises, and include those
+    specific sub-components in the skills section (and reflect them naturally in company/
+    project descriptions where they fit) — exactly as a genuine practitioner with real
+    hands-on experience in that framework would list it on a CV. Do not invent
+    sub-components that are not genuinely, standardly part of the named framework, and do
+    not fabricate expertise the candidate's background cannot support.
 
   TIER 2 — CANDIDATE-ASSUMED (include only if supported):
     Technologies NOT mentioned in the JD should only be added if clearly part of the
@@ -1014,9 +1028,11 @@ SECTION INSTRUCTIONS
    background. Do NOT use generic or hardcoded category names — infer them from what the
    role actually requires.
    COMPLETENESS RULE: Every technology, system, tool, or business-function term explicitly
-   named in the JD (software or not — e.g. "accounts payable", "shipping carriers" count
+   named in the JD (software or not — e.g. "HIPAA compliance", "Bloomberg Terminal" count
    exactly like "Python" or "Salesforce") must appear in exactly one category, using the
-   JD's own wording rather than a vaguer paraphrase. If the JD names a coherent group
+   JD's own wording rather than a vaguer paraphrase. If the JD names a recognised process
+   framework/methodology by name (per [R4] Tier 1b), also include its standard constituent
+   sub-components as their own items, not just the umbrella name. If the JD names a coherent group
    belonging to a distinct domain, create a dedicated category for that domain (named from
    the domain, not hardcoded).
    Format: "Category Label: item1, item2, item3, item4, item5, item6, item7, item8, item9, item10"
@@ -1121,6 +1137,8 @@ CHECKLIST:
 ✓ competencies: simple, direct language — not ornate or overly complex phrasing
 ✓ EVERY technology/system/tool/business-function term explicitly named in the JD (software or
   not) appears in at least one skills category, using the JD's own wording (R4 Tier 1)
+✓ any named process framework/methodology (any field) is decomposed into its standard
+  constituent sub-components, not just restated as the umbrella name alone (R4 Tier 1b)
 ✓ no technologies added that appear in neither the JD nor the candidate's background (R4 Tier 2)
 ✓ skills: dedicated category created for any coherent technology domain the JD emphasises (R7)
 ✓ projects: existing candidate projects reused/adapted where relevant, not replaced
@@ -1153,9 +1171,13 @@ Reminders:
   "Clean Architecture Principles", "Debugging and Troubleshooting") as professional phrases.
   Use simple, direct language — avoid ornate or overly abstract phrasing.
 - Technologies/Skills: TWO-TIER RULE — (1) Every technology, system, tool, or business-
-  function term explicitly named in the JD (software or not — e.g. "accounts payable",
-  "shipping carriers" count exactly like "Python") MUST appear in the skills section using
+  function term explicitly named in the JD (software or not — e.g. "HIPAA compliance",
+  "Bloomberg Terminal" count exactly like "Python") MUST appear in the skills section using
   the JD's own wording, not a vaguer paraphrase; omitting a JD-named term is an ATS failure.
+  (1b) If the JD names a recognised process framework/methodology (any field — an ERP
+  process family, compliance framework, delivery methodology, clinical workflow, etc.),
+  decompose it into its standard constituent sub-components using your own domain
+  knowledge and list those specifically — the umbrella name alone is not enough.
   (2) Do NOT add technologies absent from both the JD and the candidate's background.
   If the JD names a coherent set of technologies in a distinct domain, create a dedicated
   dynamically-named category for that domain — do not scatter or drop those technologies.
