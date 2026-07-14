@@ -871,6 +871,12 @@ NON-NEGOTIABLE RULES
   If a JOB TITLE QUALIFIER is given above, the inferred role must reflect its meaning
   (e.g. the specific platform/system, engagement type, or scope it names) rather than
   ignoring it.
+  MANDATORY EVEN WHEN THE JOB TITLE ALREADY LOOKS CLEAN: "not verbatim" applies
+  regardless of how professional or well-formatted the job title already is. A
+  well-written job title is NOT an exception to this rule — genuinely reword it into a
+  different (but equally accurate) phrasing every time, the same as you would for a
+  messy or informally-worded one. Returning the job title unchanged, or with only
+  cosmetic capitalisation/punctuation differences, is a rule violation.
 
 [R3] NO COMPANY NAMES IN FREE TEXT
   Company names appear ONLY in the "company" JSON field — never in any other field.
@@ -1988,6 +1994,109 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
     raise ValueError(f"Stage {stage} failed after 3 attempts. Last error: {last_error}")
 
 # ==============================================================================
+# TITLE-REWORD SAFETY NET — the AI is instructed to infer a role title rather
+# than copy the job title verbatim, but when the job title is already clean
+# and well-formatted, it frequently just echoes it back unchanged. Prompt-only
+# compliance for this proved unreliable (same pattern as the qualifier-
+# reflection issue), so this deterministically detects a verbatim copy and
+# makes one small, targeted follow-up call asking the model specifically to
+# reword just the role phrase — rather than hardcoding any specific title.
+# ==============================================================================
+_TITLE_TRAILING_SCOPE_RE = re.compile(r'\s+[‐-―-]\s+.*$')
+
+def _normalise_title_for_compare(s: str) -> str:
+    """Strip parenthetical qualifiers and any trailing '- extra scope' suffix,
+    then lowercase/collapse whitespace, so two titles can be compared for a
+    genuine verbatim-copy match regardless of those cosmetic differences."""
+    s = re.sub(r'\([^)]*\)', ' ', s or '')
+    s = _TITLE_TRAILING_SCOPE_RE.sub('', s)
+    return re.sub(r'\s+', ' ', s).strip().lower()
+
+def _title_role_segment(title: str) -> str:
+    return (title or '').split('|', 1)[0].strip()
+
+def _is_verbatim_title_copy(cv_title: str, job_title: str) -> bool:
+    role = _normalise_title_for_compare(_title_role_segment(cv_title))
+    job = _normalise_title_for_compare(job_title)
+    return bool(role) and role == job
+
+def _extract_tech_hint(cv_title: str) -> str:
+    parts = (cv_title or '').split('|')
+    return parts[1].strip() if len(parts) > 1 else ''
+
+def _build_title_reword_prompt(job_title: str, tech_hint: str) -> tuple:
+    system = (
+        "You write a single alternative professional CV role title. Given a job title "
+        "and its top technologies, produce ONE strictly relevant but DIFFERENTLY-WORDED "
+        "role phrase — same seniority level, same domain, same core function, genuinely "
+        "reworded (not just reordering the same words, not adding/removing a single "
+        "word). Do not be generic or unrelated, and do not invent a different "
+        "discipline. Respond with ONLY the role phrase — no quotes, no explanation, no "
+        "punctuation at the end, no years, no technology list."
+    )
+    user = (
+        f'Job title: "{job_title}"\n'
+        f'Top technologies for this role: {tech_hint or "n/a"}\n'
+        f"Write the alternative role phrase now."
+    )
+    return system, user
+
+async def _maybe_reword_title_openai_compat(cv: dict, req: "CVRequest", client, key: str,
+                                             model: str, url: str, headers: dict) -> None:
+    """OpenAI-compatible providers (Cerebras, Groq, Qwen) share this request shape."""
+    title = cv.get("title", "")
+    if not _is_verbatim_title_copy(title, req.job_title):
+        return
+    tech_hint = _extract_tech_hint(title)
+    sys_p, usr_p = _build_title_reword_prompt(req.job_title, tech_hint)
+    try:
+        r = await client.post(
+            url, headers=headers,
+            json={"model": model, "messages": [{"role": "system", "content": sys_p},
+                                                {"role": "user", "content": usr_p}],
+                  "temperature": 0.4, "max_tokens": 40},
+            timeout=20,
+        )
+        if r.status_code != 200:
+            return
+        msg = r.json()["choices"][0]["message"]
+        new_role = (msg.get("content") or msg.get("reasoning_content") or "").strip().strip('"').strip()
+        new_role = new_role.split("\n")[0].strip()
+        if new_role and not _is_verbatim_title_copy(new_role + " |", req.job_title):
+            parts = title.split("|")
+            parts[0] = f" {new_role} "
+            cv["title"] = "|".join(parts)
+            _log.info("[TitleReword] Replaced verbatim-copy title with: %r", new_role)
+    except Exception as e:
+        _log.warning("[TitleReword] Reword attempt failed, keeping original title: %s", e)
+
+async def _maybe_reword_title_gemini(cv: dict, req: "CVRequest", client, key: str, model: str) -> None:
+    title = cv.get("title", "")
+    if not _is_verbatim_title_copy(title, req.job_title):
+        return
+    tech_hint = _extract_tech_hint(title)
+    sys_p, usr_p = _build_title_reword_prompt(req.job_title, tech_hint)
+    try:
+        url = f"{GEMINI_URL}/{model}:generateContent?key={key}"
+        payload = {
+            "systemInstruction": {"parts": [{"text": sys_p}]},
+            "contents": [{"role": "user", "parts": [{"text": usr_p}]}],
+            "generationConfig": {"temperature": 0.4, "maxOutputTokens": 40},
+        }
+        r = await client.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=20)
+        if r.status_code != 200:
+            return
+        new_role = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip().strip('"').strip()
+        new_role = new_role.split("\n")[0].strip()
+        if new_role and not _is_verbatim_title_copy(new_role + " |", req.job_title):
+            parts = title.split("|")
+            parts[0] = f" {new_role} "
+            cv["title"] = "|".join(parts)
+            _log.info("[TitleReword-Gemini] Replaced verbatim-copy title with: %r", new_role)
+    except Exception as e:
+        _log.warning("[TitleReword-Gemini] Reword attempt failed, keeping original title: %s", e)
+
+# ==============================================================================
 # PROVIDER CALLERS
 # ==============================================================================
 async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
@@ -2144,6 +2253,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
 
     cv_sanitised = sanitise_cv(cv)
     cv_companies = fix_companies(cv_sanitised, companies_list=companies_list, years_exp=years_exp_clean)
+    await _maybe_reword_title_openai_compat(cv_companies, req, client, key, model, url, headers)
     cv_polished  = final_polish(cv_companies, years_exp=years_exp_clean, job_title=req.job_title)
 
     _log.info("[GenCV|%s] CV post-processing complete — title=%r totalYears=%r",
@@ -2470,6 +2580,7 @@ async def call_gemini(req: CVRequest) -> tuple:
 
                     cv_sanitised = sanitise_cv(cv)
                     cv_companies = fix_companies(cv_sanitised, companies_list=companies_list, years_exp=years_exp_clean)
+                    await _maybe_reword_title_gemini(cv_companies, req, client, key, model)
                     cv_polished = final_polish(cv_companies, years_exp=years_exp_clean, job_title=req.job_title)
 
                     _key_usage[mk] = _key_usage.get(mk, 0) + 1
