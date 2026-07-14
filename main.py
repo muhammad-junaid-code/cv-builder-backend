@@ -852,6 +852,18 @@ NON-NEGOTIABLE RULES
   never a bare "{years_display}" with no unit word.
   Summary must open with "{years_display} years of experience in [JD domain]".
 
+[R1b] SENIORITY AND SCOPE ECHO — APPLIES TO EVERY FIELD, NOT JUST TECHNICAL ROLES
+  Identify any seniority or scope signal in the job title and JD: words like "Senior",
+  "Lead", "Principal", "Staff", "Director", "Head of", "Chief", "Architect", "Manager",
+  or JD phrases describing ownership, strategy, mentorship, or architecting solutions.
+  The summary's LANGUAGE must match that level of scope and ownership, not just list
+  technologies or duties. A senior/lead/principal/director-level role must read as
+  someone who architects, leads, drives, owns, or mentors — not someone who merely
+  "uses" or "works with" tools, regardless of field (this applies equally to a Senior
+  Nurse, Senior Marketing Manager, or Senior Engineer). Conversely, a JD with no such
+  signals should stay at a natural individual-contributor tone — do not inflate
+  seniority beyond what the JD/title actually signals.
+
 [R2] TITLE FORMAT
   Infer a role title from the JD (not verbatim). Identify 3 most critical JD technologies
   that the candidate can genuinely claim from their background.
@@ -973,10 +985,15 @@ SECTION INSTRUCTIONS
 ① title: inferred role | tech1, tech2, tech3 | {years_display} Years
 
 ② summary [100-120 words, 4-5 sentences]
-   S1: "{years_display} years of experience in [JD domain]" + discipline + seniority.
+   S1: "{years_display} years of experience in [JD domain]" + discipline + a seniority
+       descriptor that matches [R1b] (e.g. "senior", "lead", "principal" level framing
+       if the job title/JD signals it — not just the bare years number).
    S2: Primary technical strengths from the JD.
    S3: Meaningful career impact relevant to this role.
-   S4: Collaboration or leadership dimension from the JD.
+   S4: Collaboration or leadership dimension from the JD — per [R1b], use
+       ownership/leadership verbs (architects, leads, drives, owns, mentors) if the
+       job title/JD signals senior/lead/principal/director scope; otherwise keep this
+       at a natural individual-contributor tone.
    S5: Professional focus and value proposition.
    No first-person pronouns. No company names. 5-7 JD technologies woven naturally.
 
@@ -1096,6 +1113,8 @@ JSON OUTPUT — raw JSON only, no markdown, no code fences
 CHECKLIST:
 ✓ title last segment exactly "{years_display} Years" (never a bare "{years_display}" with no unit word), no trailing comma, no double +
 ✓ if a JOB TITLE QUALIFIER was given, its meaning is reflected in the title/summary, not ignored
+✓ summary language matches the seniority/scope signalled by the job title/JD (R1b) —
+  ownership/leadership verbs for senior+ roles, natural IC tone otherwise
 ✓ summary opens with "{years_display} years of experience in", 100-120 words, no I/my/me
 ✓ competencies: minimum 14 clear, plain behavioral phrases (+ technical quality phrases for tech roles)
 ✓ competencies: no technology names, no tool names — only human professional traits
@@ -1125,6 +1144,10 @@ Reminders:
 - Title: inferred role | tech1, tech2, tech3 | {years_display} Years (no trailing comma, always include "Years")
 {f"- Job title qualifier(s) detected: {'; '.join(q.strip() for q in _title_qualifiers)} — reflect their meaning in the title/summary, do not ignore them." if _title_qualifiers else ""}
 - Summary: 100-120 words, open with "{years_display} years of experience in". No I/my/me.
+  Match the summary's tone to the seniority/scope signalled by the job title/JD (R1b) —
+  use ownership/leadership language (architects, leads, drives, owns, mentors) for
+  senior/lead/principal/director-level roles in ANY field, not just technical ones;
+  otherwise keep a natural individual-contributor tone.
 - Competencies: minimum 14 clear, plain behavioral phrases via " * ". No technology names.
   For tech/engineering roles also include software quality traits (e.g. "Code Quality Assurance",
   "Clean Architecture Principles", "Debugging and Troubleshooting") as professional phrases.
