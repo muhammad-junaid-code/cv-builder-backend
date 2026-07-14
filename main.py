@@ -568,7 +568,24 @@ def build_dynamic_prompt(req: CVRequest) -> tuple:
     jd = req.job_description.strip()
     job_title = req.job_title.strip()
     years_exp = (req.years_exp or "").strip()
-    
+
+    # ── Job-title qualifiers — any parenthetical note the employer attached to
+    # the job title (e.g. "(Only SAP B1)", "(Remote)", "(Night Shift)",
+    # "(6-month contract)"). Generic across every job field: whatever text sits
+    # in parentheses is a scope/constraint the employer cares about, and the
+    # AI must reflect its meaning in the title/summary rather than silently
+    # drop it just because [R2] tells it not to copy the job title verbatim.
+    _title_qualifiers = re.findall(r'\(([^)]+)\)', job_title)
+    qualifier_block = ""
+    if _title_qualifiers:
+        qualifier_block = (
+            "JOB TITLE QUALIFIER(S): " + "; ".join(q.strip() for q in _title_qualifiers) + "\n"
+            "The employer attached the qualifier(s) above to the job title. Reflect their "
+            "MEANING in the generated title and/or summary (e.g. scope the role, platform, "
+            "location, or engagement type accordingly) — do not ignore them, and do not just "
+            "copy the parenthetical text verbatim into the title."
+        )
+
     # Normalise to a plain integer-like string ("5", "3", etc.) — NO trailing +
     # This is the single source of truth; we add + only in display strings below.
     raw_years = years_exp.replace("+", "").strip()
@@ -576,7 +593,7 @@ def build_dynamic_prompt(req: CVRequest) -> tuple:
         float(raw_years)      # validate it is numeric
     except ValueError:
         raw_years = _calc_total_years("")   # fallback: compute from CANDIDATE_COMPANIES
-    
+
     # Human-readable display — always exactly "N+" (no double +)
     years_display = raw_years + "+"
 
@@ -809,6 +826,7 @@ Every JD must produce a completely unique output.
 
 CONTEXT
 Job Title Provided : {job_title}
+{qualifier_block}
 Work Positions     : {num_cos}
 Education Period   : {edu['start']} to {edu['end']}
 {f"Candidate Name     : {_p_name_str}" if _p_name_str else ""}
@@ -830,13 +848,17 @@ Role titles must feel natural, realistic, and human. Infer the full role title f
 NON-NEGOTIABLE RULES
 
 [R1] EXPERIENCE FORMAT
-  Title last segment must be exactly "{years_display}" — no trailing comma, no double +.
+  Title last segment must be exactly "{years_display} Years" — no trailing comma, no double +,
+  never a bare "{years_display}" with no unit word.
   Summary must open with "{years_display} years of experience in [JD domain]".
 
 [R2] TITLE FORMAT
   Infer a role title from the JD (not verbatim). Identify 3 most critical JD technologies
   that the candidate can genuinely claim from their background.
-  Assemble: inferred role | tech1, tech2, tech3 | {years_display}
+  Assemble: inferred role | tech1, tech2, tech3 | {years_display} Years
+  If a JOB TITLE QUALIFIER is given above, the inferred role must reflect its meaning
+  (e.g. the specific platform/system, engagement type, or scope it names) rather than
+  ignoring it.
 
 [R3] NO COMPANY NAMES IN FREE TEXT
   Company names appear ONLY in the "company" JSON field — never in any other field.
@@ -936,7 +958,7 @@ NON-NEGOTIABLE RULES
 
 SECTION INSTRUCTIONS
 
-① title: inferred role | tech1, tech2, tech3 | {years_display}
+① title: inferred role | tech1, tech2, tech3 | {years_display} Years
 
 ② summary [100-120 words, 4-5 sentences]
    S1: "{years_display} years of experience in [JD domain]" + discipline + seniority.
@@ -990,7 +1012,7 @@ SECTION INSTRUCTIONS
 JSON OUTPUT — raw JSON only, no markdown, no code fences
 
 {{
-  "title": "Inferred role | tech1, tech2, tech3 | {years_display}",
+  "title": "Inferred role | tech1, tech2, tech3 | {years_display} Years",
   "summary": "{years_display} years of experience in [domain]. [4-5 sentences, 100-120 words, no I/my/me]",
   "competencies": "Trait1 * Trait2 * Trait3 * Trait4 * Trait5 * Trait6 * Trait7 * Trait8 * Trait9 * Trait10 * Trait11 * Trait12 * Trait13 * Trait14",
   "keywords": "kw1, kw2, kw3, kw4, kw5, kw6, kw7, kw8, kw9, kw10, kw11, kw12, kw13, kw14, kw15, kw16, kw17, kw18, kw19, kw20",
@@ -1057,7 +1079,8 @@ JSON OUTPUT — raw JSON only, no markdown, no code fences
 }}
 
 CHECKLIST:
-✓ title last segment exactly "{years_display}", no trailing comma, no double +
+✓ title last segment exactly "{years_display} Years" (never a bare "{years_display}" with no unit word), no trailing comma, no double +
+✓ if a JOB TITLE QUALIFIER was given, its meaning is reflected in the title/summary, not ignored
 ✓ summary opens with "{years_display} years of experience in", 100-120 words, no I/my/me
 ✓ competencies: minimum 14 clear, plain behavioral phrases (+ technical quality phrases for tech roles)
 ✓ competencies: no technology names, no tool names — only human professional traits
@@ -1083,7 +1106,8 @@ CHECKLIST:
 Generate the CV JSON now.
 
 Reminders:
-- Title: inferred role | tech1, tech2, tech3 | {years_display} (no trailing comma)
+- Title: inferred role | tech1, tech2, tech3 | {years_display} Years (no trailing comma, always include "Years")
+{f"- Job title qualifier(s) detected: {'; '.join(q.strip() for q in _title_qualifiers)} — reflect their meaning in the title/summary, do not ignore them." if _title_qualifiers else ""}
 - Summary: 100-120 words, open with "{years_display} years of experience in". No I/my/me.
 - Competencies: minimum 14 clear, plain behavioral phrases via " * ". No technology names.
   For tech/engineering roles also include software quality traits (e.g. "Code Quality Assurance",
@@ -1262,8 +1286,12 @@ def _normalize_job_title(title: str) -> str:
 # hyphen, figure dash, minus sign, two/three-em dash) that models sometimes
 # emit inside compound words. These must become a plain ASCII hyphen, never be
 # deleted, or compound words get silently fused ("high-impact" -> "highimpact").
+# No letter-adjacency requirement: a dash used as a SPACED word/phrase
+# separator ("Nurse \u2013 ICU") is just as much a violation of the "no
+# em/en-dash" rule as one embedded in a compound word, and must convert to
+# a plain hyphen everywhere it appears, not only when tightly embedded.
 _INLINE_DASH_RE = re.compile(
-    r'(?<=[A-Za-z0-9])[\u2010-\u2015\u2212\u2E3A\u2E3B](?=[A-Za-z0-9])'
+    r'[\u2010-\u2015\u2212\u2E3A\u2E3B]'
 )
 _INLINE_SYMBOL_RE = re.compile(
     r'(?<=[A-Za-z0-9])([^\x20-\x7E\u00C0-\u024F])(?=[A-Za-z0-9])'
@@ -1280,7 +1308,7 @@ def _clean_black_squares(s: str) -> str:
     Uses Unicode block ranges so it catches all variants regardless of exact codepoint."""
     if not s:
         return s
-    s = _INLINE_DASH_RE.sub("-", s)      # unicode dash variants between letters -> plain hyphen
+    s = _INLINE_DASH_RE.sub("-", s)      # unicode dash variants anywhere -> plain hyphen
     s = _INLINE_SYMBOL_RE.sub("", s)     # other symbols between letters: strip (test■driven → testdriven)
     s = _SYMBOL_BLOCKS_RE.sub("-", s)    # geometric block chars anywhere: replace with hyphen
     return s
@@ -1500,6 +1528,10 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
     # The one authoritative display string — always "N+" with exactly one +
     years_display = raw + "+"
     cv["totalYears"] = years_display
+    # Title-only variant — the bare "N+" reads as a dangling fragment at the end
+    # of a title (e.g. "... | HANA, Service Layer, B1IF | 5+"), so the title's
+    # final segment always carries the unit word too ("5+ Years").
+    years_display_title = f"{years_display} Years"
 
     # ── Fix title ─────────────────────────────────────────────────────────────
     title = cv.get("title", "")
@@ -1527,7 +1559,7 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
                 parts[-1] = _exp_suffix.sub("", parts[-1]).strip()
 
             # Append the authoritative display value exactly once
-            parts.append(years_display)
+            parts.append(years_display_title)
             cv["title"] = " | ".join(parts)
         else:
             # No pipes — strip any trailing experience from the bare title first
@@ -1536,7 +1568,7 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
                 re.IGNORECASE
             )
             title = _exp_suffix_bare.sub("", title).strip()
-            cv["title"] = f"{title} | {years_display}"
+            cv["title"] = f"{title} | {years_display_title}"
 
     # ── Fix summary ───────────────────────────────────────────────────────────
     summary = cv.get("summary", "")
@@ -2015,17 +2047,18 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
               cv_polished.get("totalYears", ""))
     return cv_polished
 
-async def call_cerebras(req: CVRequest) -> tuple:
-    import time as _t
-    raw_keys = req.cerebras_keys or []
-    if not raw_keys:
-        raise HTTPException(400, "No Cerebras keys provided.")
-    valid_keys = [k.strip() for k in raw_keys if k and k.strip()]
-    if not valid_keys:
-        raise HTTPException(400, "No valid Cerebras keys found.")
+# Fallback model used when the requested Cerebras model exhausts every key on
+# rate-limiting alone — keeps generation succeeding instead of failing the whole
+# request just because one specific model is temporarily saturated.
+CEREBRAS_FALLBACK_MODEL = "gpt-oss-120b"
 
-    model = req.model or "gpt-oss-120b"
-    sorted_keys = _prioritised_keys(valid_keys)
+async def _attempt_cerebras_model(req: CVRequest, model: str, sorted_keys: list) -> tuple:
+    """Try every key against a single Cerebras model.
+    Always returns (result, all_rate_limited, errors_by_key): result is (cv, mk, i) on
+    success or None on failure. all_rate_limited is True only if every key failed
+    specifically due to rate-limiting, which tells the caller it's safe/sensible to
+    retry with a fallback model."""
+    import time as _t
     errors_by_key = []
     rate_limited_count = 0
 
@@ -2041,7 +2074,7 @@ async def call_cerebras(req: CVRequest) -> tuple:
                 rate_limited_count += 1
                 msg = f"Key {i+1} ({mk}): still rate-limited ({remaining}s remaining)"
                 errors_by_key.append(msg)
-                _log.warning("[Cerebras] %s — skipping", msg)
+                _log.warning("[Cerebras|%s] %s — skipping", model, msg)
                 continue
 
             # Quick probe to skip obviously bad/rate-limited keys
@@ -2072,7 +2105,7 @@ async def call_cerebras(req: CVRequest) -> tuple:
                 cv = await generate_cv_dynamic(req, client, key, model, CEREBRAS_URL, headers)
                 _key_usage[mk] = _key_usage.get(mk, 0) + 1
                 _log_generation(req.job_title, mk, i, 0, model, True)
-                return cv, mk, i
+                return (cv, mk, i), False, errors_by_key
             except _RateLimitError as e:
                 rate_limited_count += 1
                 errors_by_key.append(f"Key {i+1} ({mk}): {str(e)}")
@@ -2083,7 +2116,39 @@ async def call_cerebras(req: CVRequest) -> tuple:
                 errors_by_key.append(f"Key {i+1} ({mk}): {str(e)[:100]}")
                 continue
 
-    if rate_limited_count == len(sorted_keys):
+    all_rate_limited = rate_limited_count == len(sorted_keys) and rate_limited_count > 0
+    return None, all_rate_limited, errors_by_key
+
+async def call_cerebras(req: CVRequest) -> tuple:
+    raw_keys = req.cerebras_keys or []
+    if not raw_keys:
+        raise HTTPException(400, "No Cerebras keys provided.")
+    valid_keys = [k.strip() for k in raw_keys if k and k.strip()]
+    if not valid_keys:
+        raise HTTPException(400, "No valid Cerebras keys found.")
+
+    model = req.model or "gpt-oss-120b"
+    sorted_keys = _prioritised_keys(valid_keys)
+
+    result, all_rate_limited, errors_by_key = await _attempt_cerebras_model(req, model, sorted_keys)
+    if result is not None:
+        return result
+
+    # Every key was rate-limited specifically (not invalid/other errors) on the
+    # requested model — retry once against the fallback model before giving up,
+    # so a temporarily-saturated model doesn't fail the whole generation.
+    if all_rate_limited and model != CEREBRAS_FALLBACK_MODEL:
+        _log.warning("[Cerebras] Model %s exhausted on rate-limits — falling back to %s",
+                     model, CEREBRAS_FALLBACK_MODEL)
+        fb_result, fb_all_rate_limited, fb_errors = await _attempt_cerebras_model(
+            req, CEREBRAS_FALLBACK_MODEL, sorted_keys
+        )
+        if fb_result is not None:
+            return fb_result
+        errors_by_key = errors_by_key + [f"[fallback {CEREBRAS_FALLBACK_MODEL}] {e}" for e in fb_errors]
+        all_rate_limited = fb_all_rate_limited
+
+    if all_rate_limited:
         raise HTTPException(429, f"All Cerebras keys are rate-limited. Wait a moment and try again. Details: {'; '.join(errors_by_key[:3])}")
     raise HTTPException(502, f"All Cerebras keys failed: {'; '.join(errors_by_key[:3])}")
 
