@@ -391,29 +391,31 @@ def build_cv_pdf_ui4(cv: dict, profile_data: dict = None) -> bytes:
     buf2 = io.BytesIO()
     c2   = _rl_canvas.Canvas(buf2, pagesize=(PAGE_W, PAGE_H_SINGLE))
 
-    # Backgrounds
-    c2.setFillColor(CHARCOAL)
-    c2.rect(0, 0, SIDEBAR_W, PAGE_H_SINGLE, fill=1, stroke=0)
+    # Backgrounds — mirrored from UI2's sidebar-on-left skeleton: the dark
+    # charcoal panel sits on the RIGHT here so the two sidebar templates read
+    # as opposite silhouettes at a glance, not the same layout re-skinned.
     c2.setFillColor(CREAM)
-    c2.rect(SIDEBAR_W, 0, MAIN_W, PAGE_H_SINGLE, fill=1, stroke=0)
+    c2.rect(0, 0, MAIN_W, PAGE_H_SINGLE, fill=1, stroke=0)
+    c2.setFillColor(CHARCOAL)
+    c2.rect(MAIN_W, 0, SIDEBAR_W, PAGE_H_SINGLE, fill=1, stroke=0)
     # Thin gold strip between columns
     c2.setFillColor(GOLD)
-    c2.rect(SIDEBAR_W, 0, 2, PAGE_H_SINGLE, fill=1, stroke=0)
-
-    sb_inner_w = SIDEBAR_W - 2 * SB_PAD
-    sb_frame = _Frame(
-        SB_PAD, SB_PAD, sb_inner_w, PAGE_H_SINGLE - 2*SB_PAD,
-        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0, showBoundary=0,
-    )
-    sb_frame.addFromList(list(sidebar_items), c2)
+    c2.rect(MAIN_W - 2, 0, 2, PAGE_H_SINGLE, fill=1, stroke=0)
 
     mn_inner_h = PAGE_H_SINGLE - 8 - MN_PAD
     mn_frame = _Frame(
-        SIDEBAR_W + MN_PAD + 2, MN_PAD,
+        MN_PAD, MN_PAD,
         MAIN_W - 2*MN_PAD - 2, mn_inner_h,
         leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0, showBoundary=0,
     )
     mn_frame.addFromList(list(main_items), c2)
+
+    sb_inner_w = SIDEBAR_W - 2 * SB_PAD
+    sb_frame = _Frame(
+        MAIN_W + SB_PAD, SB_PAD, sb_inner_w, PAGE_H_SINGLE - 2*SB_PAD,
+        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0, showBoundary=0,
+    )
+    sb_frame.addFromList(list(sidebar_items), c2)
 
     c2.save()
     buf2.seek(0)

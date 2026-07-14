@@ -71,11 +71,15 @@ def build_cv_pdf_ui3(cv: dict, profile_data: dict = None) -> bytes:
     S = {
         # ── Centered header block ─────────────────────────────────────────────
         "name":      ps3("u3_nm", fontName="Helvetica-Bold", fontSize=22, leading=28,
-                         textColor=NAVY, alignment=TA_CENTER, spaceBefore=0, spaceAfter=2),
+                         textColor=NAVY, alignment=TA_LEFT, spaceBefore=0, spaceAfter=2),
         "subtitle":  ps3("u3_st", fontName="Helvetica", fontSize=9.5, leading=13,
                          textColor=MID, alignment=TA_CENTER, spaceAfter=3),
+        "subtitle_left": ps3("u3_stl", fontName="Helvetica", fontSize=10, leading=14,
+                         textColor=GOLD, alignment=TA_LEFT, spaceBefore=2, spaceAfter=0),
         "contact":   ps3("u3_ct", fontName="Helvetica", fontSize=8.5, leading=12,
                          textColor=colors.HexColor("#0057a8"), alignment=TA_CENTER),
+        "contact_right": ps3("u3_ctr", fontName="Helvetica", fontSize=8.5, leading=13,
+                         textColor=MID, alignment=TA_RIGHT, spaceAfter=0),
         # ── Section icon-style title ──────────────────────────────────────────
         "sec_icon":  ps3("u3_si", fontName="Helvetica-Bold", fontSize=10.5, leading=14,
                          textColor=colors.white, spaceBefore=0, spaceAfter=0),
@@ -156,26 +160,39 @@ def build_cv_pdf_ui3(cv: dict, profile_data: dict = None) -> bytes:
 
     story = []
 
-    # ── Centered header ────────────────────────────────────────────────────────
-    story.append(Paragraph(esc(p_name), S["name"]))
+    # ── Asymmetric left-aligned header ──────────────────────────────────────────
+    # Deliberately NOT a centered stack (that skeleton belongs to UI1): name/title
+    # sit left-aligned in a wide column, contact details stack right-aligned in a
+    # narrow column beside them, so the whole block reads as one asymmetric band.
+    name_cell = [Paragraph(esc(p_name), S["name"])]
     title_str = (cv.get("title") or "").strip()
     if title_str:
-        story.append(Paragraph(esc(title_str), S["subtitle"]))
+        name_cell.append(Paragraph(esc(title_str), S["subtitle_left"]))
 
-    # Contact line (centered, pipe-separated)
+    contact_cell = []
     if p_links:
-        contact_parts = []
         for lnk in p_links:
             v    = (lnk.get("value") or "").strip()
             lbl  = (lnk.get("label") or "").strip().lower()
+            if not v:
+                continue
             href = "" if lbl == "location" else _contact_href(v)
             _sv  = esc(v)
-            if href:
-                contact_parts.append(f'<a href="{esc(href)}" color="#0057a8">{_sv}</a>')
-            else:
-                contact_parts.append(_sv)
-        if contact_parts:
-            story.append(Paragraph("  |  ".join(contact_parts), S["contact"]))
+            text = f'<a href="{esc(href)}" color="#0057a8">{_sv}</a>' if href else _sv
+            contact_cell.append(Paragraph(text, S["contact_right"]))
+
+    header_tbl = Table(
+        [[name_cell, contact_cell]],
+        colWidths=[TW * 0.62, TW * 0.38],
+        style=TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ])
+    )
+    story.append(header_tbl)
 
     story.append(HRFlowable(width="100%", thickness=3, color=NAVY,
                              spaceBefore=8, spaceAfter=4))
@@ -217,19 +234,16 @@ def build_cv_pdf_ui3(cv: dict, profile_data: dict = None) -> bytes:
             else:
                 dr = ai.get("dateRange","")
 
-            # Company LEFT, date RIGHT — clean aligned layout
-            story.append(Table(
-                [[Paragraph(esc(company), S["company"]), Paragraph(esc(dr), S["date"])]],
-                colWidths=[TW * 0.73, TW * 0.27],
-                style=TableStyle([("VALIGN",(0,0),(-1,-1),"BOTTOM"),
-                                  ("LEFTPADDING",(0,0),(-1,-1),0),
-                                  ("RIGHTPADDING",(0,0),(-1,-1),0),
-                                  ("TOPPADDING",(0,0),(-1,-1),6),
-                                  ("BOTTOMPADDING",(0,0),(-1,-1),2),
-                                  ("ALIGN",(1,0),(1,-1),"RIGHT")])
-            ))
+            # ── Timeline-card entry: gold accent bar on the left, date folded
+            # inline next to the role (NOT mirrored to the right like UI1) ──────
+            card_content = [Paragraph(esc(company), S["company"])]
+            role_date_bits = []
             if role:
-                story.append(Paragraph(esc(role), S["role"]))
+                role_date_bits.append(esc(role))
+            if dr:
+                role_date_bits.append(f'<font color="#c8962a"><b>{esc(dr)}</b></font>')
+            if role_date_bits:
+                card_content.append(Paragraph("   /   ".join(role_date_bits), S["role"]))
 
             # Prefer AI bullets (rich, JD-tailored); fall back to profile bullets
             bullets = ai.get("bullets") or []
@@ -237,13 +251,28 @@ def build_cv_pdf_ui3(cv: dict, profile_data: dict = None) -> bytes:
                 bullets = [b.strip() for b in str(w["bullets"]).split("\n") if b.strip()]
             for b in bullets:
                 b_clean = b.lstrip("•·▸–▪● ").strip()
-                story.append(Paragraph('<font size="7">•</font> ' + esc(b_clean), S["bullet"]))
+                card_content.append(Paragraph('<font size="7">•</font> ' + esc(b_clean), S["bullet"]))
 
             tech_raw = ai.get("tech","")
             if tech_raw:
                 sep  = "|" if "|" in tech_raw else ","
                 tags = "  ·  ".join(t.strip() for t in tech_raw.split(sep) if t.strip())
-                story.append(Paragraph(esc(tags), S["tech"]))
+                card_content.append(Paragraph(esc(tags), S["tech"]))
+
+            story.append(Table(
+                [[Paragraph("", S["role"]), card_content]],
+                colWidths=[2.5*mm, TW - 2.5*mm - 3*mm],
+                style=TableStyle([
+                    ("BACKGROUND",    (0,0), (0,0), GOLD),
+                    ("VALIGN",        (0,0), (-1,-1), "TOP"),
+                    ("LEFTPADDING",   (0,0), (0,0), 0),
+                    ("RIGHTPADDING",  (0,0), (0,0), 0),
+                    ("LEFTPADDING",   (1,0), (1,0), 8),
+                    ("RIGHTPADDING",  (1,0), (1,0), 0),
+                    ("TOPPADDING",    (0,0), (-1,-1), 6),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+                ])
+            ))
             story.append(Spacer(1, 10))
 
     # ── Technical Skills — two-column grid ────────────────────────────────────

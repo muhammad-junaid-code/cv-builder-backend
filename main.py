@@ -543,7 +543,7 @@ class CVRequest(BaseModel):
     job_description: str
     years_exp: Optional[str] = ""
     provider: str = "cerebras"
-    model: str = "llama3.1-8b"
+    model: str = "gpt-oss-120b"
     groq_keys: Optional[List[str]] = []
     cerebras_keys: Optional[List[str]] = []
     gemini_keys: Optional[List[str]] = []
@@ -748,8 +748,13 @@ Use your knowledge of this company to create relevant projects.
 
     # ── Extract candidate's actual technology background from static_data / profile ──
     # Used to prevent the AI from inventing technologies the candidate doesn't know.
+    # static_data is an optional advanced field the extension does not currently
+    # populate; profile_data.skills is the field the extension actually sends
+    # (the free-text "Skills & Notes" box in the profile editor), so it must be
+    # read directly here or the candidate's real skill background never reaches
+    # the prompt at all.
     _static = req.static_data or {}
-    _cand_skills_raw = _static.get("skills", "") or ""
+    _cand_skills_raw = _static.get("skills", "") or _p_data.get("skills", "") or ""
     # Also pull any skills listed directly on profile work entries
     _cand_role_skills = []
     for _w in _p_work_l:
@@ -1132,11 +1137,26 @@ def extract_json(raw: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # Count unclosed brackets (ignoring those inside strings)
-    opens = []
+    # Count unclosed brackets (ignoring those inside strings), while also
+    # remembering the last "safe" boundary — a point outside any string where
+    # a *value* (not an object key) has just completed. If the model's output
+    # ends with a genuinely unterminated string (cut off mid-token, not just
+    # missing closing brackets), naively appending closers still leaves a
+    # dangling open quote that json.loads cannot parse. Falling back to the
+    # last safe boundary (with the bracket stack AS IT WAS at that point)
+    # recovers the partial-but-valid prefix instead of failing the whole
+    # request. Object keys are deliberately excluded as safe points — closing
+    # right after a key (before its ":value") produces invalid JSON.
+    stack: list = []   # each entry: {"type": "obj"|"arr", "awaiting_value": bool}
     in_str = False
     escape = False
-    for ch in j:
+    last_safe_pos = 0
+    last_safe_opens: list = []
+
+    def _closers() -> list:
+        return ["}" if s["type"] == "obj" else "]" for s in stack]
+
+    for i, ch in enumerate(j):
         if escape:
             escape = False
             continue
@@ -1144,31 +1164,72 @@ def extract_json(raw: str) -> dict:
             escape = True
             continue
         if ch == '"':
+            was_in_str = in_str
             in_str = not in_str
+            if was_in_str:
+                top = stack[-1] if stack else None
+                is_key = bool(top) and top["type"] == "obj" and not top["awaiting_value"]
+                if not is_key:
+                    last_safe_pos = i + 1
+                    last_safe_opens = _closers()
             continue
         if in_str:
             continue
-        if ch in "{[":
-            opens.append("}" if ch == "{" else "]")
+        if ch == "{":
+            stack.append({"type": "obj", "awaiting_value": False})
+        elif ch == "[":
+            stack.append({"type": "arr", "awaiting_value": True})
         elif ch in "}]":
-            if opens and opens[-1] == ch:
-                opens.pop()
+            if stack:
+                stack.pop()
+            last_safe_pos = i + 1
+            last_safe_opens = _closers()
+        elif ch == ":":
+            if stack and stack[-1]["type"] == "obj":
+                stack[-1]["awaiting_value"] = True
+        elif ch == ",":
+            if stack and stack[-1]["type"] == "obj":
+                stack[-1]["awaiting_value"] = False
 
-    # Strip any trailing incomplete string / value that might confuse the parser
-    j_repaired = j.rstrip().rstrip(",").rstrip()
-    # Close all unclosed structures in reverse order
-    j_repaired += "".join(reversed(opens))
+    opens = _closers()
 
-    try:
-        return json.loads(j_repaired)
-    except json.JSONDecodeError:
-        # Last resort: extract up to the last complete top-level value
-        end = j_repaired.rfind("}")
-        if end != -1:
-            candidate = j_repaired[:end + 1]
-            candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+    candidates = []
+
+    # Candidate 1: naive full-close — strip trailing partial value, close
+    # every structure that was still open at end-of-string.
+    j_naive = j.rstrip().rstrip(",").rstrip()
+    j_naive += "".join(reversed(opens))
+    candidates.append(j_naive)
+
+    # Candidate 2: truncate back to the last safe boundary (last closed
+    # string/bracket) and close using the stack AS IT WAS there — this is
+    # what recovers a response that ends mid-string with no closing quote.
+    if last_safe_pos:
+        j_safe = j[:last_safe_pos].rstrip().rstrip(",")
+        j_safe += "".join(reversed(last_safe_opens))
+        candidates.append(j_safe)
+
+    for cand in candidates:
+        try:
+            return json.loads(cand)
+        except json.JSONDecodeError:
+            continue
+
+    # Last resort: walk backwards through every "}" boundary (not just the
+    # last one) until one yields valid JSON.
+    search_end = len(j)
+    while True:
+        end = j.rfind("}", 0, search_end)
+        if end == -1:
+            break
+        candidate = re.sub(r",\s*([}\]])", r"\1", j[:end + 1])
+        try:
             return json.loads(candidate)
-        raise ValueError("Could not parse or repair JSON from model response")
+        except json.JSONDecodeError:
+            search_end = end
+            continue
+
+    raise ValueError("Could not parse or repair JSON from model response")
 
 def esc_html(s: str) -> str:
     if not s:
@@ -1197,6 +1258,13 @@ def _normalize_job_title(title: str) -> str:
 
 # Matches ANY non-ASCII, non-Latin-extended character appearing between two word
 # characters — these are geometric/symbol chars the model uses as hyphen substitutes.
+# Genuine Unicode dash/hyphen/minus variants (en dash, em dash, non-breaking
+# hyphen, figure dash, minus sign, two/three-em dash) that models sometimes
+# emit inside compound words. These must become a plain ASCII hyphen, never be
+# deleted, or compound words get silently fused ("high-impact" -> "highimpact").
+_INLINE_DASH_RE = re.compile(
+    r'(?<=[A-Za-z0-9])[\u2010-\u2015\u2212\u2E3A\u2E3B](?=[A-Za-z0-9])'
+)
 _INLINE_SYMBOL_RE = re.compile(
     r'(?<=[A-Za-z0-9])([^\x20-\x7E\u00C0-\u024F])(?=[A-Za-z0-9])'
 )
@@ -1212,17 +1280,84 @@ def _clean_black_squares(s: str) -> str:
     Uses Unicode block ranges so it catches all variants regardless of exact codepoint."""
     if not s:
         return s
-    s = _INLINE_SYMBOL_RE.sub("", s)    # between letters: strip (test■driven → testdriven)
-    s = _SYMBOL_BLOCKS_RE.sub("-", s)   # geometric block chars anywhere: replace with hyphen
+    s = _INLINE_DASH_RE.sub("-", s)      # unicode dash variants between letters -> plain hyphen
+    s = _INLINE_SYMBOL_RE.sub("", s)     # other symbols between letters: strip (test■driven → testdriven)
+    s = _SYMBOL_BLOCKS_RE.sub("-", s)    # geometric block chars anywhere: replace with hyphen
     return s
+
+def _dedupe_delimited(s: str, delim: str) -> str:
+    """Dedupe a delimited string of phrases, case-insensitive, preserving first occurrence."""
+    seen: set = set()
+    out: list = []
+    for part in s.split(delim):
+        part = part.strip()
+        if not part:
+            continue
+        key = part.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(part)
+    return delim.join(out)
+
+def _dedupe_skills_categories(skills: list) -> list:
+    """Ensure every skill item appears in exactly one category (first occurrence wins).
+    The AI is instructed to keep categories mutually exclusive, but this guarantees it."""
+    seen: set = set()
+    out: list = []
+    for line in skills:
+        if ":" not in line:
+            out.append(line)
+            continue
+        cat, items_str = line.split(":", 1)
+        kept = []
+        for item in items_str.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            key = item.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            kept.append(item)
+        if kept:
+            out.append(f"{cat.strip()}: {', '.join(kept)}")
+    return out
+
+def _dedupe_related_tech(related: list) -> list:
+    """Same first-occurrence-wins dedup, applied across relatedTech categories."""
+    seen: set = set()
+    out: list = []
+    for r in related:
+        items = r.get("items", []) if isinstance(r, dict) else []
+        kept = []
+        for it in items:
+            it = str(it).strip()
+            key = it.lower()
+            if not it or key in seen:
+                continue
+            seen.add(key)
+            kept.append(it)
+        if kept:
+            out.append({"category": str(r.get("category", "")), "items": kept})
+    return out
 
 def sanitise_cv(cv: dict) -> dict:
     if not isinstance(cv, dict):
         return {}
-    
+
     for field in ("totalYears", "title", "summary", "competencies", "keywords"):
         cv[field] = _clean_black_squares(str(cv.get(field, "")).strip())
-    
+
+    # Dedupe competencies (" * " separated) and keywords (", " separated) — the AI is
+    # told to keep these unique, but duplicates occasionally slip through.
+    if cv.get("competencies"):
+        cv["competencies"] = _dedupe_delimited(cv["competencies"], "*")
+        cv["competencies"] = re.sub(r'\s*\*\s*', ' * ', cv["competencies"]).strip(" *")
+    if cv.get("keywords"):
+        cv["keywords"] = _dedupe_delimited(cv["keywords"], ",")
+        cv["keywords"] = re.sub(r'\s*,\s*', ', ', cv["keywords"]).strip(", ")
+
     if cv.get("title"):
         _segs = [s.strip().rstrip(",").strip() for s in cv["title"].split("|")]
         cv["title"] = " | ".join(s for s in _segs if s)
@@ -1255,7 +1390,7 @@ def sanitise_cv(cv: dict) -> dict:
         for s in skills:
             if s and isinstance(s, str):
                 clean_skills.append(s.strip())
-        cv["skills"] = clean_skills
+        cv["skills"] = _dedupe_skills_categories(clean_skills)
     
     projects = cv.get("projects", [])
     if isinstance(projects, list):
@@ -1281,14 +1416,27 @@ def sanitise_cv(cv: dict) -> dict:
                         "category": str(r.get("category", "")),
                         "items": [str(i).strip() for i in items if i],
                     })
-        cv["relatedTech"] = clean_related
+        cv["relatedTech"] = _dedupe_related_tech(clean_related)
     
     techs = cv.get("technologies", {})
     if isinstance(techs, dict):
+        # Dedupe within each bucket, then across buckets (mustHave > niceToHave > additional
+        # priority — a tech already claimed by a higher-priority bucket is dropped from the rest).
+        _seen_tech: set = set()
+        def _dedupe_bucket(raw_list) -> list:
+            out = []
+            for t in (raw_list or []):
+                t = str(t).strip()
+                key = t.lower()
+                if not t or key in _seen_tech:
+                    continue
+                _seen_tech.add(key)
+                out.append(t)
+            return out
         cv["technologies"] = {
-            "mustHave": [str(t).strip() for t in (techs.get("mustHave") or []) if t],
-            "niceToHave": [str(t).strip() for t in (techs.get("niceToHave") or []) if t],
-            "additional": [str(t).strip() for t in (techs.get("additional") or []) if t],
+            "mustHave":   _dedupe_bucket(techs.get("mustHave")),
+            "niceToHave": _dedupe_bucket(techs.get("niceToHave")),
+            "additional": _dedupe_bucket(techs.get("additional")),
         }
 
     # education: normalise to a list of dicts regardless of what came in
@@ -1632,23 +1780,38 @@ async def call_llm_atomic(client, key: str, model: str, url: str,
         _log.info("%s HTTP %d received in %.1fs", tag, r.status_code, elapsed)
 
         if r.status_code == 200:
-            _resp_json = r.json()
-            _msg = _resp_json["choices"][0]["message"]
-            # Some models (e.g. Cerebras gpt-oss-120b) occasionally return the
-            # response text in "reasoning_content" or set "content" to None when
-            # the model uses an internal reasoning/thinking mode.
-            # Try "content" first; fall back to "reasoning_content"; raise a clear
-            # error if neither yields a non-empty string.
-            raw = _msg.get("content") or _msg.get("reasoning_content") or _msg.get("reasoning") or ""
-            if not raw:
-                _log.error("%s Empty content — message keys: %s", tag, list(_msg.keys()))
+            # The provider's own HTTP response body is occasionally truncated or
+            # malformed in transit (observed as a bare json.JSONDecodeError from
+            # r.json()) — treat this the same as a timeout and retry rather than
+            # leaking a raw parser exception to the end user.
+            try:
+                _resp_json = r.json()
+                _msg = _resp_json["choices"][0]["message"]
+                # Some models (e.g. Cerebras gpt-oss-120b) occasionally return the
+                # response text in "reasoning_content" or set "content" to None when
+                # the model uses an internal reasoning/thinking mode.
+                # Try "content" first; fall back to "reasoning_content"; raise a clear
+                # error if neither yields a non-empty string.
+                raw = _msg.get("content") or _msg.get("reasoning_content") or _msg.get("reasoning") or ""
+                if not raw:
+                    _log.error("%s Empty content — message keys: %s", tag, list(_msg.keys()))
+                    raise ValueError(
+                        f"Stage {stage}: model returned HTTP 200 but no text content "
+                        f"(message keys: {list(_msg.keys())}). "
+                        "Try a different model or provider."
+                    )
+                _log.info("%s SUCCESS — response %d chars", tag, len(raw))
+                return extract_json(raw)
+            except (json.JSONDecodeError, KeyError, IndexError, ValueError) as exc:
+                last_error = f"Malformed response on attempt {attempt_num}: {type(exc).__name__}: {exc}"
+                _log.warning("%s MALFORMED RESPONSE — %s", tag, last_error)
+                if attempt < 2:
+                    await asyncio.sleep(2)
+                    continue
                 raise ValueError(
-                    f"Stage {stage}: model returned HTTP 200 but no text content "
-                    f"(message keys: {list(_msg.keys())}). "
-                    "Try a different model or provider."
+                    f"Stage {stage}: provider returned a malformed/incomplete response after "
+                    f"3 attempts. Try again or switch provider."
                 )
-            _log.info("%s SUCCESS — response %d chars", tag, len(raw))
-            return extract_json(raw)
 
         elif r.status_code == 429:
             retry_after = int(r.headers.get("retry-after", 0))
@@ -1861,7 +2024,7 @@ async def call_cerebras(req: CVRequest) -> tuple:
     if not valid_keys:
         raise HTTPException(400, "No valid Cerebras keys found.")
 
-    model = req.model or "llama3.1-8b"
+    model = req.model or "gpt-oss-120b"
     sorted_keys = _prioritised_keys(valid_keys)
     errors_by_key = []
     rate_limited_count = 0
@@ -2370,7 +2533,7 @@ async def generate_pdf(req: PDFRequest):
 @app.post("/check-cerebras-keys")
 async def check_cerebras_keys(body: dict):
     keys = body.get("keys", [])
-    model = body.get("model", "llama3.1-8b")
+    model = body.get("model", "gpt-oss-120b")
     results = []
     async with httpx.AsyncClient(timeout=10) as client:
         for key in keys:
