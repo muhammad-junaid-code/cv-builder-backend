@@ -871,12 +871,21 @@ NON-NEGOTIABLE RULES
   Technologies fall into two tiers with different inclusion rules:
 
   TIER 1 — JD-EXPLICIT (always include):
-    Any technology, framework, language, tool, or platform that is explicitly named
-    in the job description MUST be captured in the skills section, regardless of whether
-    it matches the candidate's primary background. The JD names it → it belongs on the CV.
-    This is not fabrication — it is accurate representation of what the role requires,
-    which is what every ATS scanner checks. If the JD lists a technology, omitting it
+    This tier is NOT limited to software technologies. It covers ANY named technology,
+    framework, language, tool, platform, system, process, business function, or domain
+    concept that is explicitly named in the job description — this applies to every
+    field, not just software roles: e.g. "accounts payable", "returns and credit memos",
+    "procurement automation", "manufacturing systems", "shipping carriers", "Six Sigma",
+    "Epic EHR", "Salesforce", "GAAP" are all Tier-1 JD-explicit terms exactly like "Python"
+    or "Kubernetes" would be. MUST be captured in the skills section, regardless of
+    whether it matches the candidate's primary background. The JD names it → it belongs
+    on the CV. This is not fabrication — it is accurate representation of what the role
+    requires, which is what every ATS scanner checks. If the JD lists a term, omitting it
     actively harms the candidate's ATS score.
+    USE THE JD'S OWN WORDING: capture the term using the JD's own phrase (or a very close
+    variant), not a generalised paraphrase — e.g. if the JD says "shipping carriers", write
+    "Shipping Carrier Integration" or similar, not a vaguer substitute like "logistics
+    providers" that loses the specific term an ATS or recruiter would search for.
 
   TIER 2 — CANDIDATE-ASSUMED (include only if supported):
     Technologies NOT mentioned in the JD should only be added if clearly part of the
@@ -923,9 +932,12 @@ NON-NEGOTIABLE RULES
   what the JD and candidate background actually cover.
 
   CRITICAL — COMPLETE TECHNOLOGY COVERAGE:
-    Read every technology named in the JD before writing any category.
-    Every technology explicitly mentioned in the JD MUST appear in at least one category.
-    Missing a JD-named technology from the skills section is a violation of [R4] Tier 1.
+    Read every technology, system, tool, process, and business-function term named in the
+    JD before writing any category — this includes non-software terms (e.g. "accounts
+    payable", "shipping carriers", "manufacturing systems") just as much as software tools.
+    Every such term explicitly mentioned in the JD MUST appear in at least one category,
+    using the JD's own wording rather than a generalised paraphrase.
+    Missing a JD-named term from the skills section is a violation of [R4] Tier 1.
 
   CATEGORY CREATION RULE:
     If the JD mentions a coherent group of technologies that belongs to a distinct domain
@@ -984,9 +996,12 @@ SECTION INSTRUCTIONS
    Dynamically derive category names from the JD, job title, company domain, and candidate
    background. Do NOT use generic or hardcoded category names — infer them from what the
    role actually requires.
-   COMPLETENESS RULE: Every technology explicitly named in the JD must appear in exactly
-   one category. If the JD names a coherent group of technologies belonging to a distinct
-   domain, create a dedicated category for that domain (named from the domain, not hardcoded).
+   COMPLETENESS RULE: Every technology, system, tool, or business-function term explicitly
+   named in the JD (software or not — e.g. "accounts payable", "shipping carriers" count
+   exactly like "Python" or "Salesforce") must appear in exactly one category, using the
+   JD's own wording rather than a vaguer paraphrase. If the JD names a coherent group
+   belonging to a distinct domain, create a dedicated category for that domain (named from
+   the domain, not hardcoded).
    Format: "Category Label: item1, item2, item3, item4, item5, item6, item7, item8, item9, item10"
    Rules: minimum 5 categories (more allowed), minimum 10 items per category, strict domain
    separation (each item in exactly one category), zero duplicates, all JD-explicit technologies
@@ -1085,7 +1100,8 @@ CHECKLIST:
 ✓ competencies: minimum 14 clear, plain behavioral phrases (+ technical quality phrases for tech roles)
 ✓ competencies: no technology names, no tool names — only human professional traits
 ✓ competencies: simple, direct language — not ornate or overly complex phrasing
-✓ EVERY technology explicitly named in the JD appears in at least one skills category (R4 Tier 1)
+✓ EVERY technology/system/tool/business-function term explicitly named in the JD (software or
+  not) appears in at least one skills category, using the JD's own wording (R4 Tier 1)
 ✓ no technologies added that appear in neither the JD nor the candidate's background (R4 Tier 2)
 ✓ skills: dedicated category created for any coherent technology domain the JD emphasises (R7)
 ✓ projects: existing candidate projects reused/adapted where relevant, not replaced
@@ -1113,8 +1129,10 @@ Reminders:
   For tech/engineering roles also include software quality traits (e.g. "Code Quality Assurance",
   "Clean Architecture Principles", "Debugging and Troubleshooting") as professional phrases.
   Use simple, direct language — avoid ornate or overly abstract phrasing.
-- Technologies/Skills: TWO-TIER RULE — (1) Every technology explicitly named in the JD
-  MUST appear in the skills section; omitting a JD-named technology is an ATS failure.
+- Technologies/Skills: TWO-TIER RULE — (1) Every technology, system, tool, or business-
+  function term explicitly named in the JD (software or not — e.g. "accounts payable",
+  "shipping carriers" count exactly like "Python") MUST appear in the skills section using
+  the JD's own wording, not a vaguer paraphrase; omitting a JD-named term is an ATS failure.
   (2) Do NOT add technologies absent from both the JD and the candidate's background.
   If the JD names a coherent set of technologies in a distinct domain, create a dedicated
   dynamically-named category for that domain — do not scatter or drop those technologies.
@@ -1269,16 +1287,29 @@ def _is_real_tech(token: str) -> bool:
     return True
 
 def _normalize_job_title(title: str) -> str:
+    """Remove stuttered/repeated words (e.g. "Senior Senior Engineer" -> "Senior Engineer").
+
+    Scoped to WITHIN each "|"-delimited segment independently -- deduping across the
+    whole title (role | tech list | years) is wrong: a technology name that happens to
+    share a word with the role (e.g. role "SAP Business One Integration Engineer" and
+    tech "SAP Business One") would otherwise get stripped down to a meaningless fragment
+    ("One"), and "|" itself would get silently removed as a "duplicate word" whenever it
+    appears twice, corrupting the title's segment structure entirely.
+    """
     if not title:
         return title
-    words = title.split()
-    seen = []
-    seen_lower = []
-    for w in words:
-        if w.lower() not in seen_lower:
-            seen.append(w)
-            seen_lower.append(w.lower())
-    return " ".join(seen)
+    segments = title.split("|")
+    normalized = []
+    for seg in segments:
+        words = seg.split()
+        seen = []
+        seen_lower = []
+        for w in words:
+            if w.lower() not in seen_lower:
+                seen.append(w)
+                seen_lower.append(w.lower())
+        normalized.append(" ".join(seen))
+    return " | ".join(normalized)
 
 # Matches ANY non-ASCII, non-Latin-extended character appearing between two word
 # characters — these are geometric/symbol chars the model uses as hyphen substitutes.
@@ -1510,9 +1541,36 @@ def _deep_clean_black_squares(obj):
         return {k: _deep_clean_black_squares(v) for k, v in obj.items()}
     return obj
 
-def final_polish(cv: dict, years_exp: str = "") -> dict:
+def _ensure_qualifier_in_title(cv: dict, job_title: str) -> dict:
+    """Deterministic safety net for job-title qualifiers (parenthetical notes like
+    "(Only SAP B1)", "(Remote)", "(Night Shift)"). The prompt asks the AI to reflect
+    a qualifier's meaning in the title/summary, but across repeated testing the AI
+    does not reliably do this. Rather than trust prompt compliance alone, check
+    whether the qualifier's exact text already appears somewhere in the title or
+    summary; if not, append it as a parenthetical scope marker on the title. This
+    is generic — it works for any qualifier text in any job field, not just SAP."""
+    qualifiers = re.findall(r'\(([^)]+)\)', job_title or "")
+    if not qualifiers:
+        return cv
+    title = cv.get("title", "") or ""
+    summary = cv.get("summary", "") or ""
+    blob = (title + " " + summary).lower()
+
+    missing = [q.strip() for q in qualifiers if q.strip() and q.strip().lower() not in blob]
+    if not missing:
+        return cv
+
+    note = "; ".join(missing)
+    if "|" in title:
+        role_part, rest = title.split("|", 1)
+        cv["title"] = f"{role_part.strip()} ({note}) | {rest.strip()}"
+    elif title:
+        cv["title"] = f"{title.strip()} ({note})"
+    return cv
+
+def final_polish(cv: dict, years_exp: str = "", job_title: str = "") -> dict:
     """Final polishing — deduplicates tech tags and ensures correct experience display.
-    
+
     Core rule: experience is stored internally WITHOUT the trailing + sign.
     The display value (e.g. '5+') is only assembled when writing to cv fields.
     This prevents any possible '5++' bug.
@@ -1633,6 +1691,8 @@ def final_polish(cv: dict, years_exp: str = "") -> dict:
             if len(unique_tags) >= MIN_PROJ_TECH: break
             if t.lower() not in seen_proj: unique_tags.append(t); seen_proj.add(t.lower())
         proj["techTags"] = unique_tags[:12]
+
+    cv = _ensure_qualifier_in_title(cv, job_title)
 
     return cv
 
@@ -2039,7 +2099,7 @@ async def generate_cv_dynamic(req: CVRequest, client, key: str, model: str,
 
     cv_sanitised = sanitise_cv(cv)
     cv_companies = fix_companies(cv_sanitised, companies_list=companies_list, years_exp=years_exp_clean)
-    cv_polished  = final_polish(cv_companies, years_exp=years_exp_clean)
+    cv_polished  = final_polish(cv_companies, years_exp=years_exp_clean, job_title=req.job_title)
 
     _log.info("[GenCV|%s] CV post-processing complete — title=%r totalYears=%r",
               provider_host,
@@ -2365,7 +2425,7 @@ async def call_gemini(req: CVRequest) -> tuple:
 
                     cv_sanitised = sanitise_cv(cv)
                     cv_companies = fix_companies(cv_sanitised, companies_list=companies_list, years_exp=years_exp_clean)
-                    cv_polished = final_polish(cv_companies, years_exp=years_exp_clean)
+                    cv_polished = final_polish(cv_companies, years_exp=years_exp_clean, job_title=req.job_title)
 
                     _key_usage[mk] = _key_usage.get(mk, 0) + 1
                     return cv_polished, mk, i
